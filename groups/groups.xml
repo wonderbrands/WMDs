@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <data>
+        <record model="res.groups" id="group_wmds_manager">
+            <field name="name">WMDs Manager</field>
+        </record>
+
+        <record model="res.groups" id="group_wmds_operator">
+            <field name="name">WMDs Operator</field>
+        </record>    
+    </data>
+    
+</odoo>

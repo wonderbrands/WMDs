@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <menuitem
+        id="wmds_menu"
+        name="WMDs"
+        sequence="20"
+        action="action_wmds_client"/>
+
+
+</odoo>

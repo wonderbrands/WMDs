@@ -1,34 +1,43 @@
 # -*- coding: utf-8 -*-
 {
-    'name': "/extra-addons/WMDs/",
+    'name': "WMDs",
 
-    'summary': "Short (1 phrase/line) summary of the module's purpose",
+    'summary': "Local Warehouse Management System",
 
     'description': """
-Long description of module's purpose
+Planned replacement for the current WMS
     """,
 
-    'author': "My Company",
-    'website': "https://www.yourcompany.com",
+    'author': "Wonderbrands",
+    'website': "https://www.wonderbrands.co",
 
-    # Categories can be used to filter modules in modules listing
-    # Check https://github.com/odoo/odoo/blob/15.0/odoo/addons/base/data/ir_module_category_data.xml
-    # for the full list
-    'category': 'Uncategorized',
-    'version': '0.1',
 
-    # any module necessary for this one to work correctly
-    'depends': ['base'],
+    'category': 'Technical',
+    'version': '18.0',
 
-    # always loaded
+    'depends': ['base',
+    'web',
+    "website",
+    "portal",
+    "stock"],
+
     'data': [
-        # 'security/ir.model.access.csv',
-        'views/views.xml',
-        'views/templates.xml',
+        "groups/groups.xml",
+        "action/wmds_client.xml",
+        "menu/main.xml",
+        "template/wmds_template.xml",
     ],
-    # only loaded in demonstration mode
-    'demo': [
-        'demo/demo.xml',
-    ],
+
+     "assets": {
+        "web.assets_backend": [
+            "wmds/static/src/css/style.css",
+            "wmds/static/src/js/index.js",
+        ],
+        "web.assets_frontend": [
+            "wmds/static/src/css/style.css",
+            "wmds/static/src/js/index.js",
+        ],
+    },
+
 }
 
