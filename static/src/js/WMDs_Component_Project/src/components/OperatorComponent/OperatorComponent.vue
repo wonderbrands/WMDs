@@ -5,13 +5,9 @@
         style="overflow-y: scroll; padding: 1em; width: 100%; height: 100%; display: flex; flex-direction: column;"
     >
         <Card v-for="task in tasks" :key="task.id" style="margin: 1em;">
-            <!-- TITLE -->
             <template #title>{{ task.title }}</template>
-
-            <!-- SUBTITLE -->
             <template #subtitle>{{ task.description }}</template>
 
-            <!-- PENDING COUNT -->
             <template
                 #content
                 v-if="
@@ -25,7 +21,6 @@
                 </span>
             </template>
 
-            <!-- TREE -->
             <template #footer>
                 <Tree
                     v-if="assigned_tasks[task.id] && assigned_tasks[task.id].length > 0"
@@ -36,10 +31,7 @@
                     @node-select="openTask"
                 />
 
-                <div
-                    v-else
-                    style="padding: 1em; color: #666; font-style: italic;"
-                >
+                <div v-else style="padding: 1em; color: #666; font-style: italic;">
                     Sin tareas asignadas
                 </div>
             </template>
@@ -49,11 +41,18 @@
     <!-- QR SCANNER -->
     <div v-else style="padding: 1em;">
         <button @click="closeScanner">⬅ Volver</button>
+
         <video
             ref="qrScanner"
             playsinline
             muted
-            style="width: 100%; margin-top: 1em;"
+            style="
+                width: 100%;
+                height: 60vh;
+                object-fit: cover;
+                margin-top: 1em;
+                background: black;
+            "
         ></video>
     </div>
 </template>
@@ -171,18 +170,26 @@ export default {
         operator_task(newVal) {
             if (!newVal) return;
 
-            this.$nextTick(() => {
-                if (!this.$refs.qrScanner) return;
+            this.$nextTick(async () => {
+                const video = this.$refs.qrScanner;
+                if (!video) return;
 
                 this.scanner = new window.QrScanner(
-                    this.$refs.qrScanner,
+                    video,
                     result => {
                         console.log("Decoded QR:", result.data || result);
+                        this.closeScanner(); // auto close on scan
                     },
-                    { returnDetailedScanResult: true }
+                    {
+                        preferredCamera: "environment",
+                        highlightScanRegion: true,
+                        highlightCodeOutline: true,
+                        returnDetailedScanResult: true
+                    }
                 );
 
-                this.scanner.start();
+                await video.play();
+                await this.scanner.start();
             });
         }
     },
@@ -191,7 +198,7 @@ export default {
         async requestCameraPermission() {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: "environment" }
+                    video: true
                 });
                 stream.getTracks().forEach(t => t.stop());
                 return true;
@@ -215,11 +222,9 @@ export default {
                 key: node.key
             });
 
-            // 🔐 Ask for permission INSIDE the click handler
             const allowed = await this.requestCameraPermission();
             if (!allowed) return;
 
-            // ✅ Only now show the scanner
             this.operator_task = true;
         },
 
