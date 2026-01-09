@@ -18,7 +18,10 @@ class WMDSClientAction extends Component {
 
             () => {
             
-                this.el.setAttribute('allow', 'camera')
+                const iframe = window.frameElement
+                if (iframe) {
+                    iframe.setAttribute('allow', 'camera; microphone')
+                }
 
                 var mR=Object.defineProperty,bR=Object.defineProperties;var yR=Object.getOwnPropertyDescriptors;var nb=Object.getOwnPropertySymbols;var vR=Object.prototype.hasOwnProperty,wR=Object.prototype.propertyIsEnumerable;var rb=($t,Ue,ye)=>Ue in $t?mR($t,Ue,{enumerable:!0,configurable:!0,writable:!0,value:ye}):$t[Ue]=ye,Re=($t,Ue)=>{for(var ye in Ue||(Ue={}))vR.call(Ue,ye)&&rb($t,ye,Ue[ye]);if(nb)for(var ye of nb(Ue))wR.call(Ue,ye)&&rb($t,ye,Ue[ye]);return $t},st=($t,Ue)=>bR($t,yR(Ue));(function(){"use strict";var $t={};/**
                 * @vue/shared v3.5.25
