@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <data>
+
+        <record id="wmds_status" model="wmds.stock.status">
+            <field name="name">Not assigned</field>
+            <field name="value">not_assigned</field>
+        </record>
+
+        <record id="wmds_status_2" model="wmds.stock.status">
+            <field name="name">Not started</field>
+            <field name="value">not_started</field>
+        </record>
+
+        <record id="wmds_status_3" model="wmds.stock.status">
+            <field name="name">In progress</field>
+            <field name="value">in_progress</field>
+        </record>
+
+        <record id="wmds_status_4" model="wmds.stock.status">
+            <field name="name">Completed</field>
+            <field name="value">completed</field>
+        </record>
+        
+    </data>
+    
+
+</odoo>

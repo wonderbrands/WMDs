@@ -26,6 +26,9 @@ Planned replacement for the current WMS
         "action/wmds_client.xml",
         "menu/main.xml",
         "template/wmds_template.xml",
+        "data/wmds_status.xml",
+        "views/wmds_stock.xml",
+        "security/ir.model.access.csv",
     ],
 
      "assets": {

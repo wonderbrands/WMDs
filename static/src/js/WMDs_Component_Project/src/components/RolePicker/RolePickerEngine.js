@@ -53,9 +53,31 @@ class RolePickerProd extends RolePickerEngineDefinition {
 
     async getUserFromServer() {
         const local_storage_info = localStorage.getItem("web.lastConnectedUser")
-        const users = JSON.parse(local_storage_info)        
-        this.user= users[0].name
-        this.email= users[0].login
+        if (!local_storage_info) {
+            try {
+                const response = await fetch('/wmds/engine/user_validate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        "jsonrpc": "2.0",
+                    })
+                })
+                const data = await response.json()
+                console.log(data)
+                this.user= data.result.name
+                this.email= data.result.login
+            } catch (error) {
+                console.error(error)
+            }
+        } else {
+            const users = JSON.parse(local_storage_info)        
+            this.user= users[0].name
+            this.email= users[0].login
+        }
+        
+        
     }
 
     async getRole() {

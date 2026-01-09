@@ -14,15 +14,9 @@ class AvailableOperators(http.Controller):
         
         term = kw.get('name')
 
-        if not term:
-            return {
-                'error': 'Bad request',
-                'message': 'Missing required field: name'
-            }
-
         operator_group = request.env.ref('wmds.group_wmds_operator')
 
-        if term == '*':
+        if term == '*' or not term:
             users = request.env['res.users'].sudo().search([('groups_id', 'in', operator_group.id)])
         else:
             users = request.env['res.users'].sudo().search([
@@ -32,8 +26,7 @@ class AvailableOperators(http.Controller):
 
         if not users:
             return {
-                'error': 'Not found',
-                'message': 'User not found'
+                'results': []
             }
 
         ret_value = []

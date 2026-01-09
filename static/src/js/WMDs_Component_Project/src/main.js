@@ -4,7 +4,13 @@ import { createPinia } from 'pinia'
 import { definePreset } from '@primeuix/themes'
 import Aura from '@primeuix/themes/aura'
 import App from './App.vue'
+import QrScanner from 'qr-scanner'
+
 import './style.css'
+
+QrScanner.WORKER_PATH = null
+
+window.QrScanner = QrScanner
 
 const WMDSAuraLight = definePreset(Aura, {
     semantic: {

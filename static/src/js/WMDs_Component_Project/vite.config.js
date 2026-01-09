@@ -1,10 +1,10 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
+import path from 'node:path'
 
 export default defineConfig({
   plugins: [
     vue({
-      // Fail on template warnings (unknown components, etc.)
       template: {
         compilerOptions: {
           isCustomElement: () => false
@@ -13,11 +13,29 @@ export default defineConfig({
     })
   ],
 
-  // Treat warnings as errors
+  // 🔑 FIX: stub Node globals
+  define: {
+    'process.env': {}
+  },
+
   build: {
+    target: 'es2017',
+    cssCodeSplit: false,
+    sourcemap: false,
+
+    lib: {
+      entry: path.resolve(__dirname, 'src/main.js'),
+      name: 'OdooVueApp',
+      formats: ['iife'],
+      fileName: () => 'odoo_vue_app.js'
+    },
+
     rollupOptions: {
+      output: {
+        inlineDynamicImports: true
+      },
+
       onwarn(warning, warn) {
-        // Promote common "silent" issues to errors
         const fatalWarnings = [
           'UNRESOLVED_IMPORT',
           'MISSING_EXPORT',
@@ -33,7 +51,6 @@ export default defineConfig({
     }
   },
 
-  // Force strict dependency resolution
   resolve: {
     extensions: ['.js', '.vue', '.json'],
     alias: {
@@ -41,16 +58,13 @@ export default defineConfig({
     }
   },
 
-  // Show full stack traces
   logLevel: 'info',
 
-  // Strict dev server behavior
   server: {
     hmr: {
       overlay: true
     }
   },
 
-  // Fail on env mistakes
   envPrefix: 'VITE_'
 })

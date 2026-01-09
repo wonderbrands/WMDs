@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <!-- ================= ACTION ================= -->
+        <record id="wmds_status_action" model="ir.actions.act_window">
+            <field name="name">WMDS Status</field>
+            <field name="res_model">wmds.stock.status</field>
+            <field name="view_mode">list,form</field>
+        </record>
+
+        <!-- ================= MENUS ================= -->
+        <menuitem
+            id="wmds_parent"
+            name="WMDS"
+            parent="stock.menu_stock_config_settings"
+            groups="wmds.group_wmds_manager"
+            sequence="60"
+        />
+
+        <menuitem
+            id="wmds_status_entry"
+            name="WMDS Status"
+            parent="wmds_parent"
+            action="wmds.wmds_status_action"
+            groups="wmds.group_wmds_manager"
+            sequence="10"
+        />
+
+        <!-- ================= LIST VIEW ================= -->
+        <record id="wmds_status_view_list" model="ir.ui.view">
+            <field name="name">wmds.stock.status.list</field>
+            <field name="model">wmds.stock.status</field>
+            <field name="arch" type="xml">
+                <list string="WMDS Status">
+                    <field name="name"/>
+                    <field name="value"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- ================= FORM VIEW ================= -->
+        <record id="wmds_status_view_form" model="ir.ui.view">
+            <field name="name">wmds.stock.status.form</field>
+            <field name="model">wmds.stock.status</field>
+            <field name="arch" type="xml">
+                <form string="WMDS Status">
+                    <sheet>
+                        <group>
+                            <field name="name" required="1"/>
+                            <field name="value" required="1"/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- ================= STOCK PICKING INHERIT ================= -->
+        <record id="wmds_stock_pick_inherit" model="ir.ui.view">
+            <field name="name">wmds.stock.pick.inherit</field>
+            <field name="model">stock.picking</field>
+            <field name="inherit_id" ref="stock.view_picking_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//notebook" position="inside">
+                    <page string="WMDS" name="wmds_logs">
+                        <group>
+                            <field name="operator"/>
+                            <field name="wmds_status"/>
+                        </group>
+                        <field name="wmds_log">
+                            <list>
+                                <field name="log"/>
+                                <field name="date"/>
+                                <field name="user"/>
+                            </list>
+                        </field>
+                    </page>
+                </xpath>
+            </field>
+        </record>
+
+    </data>
+</odoo>

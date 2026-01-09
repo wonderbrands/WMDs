@@ -7,7 +7,7 @@ class OdooManagerMiddlewareDefinition{
         this.role = role
     }
 
-    async getFromOdoo(context, term){
+    async getFromOdoo(context, term, params={}){
         return null
     }
 }
@@ -21,7 +21,7 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
         super.setRole(role)
     }
 
-    async getFromOdoo(context, term){
+    async getFromOdoo(context, term, params={}){
         var regex = null;
         term = String(term).toLowerCase();
         switch (String(context)){
@@ -91,6 +91,102 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                 regex = new RegExp(".*" + term + ".*", "i")
                 const filteredOperadores = operadores.filter(operador => regex.test(operador.name)).slice(0, 5)
                 return filteredOperadores;
+            case "pick":
+                console.log("in pick")
+                const picks = {
+                    map_cols: [
+                        { field: "id", name: "ID" },
+                        { field: "sale_order", name: "SO" },
+                        { field: "name", name: "Nombre" },
+                        { field: "responsible", name: "Responsable", non_blocked_field: true },
+                        { field: "date", name: "Fecha" },
+                        { field: "status", name: "Status", type: "selectable", options: [
+                            { name: "Borrador", value: "draft" }, 
+                            { name: "En espera de otra operación", value: "waiting" },
+                            { name: "En espera", value: "confirmed" },
+                            { name: "Disponible", value: "assigned", default: true },
+                            { name: "Hecho", value: "done" },
+                            { name: "Cancelado", value: "cancel" },
+                        ] },
+                        { field: "wmds_stock_status", name: "Status WMDs", type: "selectable", options: [
+                            { name: "No asignado", value: "not_assigned", default: true }, 
+                            { name: "No iniciado", value: "not_started" },
+                            { name: "En progreso", value: "in_progress" },
+                            { name: "Completado", value: "completed" },
+                        ] },
+                    ],
+                    total_count: 1012,
+                    data: [
+                        {id: 78, sale_order: "SO00265", name: "WH/Pick/0078", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 79, sale_order: "SO00265", name: "WH/Pick/0079", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 80, sale_order: "SO00265", name: "WH/Pick/0080", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 81, sale_order: "SO00265", name: "WH/Pick/0081", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 82, sale_order: "SO00265", name: "WH/Pick/0082", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 83, sale_order: "SO00265", name: "WH/Pick/0083", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 84, sale_order: "SO00265", name: "WH/Pick/0084", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 85, sale_order: "SO00265", name: "WH/Pick/0085", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 86, sale_order: "SO00265", name: "WH/Pick/0086", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 87, sale_order: "SO00265", name: "WH/Pick/0087", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 88, sale_order: "SO00265", name: "WH/Pick/0088", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 89, sale_order: "SO00265", name: "WH/Pick/0089", responsible: null, date: "06/01/2026", status: "Pendiente"},
+                        {id: 90, sale_order: "SO00265", name: "WH/Pick/0090", responsible: null, date: "06/01/2026", status: "Pendiente"},    
+                    ]
+                }
+                return picks
+            case "pick_products":
+                return {
+                    title: "Productos del traslado",
+                    map_cols: [
+                        { field: "id", name: "ID" },
+                        { field: "product", name: "Producto" },
+                        { field: "barcode", name: "Codigo de barras" },
+                        { field: "sku", name: "SKU" },
+                        { field: "location", name: "Ubicacion desde" },
+                        { field: "location_dest", name: "Ubicacion hacia" },
+                        { field: "quantity", name: "Cantidad" },
+                    ],
+                    total_count: 890,
+                    data: [
+                        {id: 78, product: "Producto 1", barcode: "12345678", sku: "12345678", location: "Almacen 1", location_dest: "Almacen 2", quantity: 10},
+                        {id: 79, product: "Producto 2", barcode: "12345679", sku: "12345679", location: "Almacen 1", location_dest: "Almacen 2", quantity: 10},
+                        {id: 80, product: "Producto 3", barcode: "12345680", sku: "12345680", location: "Almacen 1", location_dest: "Almacen 2", quantity: 10},
+                        {id: 81, product: "Producto 4", barcode: "12345681", sku: "12345681", location: "Almacen 1", location_dest: "Almacen 2", quantity: 10},
+                        {id: 82, product: "Producto 5", barcode: "12345682", sku: "12345682", location: "Almacen 1", location_dest: "Almacen 2", quantity: 10},
+                        {id: 83, product: "Producto 6", barcode: "12345683", sku: "12345683", location: "Almacen 1", location_dest: "Almacen 2", quantity: 10},
+                        {id: 84, product: "Producto 7", barcode: "12345684", sku: "12345684", location: "Almacen 1", location_dest: "Almacen 2", quantity: 10},
+                        {id: 85, product: "Producto 8", barcode: "12345685", sku: "12345685", location: "Almacen 1", location_dest: "Almacen 2", quantity: 10},
+                        {id: 86, product: "Producto 9", barcode: "12345686", sku: "12345686", location: "Almacen 1", location_dest: "Almacen 2", quantity: 10},
+                        {id: 87, product: "Producto 10", barcode: "12345687", sku: "12345687", location: "Almacen 1", location_dest: "Almacen 2", quantity: 10},
+                    ]
+                }
+            case "assign_pick":
+                return {
+                    saved: true
+                }
+            case "pending_tasks":
+                return [
+                    {
+                        key: 'picks-0',
+                        label: 'WH/Pick/0047',
+                        data: 'WH/Pick/0047',
+                    },
+                    {
+                        key: 'picks-1',
+                        label: 'WH/Pick/0048',
+                        data: 'WH/Pick/0048',
+                    },
+                    {
+                        key: 'picks-2',
+                        label: 'WH/Pick/0049',
+                        data: 'WH/Pick/0049',
+                    },
+                    {
+                        key: 'picks-3',
+                        label: 'WH/Pick/0050',
+                        data: 'WH/Pick/0050',
+                    }
+                ]
+            
 
             default:
                 break;
@@ -107,7 +203,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
         super.setRole(role)
     }
 
-    async getFromOdoo(context, term){
+    async getFromOdoo(context, term, params={}) {
         var regex = null;
         term = String(term).toLowerCase();
         switch (String(context)){
@@ -116,6 +212,18 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
 
             case "operadores":
                 return await this.getOperadores(term)
+
+            case "assign_pick":
+                return await this.assignPick(params)
+
+            case "pick_products":
+                return await this.getPickProducts(params)
+            
+            case "pick":
+                return await this.getPicks(params)
+            
+            case "pending_tasks":
+                return await this.getPendingTasks(term, params)
 
             default:
                 break;
@@ -139,7 +247,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             const result = await response.json()
             console.log(result)
             if (result.result.error) {
-                console.log(result.resulterror)
+                console.log(result.result.error)
                 return []
             }
             return result.result.results
@@ -171,6 +279,114 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             console.log(result)
             if (result.result.error) {
                 console.log(result.result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    async getPicks(params){
+        try {
+            const response = await fetch('/wmds/v2/engine/get/picks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    async getPickProducts(params){
+        try {
+            const response = await fetch('/wmds/v2/engine/get/pick_products', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+
+    async assignPick(params){
+        try {
+            const response = await fetch('/wmds/v2/engine/post/pick_assign_operator', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+    async getPendingTasks(term, params){
+        try {
+            const response = await fetch('/wmds/v2/engine/get/pending_tasks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: {task: term, ...params}
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
                 return []
             }
             return result.result

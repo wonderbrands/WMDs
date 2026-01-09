@@ -1,26 +1,26 @@
 <template>
-    <BackButton where="role_picker"/>
     <ModalContextComponent v-if="store.modal_open"/>
     <div class="manager_screen">
-        <h1>Elige la actividad que deseas realizar</h1>
-        <Button label="Asignar ingreso" @click="store.openModal('ingreso')"/>
-        <Button label="Disponibilizar inventario (traslado desde ingreso a ubicación)"/>
-        <Button label="Asignar traslado"/>
-        <Button label="Asignar conteo cíclico"/>
-        <Button label="Crear Plan de Pickeo"/>
-        <Button label="Ver actividades pendientes"/>
+        <SidebarManagerComponent v-if="show_sidebar"/>
+        <main class="main_manager_screen_container">
+            <!--<BackButton where="role_picker" class="back_button"/>-->
+            <MainManagerScreen/>
+        </main>
     </div>
 </template>
 <script>
     import Button from 'primevue/button';
     import BackButton from '../BackButton/BackButton.vue';
     import ModalContextComponent from '../ModalContextComponent/ModalContextComponent.vue';
+    import SidebarManagerComponent from './SidebarManagerComponent.vue';
+    import MainManagerScreen from './MainManagerScreen.vue';
     import { useGeneralStore } from "../../store/index"
     export default {
         name: "ManagerComponent", 
         data: function() {
             return {
-                store: useGeneralStore()
+                store: useGeneralStore(),
+                show_sidebar: true
             }
         },
         mounted (){
@@ -29,12 +29,16 @@
             } else{
                 this.store.currentScreenLoaded()
             }
-
+        },
+        beforeMount() {
+            this.store.setMainManagerScreen('home')
         },
         components: {
             Button,
             BackButton,
-            ModalContextComponent
+            ModalContextComponent,
+            SidebarManagerComponent, 
+            MainManagerScreen
         }
     }
 </script>

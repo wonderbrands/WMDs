@@ -22,3 +22,11 @@ class UserAccess(http.Controller):
             'role': 'manager' if is_manager else 'operator' if is_operator else 'user',
         }
 
+    @http.route('/wmds/engine/user_validate', type='json', auth='user', methods=['POST'], csrf=True)
+    def user_cred(self, **kw):
+        user_id = request.uid
+        user = request.env['res.users'].sudo().browse(user_id)
+        return {
+            "name": user.name,
+            "login": user.login
+        }

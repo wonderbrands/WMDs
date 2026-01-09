@@ -3,7 +3,7 @@
 
   <RolePicker v-if="store.current_screen === 'role_picker'" />
   <ManagerComponent v-else-if="store.current_screen === 'manager_screen'" />
-  <div v-else-if="store.current_screen === 'operator_screen'">Esta es la pantalla del operador que aun no escribe el demian  :v</div>
+  <OperatorComponent v-else-if="store.current_screen === 'operator_screen'"/>
 </template>
 
 <script>
@@ -11,6 +11,7 @@
   import LoadingComponent from "./components/LoadingComponent/LoadingComponent.vue"
   import RolePicker from "./components/RolePicker/RolePicker.vue"
   import ManagerComponent from "./components/ManagerComponent/ManagerComponent.vue"
+  import OperatorComponent from "./components/OperatorComponent/OperatorComponent.vue"
   import { useGeneralStore } from "./store/index"
   
   export default {
@@ -18,7 +19,8 @@
     components: {
       LoadingComponent,
       RolePicker, 
-      ManagerComponent
+      ManagerComponent,
+      OperatorComponent
     },
     data() {
       return {
