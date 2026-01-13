@@ -12,6 +12,7 @@ export const useGeneralStore = defineStore('general_store', {
       modal_open: false,
       modal_context: null,
       form_context: null,
+      last_scanned_element: null,
       available_main_manager_screens: {
         home:{
             title: "Inicio",

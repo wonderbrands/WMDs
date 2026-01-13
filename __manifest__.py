@@ -15,11 +15,19 @@ Planned replacement for the current WMS
     'category': 'Technical',
     'version': '18.0',
 
-    'depends': ['base',
+    'depends': [
+        'base',
     'web',
     "website",
     "portal",
-    "stock"],
+    "stock"
+    ],
+
+     'external_dependencies': {
+        'python': [
+            'qrcode',
+        ],
+    },
 
     'data': [
         "groups/groups.xml",
@@ -28,6 +36,7 @@ Planned replacement for the current WMS
         "template/wmds_template.xml",
         "data/wmds_status.xml",
         "views/wmds_stock.xml",
+        "views/user.xml",
         "security/ir.model.access.csv",
     ],
 

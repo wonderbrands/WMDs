@@ -30,3 +30,27 @@ class UserAccess(http.Controller):
             "name": user.name,
             "login": user.login
         }
+
+    @http.route('/wmds/v2/engine/get/valid_user', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_valid_user(self, **kw):
+        email = kw.get('email')
+        if not email:
+            return {
+                'error': 'Bad request',
+                'message': 'Missing required field: email'
+            }
+        user = request.env['res.users'].sudo().search([('login', '=', email)], limit=1)
+        if not user:
+            return {
+                'error': 'Not found',
+                'message': 'User not found'
+            }
+        if not user.has_group('wmds.group_wmds_operator') or not user.has_group('wmds.group_wmds_manager'):
+            return {
+                'error': 'User has no access',
+                'message': 'User has no permission to access this WMDS'
+            }
+        return {
+            "name": user.name,
+            "login": user.login
+        }

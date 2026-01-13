@@ -1,9 +1,16 @@
 <template>
   <LoadingComponent v-if="store.loading" />
-
-  <RolePicker v-if="store.current_screen === 'role_picker'" />
-  <ManagerComponent v-else-if="store.current_screen === 'manager_screen'" />
-  <OperatorComponent v-else-if="store.current_screen === 'operator_screen'"/>
+  <QRScannerComponent context="user_initial_scanner" 
+      instructions="Escanea tu QR para iniciar sesión"
+      :can_close="false"
+      :onScan="store.role.getUserFromServer" 
+      v-if = "!store.role.is_identified"/>
+    <div v-else>
+      <RolePicker v-if="store.current_screen === 'role_picker'" />
+      <ManagerComponent v-else-if="store.current_screen === 'manager_screen'" />
+      <OperatorComponent v-else-if="store.current_screen === 'operator_screen'"/>
+    </div>
+  
 </template>
 
 <script>
@@ -12,6 +19,7 @@
   import RolePicker from "./components/RolePicker/RolePicker.vue"
   import ManagerComponent from "./components/ManagerComponent/ManagerComponent.vue"
   import OperatorComponent from "./components/OperatorComponent/OperatorComponent.vue"
+  import QRScannerComponent from "./components/QRScannerComponent/QRScannerComponent.vue"
   import { useGeneralStore } from "./store/index"
   
   export default {
@@ -20,7 +28,8 @@
       LoadingComponent,
       RolePicker, 
       ManagerComponent,
-      OperatorComponent
+      OperatorComponent,
+      QRScannerComponent
     },
     data() {
       return {

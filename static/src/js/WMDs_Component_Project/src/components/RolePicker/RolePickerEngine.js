@@ -4,6 +4,7 @@ class RolePickerEngineDefinition {
         this.email = null
         this.role = null
         this.permissions = null
+        this.is_identified = false
     }
 
     async getRole() {
@@ -51,7 +52,37 @@ class RolePickerProd extends RolePickerEngineDefinition {
         super()
     }
 
-    async getUserFromServer() {
+    async getUserFromServer(qrContent) {
+        const qrContentJson = JSON.parse(qrContent)
+        const tryEmail = qrContentJson.email
+        try {
+            const response = await fetch('/wmds/v2/engine/get/valid_user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    "jsonrpc": "2.0",
+                    "params": {
+                        "email": tryEmail
+                    }
+                })
+            })
+            const data = await response.json()
+            console.log(data)
+            if (data.result.error){
+                console.log(data.result.error)
+                return
+            } else{
+                this.user= data.result.name
+                this.email= data.result.login
+                this.is_identified = true
+            }
+            
+        } catch (error) {
+            console.error(error)
+        }
+        /*
         const local_storage_info = localStorage.getItem("web.lastConnectedUser")
         if (!local_storage_info) {
             try {
@@ -75,7 +106,7 @@ class RolePickerProd extends RolePickerEngineDefinition {
             const users = JSON.parse(local_storage_info)        
             this.user= users[0].name
             this.email= users[0].login
-        }
+        }*/
         
         
     }
