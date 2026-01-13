@@ -73,11 +73,13 @@ class RolePickerProd extends RolePickerEngineDefinition {
             if (data.result.error){
                 console.log(data.result.error)
                 return
-            } else{
-                this.user= data.result.name
-                this.email= data.result.login
-                this.is_identified = true
-            }
+            } 
+            console.log(data.result)
+            console.log("correctly identified user")
+            this.user= data.result.name
+            this.email= data.result.login
+            this.is_identified = true
+            
             
         } catch (error) {
             console.error(error)
