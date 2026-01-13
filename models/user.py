@@ -11,13 +11,13 @@ class ResUsers(models.Model):
     qr_code_structure = fields.Char(
         'QR Code',
         compute='_compute_qr_code',
-        store=True
+        store=False
     )
 
     qr_image = fields.Image(
         'QR Code Image',
         compute='_compute_qr_code',
-        store=True
+        store=False
     )
 
     @api.depends('login')
