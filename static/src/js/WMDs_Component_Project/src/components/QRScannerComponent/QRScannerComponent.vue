@@ -58,19 +58,18 @@
             required: false
         }
     },
-    async mounted() {
-        await this.$nextTick(); // Wait for DOM
+    mounted() {
         this.initCamera();
     },
     beforeUnmount() {
-        this.closeScanner(); // Clean up when component is destroyed
+        this.closeScanner();
     },
     methods: {
         async mountQRScanner() {
             const video = this.$refs.qrScanner;
             if (!video) {
                 console.error("Video element not found");
-                return;
+                return false;
             }
 
             try {
@@ -79,7 +78,7 @@
                     result => {
                         console.log("Decoded QR:", result.data || result);
                         const qrData = result.data || result;
-                        console.log("Decoded QR:", qrData);
+                        
                         if (this.onScan) {
                             this.onScan(qrData);
                         }
@@ -96,25 +95,34 @@
                 
                 await this.scanner.start();
                 console.log("Scanner started successfully");
-            } catch (err) {
-                console.error("Error starting scanner:", err);
-                throw err;
-            }
-        },
-
-        async requestCameraPermission() {
-            try {
-                await this.mountQRScanner();
                 return true;
             } catch (err) {
-                this.error = `Error de permisos en la cámara: ${err.message || err}`;
-                console.error(this.error);
+                console.error("Error starting scanner:", err);
+                this.error = `Error iniciando escáner: ${err.message || err}`;
+                this.camera_init = false;
                 return false;
             }
         },
 
         async initCamera() {
-            this.camera_init = await this.requestCameraPermission();
+            try {
+                // First, set camera_init to true so the video element renders
+                this.camera_init = true;
+                
+                // Wait for the next tick so Vue renders the video element
+                await this.$nextTick();
+                
+                // Now mount the QR scanner
+                const success = await this.mountQRScanner();
+                
+                if (!success) {
+                    this.camera_init = false;
+                }
+            } catch (err) {
+                this.error = `Error de permisos en la cámara: ${err.message || err}`;
+                console.error(this.error);
+                this.camera_init = false;
+            }
         },
 
         closeScanner() {
