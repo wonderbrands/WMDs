@@ -1,6 +1,8 @@
 <template>
   <LoadingComponent v-if="store.loading" />
   Identificado: {{ store.role.is_identified }}
+  Nombre: {{ store.role.user }}
+  mail {{ store.role.email }}
   <QRScannerComponent context="user_initial_scanner" 
       instructions="Escanea tu QR para iniciar sesión"
       :can_close="false"
