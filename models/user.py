@@ -39,7 +39,7 @@ class ResUsers(models.Model):
                 box_size=10,
                 border=4,
             )
-            qr.add_data(user.login)
+            qr.add_data(user.qr_code_structure)
             qr.make(fit=True)
 
             img = qr.make_image(fill_color="black", back_color="white")

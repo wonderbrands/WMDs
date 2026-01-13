@@ -45,12 +45,13 @@ class UserAccess(http.Controller):
                 'error': 'Not found',
                 'message': 'User not found'
             }
-        if not user.has_group('wmds.group_wmds_operator') or not user.has_group('wmds.group_wmds_manager'):
+        if user.has_group('wmds.group_wmds_operator') or  user.has_group('wmds.group_wmds_manager'):
             return {
-                'error': 'User has no access',
-                'message': 'User has no permission to access this WMDS'
+                "name": user.name,
+                "login": user.login
             }
+
         return {
-            "name": user.name,
-            "login": user.login
-        }
+                'error': 'User has no access',
+                'message': 'User has no permission to access  WMDS app'
+            }
