@@ -19,7 +19,6 @@
         },
         mounted: async function() {
             this.store.loading = true
-            await this.store.role.getUserFromServer()
             await this.store.role.getRole()
             await this.store.role.getPermissions()
             this.store.current_role = this.store.role.role

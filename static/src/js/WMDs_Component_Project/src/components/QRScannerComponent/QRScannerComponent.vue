@@ -80,10 +80,8 @@
                         const qrData = result.data || result;
                         
                         if (this.onScan) {
-                            this.camera_init = false;
                             this.onScan(qrData);
                         }
-                        this.camera_init = true;
                         this.store.last_scanned_element = qrData;
                         this.closeScanner();
                     },

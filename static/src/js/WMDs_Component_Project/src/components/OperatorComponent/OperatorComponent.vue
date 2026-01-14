@@ -4,6 +4,7 @@
         v-if="!operator_task"
         style="overflow-y: scroll; padding: 1em; width: 100%; height: 100%; display: flex; flex-direction: column;"
     >
+        <h3 style="margin: 1em;">Bienvendido {{ store.role.user }}</h3>
         <Card v-for="task in tasks" :key="task.id" style="margin: 1em;">
             <template #title>{{ task.title }}</template>
             <template #subtitle>{{ task.description }}</template>
