@@ -1,13 +1,15 @@
 <template>
   <LoadingComponent v-if="store.loading" />
-  Identificado: {{ store.role.is_identified }}
-  Nombre: {{ store.role.user }}
-  mail: {{ store.role.email }}
-  <QRScannerComponent context="user_initial_scanner" 
-      instructions="Escanea tu QR para iniciar sesión"
+  Identificado: {{ role.is_identified }}
+  Nombre: {{ role.user }}
+  mail: {{ role.email }}
+  
+  <QRScannerComponent 
+      context="user_initial_scanner" 
+      instructions="Escanea tu QR para iniciar sesión"
       :can_close="false"
-      :onScan="store.role.getUserFromServer" 
-      v-if = "!store.role.is_identified"/>
+      :onScan="(data) => store.role.getUserFromServer(data)" 
+      v-if="!role.is_identified"/>
     <div v-else>
       <RolePicker v-if="store.current_screen === 'role_picker'" />
       <ManagerComponent v-else-if="store.current_screen === 'manager_screen'" />
@@ -39,7 +41,11 @@
         store: useGeneralStore()
       }
     },
-  
+    computed: {
+      role() {
+          return this.store.role
+        }  
+    },
     watch: {
       "store.current_screen"(newVal) {
         if (newVal === "operator_screen") {
