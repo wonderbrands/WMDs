@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
+import { reactive } from 'vue'
 import RolePickerEngine from "../components/RolePicker/RolePickerEngine"
 import OdooManagerMiddleware from '../components/Forms/OdooManagerMiddleware'
 
 
 export const useGeneralStore = defineStore('general_store', {
   state: () => ({
-      role: RolePickerEngine(),
+      role: reactive(RolePickerEngine()),
       current_role: null,
       loading: false,
       current_screen:"role_picker",
