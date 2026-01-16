@@ -28,26 +28,18 @@
                 <FloatLabel v-else>
                     <Select
                         v-model="form_data[field]"
-                        :id="field"
                         :options="users"
                         optionLabel="name"
                         optionValue="null"
+                        dataKey="id"
                         filter
                         showClear
                         placeholder="Selecciona un usuario para asignar"
-                        :invalid="!form_data[field]"
                         class="w-full"
                         @change="onSelectChange(field)"
-                    >
-                        <template #filter="{ filterModel }">
-                            <InputText
-                                v-model="filterModel.value"
-                                @input="setOptionsUser(filterModel.value)"
-                                placeholder="Buscar..."
-                                class="w-full"
-                            />
-                        </template>
-                    </Select>
+                    />
+
+
 
                     <label :for="field">
                         {{ map_cols.find(col => col.field === field)?.name }}
@@ -163,25 +155,38 @@ export default {
 
         this.map_cols = this.store.form_context.data.map_cols
         this.form_data = this.store.form_context.data
-
         delete this.form_data.map_cols
 
         console.log("📋 Initial form data:", this.form_data)
-        console.log("🗺️ Map columns:", this.map_cols)
 
-        // Load users FIRST
+        // 1️⃣ Load users
         await this.setOptionsUser("*")
 
-        console.log("👤 Users after initial load:", this.users)
-        console.log("🎯 Default selected operator:", this.form_data.operator)
+        console.log("👥 Users loaded:", this.users)
 
-        // Load extra data
+        // 2️⃣ 🔑 FIX: Re-assign operator reference
+        if (this.form_data.operator && this.form_data.operator.id) {
+            const match = this.users.find(
+                u => u.id === this.form_data.operator.id
+            )
+
+            console.log("🔗 Matching operator from users:", match)
+
+            if (match) {
+                this.form_data.operator = match
+            } else {
+                console.warn("⚠️ Default operator not found in users list")
+                this.form_data.operator = null
+            }
+        }
+
+        console.log("🎯 Final selected operator:", this.form_data.operator)
+
+        // 3️⃣ Load extra data
         this.extra_data = await this.store.odoo_middleware.getFromOdoo(
             "pick_products",
             this.form_data.id
         )
-
-        console.log("📦 Extra data loaded:", this.extra_data)
     },
 
     components: {
