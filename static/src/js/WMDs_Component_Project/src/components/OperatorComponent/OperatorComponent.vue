@@ -156,7 +156,14 @@ export default {
 
         async openTask(event) {
             console.log("openTask", event)
-           
+            const pick = event.data;
+            const urlBarcode = await this.store.odoo_middleware.getFromOdoo(
+                "get_barcode_url", 
+                "",
+                { pick_name: pick }
+            )
+            console.log(urlBarcode)
+            window.location.href = urlBarcode;
             
         },
     }

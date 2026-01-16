@@ -22,7 +22,7 @@ class GetURLOfPick(http.Controller):
     )
     def get_pick_url(self, **kw):
         try:
-            pick_id = kw.get('pick_id')
+            pick_name = kw.get('pick_name')
             action_id = request.env['ir.actions.actions'].sudo().search(
                 [
                     (
@@ -32,13 +32,19 @@ class GetURLOfPick(http.Controller):
                 limit=1
             )
 
-            if not pick_id or not action_id:
+            if not pick_name or not action_id:
                 return {
                     "error": "Bad request",
                     "message": "Missing required field: pick_id or action_id"
                 }
 
-            url = f"https://wonderbrands2026-v2-26809106.dev.odoo.com/odoo/barcode/{pick_id}/action-{action_id.id}"
+            pick_id = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1).id
+            if not pick_id:
+                return {
+                    "error": "Bad request",
+                    "message": "Pick not found"
+                }
+            url = f"/odoo/barcode/{pick_id}/action-{action_id.id}"
             return {
                 "url": url
             }
@@ -72,7 +78,7 @@ class GetURLOfPick(http.Controller):
                     "message": "Missing required field: pick_id or action_id"
                 }
 
-            url = f"https://wonderbrands2026-v2-26809106.dev.odoo.com/odoo/action-{action_id.id}"
+            url = f"/odoo/action-{action_id.id}"
             return {
                 "url": url
             }

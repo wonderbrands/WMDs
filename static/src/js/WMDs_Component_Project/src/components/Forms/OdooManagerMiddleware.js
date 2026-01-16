@@ -186,7 +186,10 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                         data: 'WH/Pick/0050',
                     }
                 ]
-            
+            case "get_barcode_url":
+                return {
+                    url: "https://www.google.com"
+                }
 
             default:
                 break;
@@ -224,6 +227,9 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             
             case "pending_tasks":
                 return await this.getPendingTasks(term, params)
+
+            case "get_barcode_url":
+                return await this.getBarcodeUrl(params)
 
             default:
                 break;
@@ -390,6 +396,33 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
                 return []
             }
             return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    async getBarcodeUrl(params){
+        try {
+            const response = await fetch('/wmds/v2/engine/get/barcode_url', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result.url
         } catch (error) {
             return {
                 'error': 'Error while doing request',

@@ -6,7 +6,7 @@
       :can_close="false"
       :onScan="(data) => store.role.getUserFromServer(data)" 
       v-if="!role.is_identified"/>
-    <div v-else>
+    <div style="width: 100%; height: 100%;" v-else>
       <RolePicker v-if="store.current_screen === 'role_picker'" />
       <ManagerComponent v-else-if="store.current_screen === 'manager_screen'" />
       <OperatorComponent v-else-if="store.current_screen === 'operator_screen'"/>
