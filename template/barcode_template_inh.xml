@@ -1,18 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <odoo>
-    <templates xml:space="preserve">
 
-        <t t-inherit="stock_barcode.MainComponent" t-inherit-mode="extension">
+    <template
+        id="stock_barcode_main_component_operator"
+        inherit_id="stock_barcode.MainComponent"
+        name="Stock Barcode: replace partner with operator">
 
-            <!-- Replace partner display with operator -->
-            <xpath expr="//div[@class='o_barcode_partner text-muted']" position="replace">
-                <div t-if="env.model.record.operator" class="o_barcode_partner text-muted">
-                    <i class="fa fa-user-circle-o me-1"/>
-                    <t t-esc="env.model.record.operator.name"/>
-                </div>
-            </xpath>
+        <xpath expr="//div[@class='o_barcode_partner text-muted']" position="replace">
+            <div t-if="env.model.record.operator" class="o_barcode_partner text-muted">
+                <i class="fa fa-user-circle-o me-1"/>
+                <t t-esc="env.model.record.operator.name"/>
+            </div>
+        </xpath>
 
-        </t>
+    </template>
 
-    </templates>
 </odoo>
