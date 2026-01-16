@@ -14,24 +14,15 @@
                     <Select v-model="form_data[field]" 
                             :id="field"
                             :options="users" 
-                            optionLabel="name" 
                             filter
                             :showClear="true"
                             placeholder="Selecciona un usuario para asignar" 
                             @input="setOptionsUser(form_data[field])" 
                             :invalid="!form_data[field]"
-                            class="w-full">
-                        <template #value="slotProps">
-                            <div v-if="slotProps.value">
-                                {{ slotProps.value.name }}
-                            </div>
-                        </template>
-                        <template #option="slotProps">
-                            <div>
-                                {{ slotProps.option.name }}
-                            </div>
-                        </template>
-                    </Select>
+                            class="w-full" 
+                            optionLabel="name"
+                            optionValue="code"
+                            />
                     <label :for="field">{{ map_cols.filter(col => col.field === field)[0].name }}</label>
                 </FloatLabel>
             </div>
