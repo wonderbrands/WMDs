@@ -78,7 +78,7 @@
         methods: {
             setOptions: async function(data, field) {
                 console.log("input:", data)
-                if (field === "user"){
+                if (field === "operator"){
                     this.options_non_blocked[field] = await this.store.odoo_middleware.getFromOdoo("operadores", data || "*")
 
                 }
