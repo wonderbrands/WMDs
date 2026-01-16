@@ -20,7 +20,7 @@
                         :invalid="!form_data[field]"
                         class="w-full" 
                         optionLabel="name"
-                        optionValue="name">
+                        optionValue="id">
                         
                         <template #filter="{ filterModel, filterCallback }">
                             <InputText 
@@ -104,11 +104,17 @@
             this.map_cols = this.store.form_context.data.map_cols
             this.form_data = this.store.form_context.data
             delete this.form_data.map_cols
-            this.setOptionsUser(this.form_data.operator ? this.form_data.operator.name : "*")
+            
+            // Convert object to ID if it's an object
+            let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
+            non_blocked_fields.forEach(field => {
+                if (this.form_data[field] && typeof this.form_data[field] === 'object') {
+                    this.form_data[field] = this.form_data[field].id
+                }
+            })
+            
+            await this.setOptionsUser(this.form_data.operator ? this.form_data.operator.name : "*")
             this.extra_data = await this.store.odoo_middleware.getFromOdoo("pick_products", this.form_data.id)
-            console.log("--------mounted-------")
-            console.log(this.form_data)
-            console.log(this.users)
         },
         components: {
             Button,
