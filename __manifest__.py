@@ -17,10 +17,11 @@ Planned replacement for the current WMS
 
     'depends': [
         'base',
-    'web',
-    "website",
-    "portal",
-    "stock"
+        'web',
+        "website",
+        "portal",
+        "stock",
+        "stock_barcode"
     ],
 
      'external_dependencies': {
@@ -34,6 +35,7 @@ Planned replacement for the current WMS
         "action/wmds_client.xml",
         "menu/main.xml",
         "template/wmds_template.xml",
+        "template/barcode_template_inh.xml",
         "data/wmds_status.xml",
         "views/wmds_stock.xml",
         "views/user.xml",
