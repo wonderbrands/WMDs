@@ -4,7 +4,7 @@
       context="user_initial_scanner" 
       instructions="Escanea tu QR para iniciar sesión"
       :can_close="false"
-      :onScan="(data) => store.role.getUse>rFromServer(data)" 
+      :onScan="(data) => store.role.getUserFromServer(data)" 
       v-if="!role.is_identified"/>
     <div v-else>
       <RolePicker v-if="store.current_screen === 'role_picker'" />
