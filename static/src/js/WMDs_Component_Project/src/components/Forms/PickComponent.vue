@@ -12,17 +12,25 @@
                 </FloatLabel>
                 <FloatLabel v-else>
                     <Select v-model="form_data[field]" 
-                            :id="field"
-                            :options="users" 
-                            filter
-                            :showClear="true"
-                            placeholder="Selecciona un usuario para asignar" 
-                            @input="setOptionsUser(form_data[field])" 
-                            :invalid="!form_data[field]"
-                            class="w-full" 
-                            optionLabel="name"
-                            optionValue="name"
+                        :id="field"
+                        :options="users" 
+                        filter
+                        :showClear="true"
+                        placeholder="Selecciona un usuario para asignar" 
+                        :invalid="!form_data[field]"
+                        class="w-full" 
+                        optionLabel="name"
+                        optionValue="name">
+                        
+                        <template #filter="{ filterModel, filterCallback }">
+                            <InputText 
+                                v-model="filterModel.value" 
+                                @input="(e) => { filterCallback(); setOptionsUser(e.target.value); }"
+                                placeholder="Buscar..."
+                                class="w-full"
                             />
+                        </template>
+                    </Select>
                     <label :for="field">{{ map_cols.filter(col => col.field === field)[0].name }}</label>
                 </FloatLabel>
             </div>
