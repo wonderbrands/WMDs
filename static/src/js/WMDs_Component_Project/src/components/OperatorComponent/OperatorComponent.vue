@@ -163,7 +163,6 @@ export default {
                 { pick_name: pick }
             )
             console.log(urlBarcode)
-            window.location.href = urlBarcode;
             
         },
     }
