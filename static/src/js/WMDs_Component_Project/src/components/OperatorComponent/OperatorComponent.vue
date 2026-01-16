@@ -17,14 +17,14 @@
                     assigned_tasks[task.id][0].children
                 "
             >
-                <span style="font-style: italic; color: red;">
+                <span v-if="assigned_tasks[task.id][0].children.length > 0" style="font-style: italic; color: red;">
                     {{ assigned_tasks[task.id][0].children.length }} pendientes
                 </span>
             </template>
 
             <template #footer>
                 <Tree
-                    v-if="assigned_tasks[task.id] && assigned_tasks[task.id].length > 0"
+                    v-if="assigned_tasks[task.id] && assigned_tasks[task.id][0] && assigned_tasks[task.id][0].children.length > 0"
                     :value="assigned_tasks[task.id]"
                     selectionMode="single"
                     v-model:selectionKeys="current_task[task.id]"
