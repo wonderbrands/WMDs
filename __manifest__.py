@@ -45,7 +45,7 @@ Planned replacement for the current WMS
         "web.assets_backend": [
             "wmds/static/src/css/style.css",
             "wmds/static/src/js/index.js",
-            "wmds/static/src/xml/barcode_template_inh.xml",
+            #"wmds/static/src/xml/barcode_template_inh.xml",
         ],
         "web.assets_frontend": [
             "wmds/static/src/css/style.css",
