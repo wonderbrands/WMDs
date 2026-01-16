@@ -13,19 +13,19 @@
                 <FloatLabel v-else>
                     <Select v-model="form_data[field]" 
                         :id="field"
-                        :options="users" 
+                        :options="options_non_blocked[field]" 
                         filter
                         :showClear="true"
                         placeholder="Selecciona un usuario para asignar" 
                         :invalid="!form_data[field]"
                         class="w-full" 
                         optionLabel="name"
-                        :optionValue=form_data[field]>
+                        optionValue="id">
                         
                         <template #filter="{ filterModel }">
                             <InputText 
                                 v-model="filterModel.value" 
-                                @input="setOptionsUser(filterModel.value)"
+                                @input="setOptions(filterModel.value, field)"
                                 placeholder="Buscar..."
                                 class="w-full"
                             />
@@ -68,7 +68,7 @@
                 store: useGeneralStore(),
                 form_data: null,
                 map_cols: null,
-                users: [],
+                options_non_blocked: {},
                 extra_data: null,
                 filters: {
                     global: { value: null, matchMode: "contains" }
@@ -76,12 +76,30 @@
             }
         },
         methods: {
-            setOptionsUser: async function(user) {
-                console.log("input:", user)
-                this.users = await this.store.odoo_middleware.getFromOdoo("operadores", user || "*")
-                console.log("users loaded:", this.users)
+            setOptions: async function(data, field) {
+                console.log("input:", data)
+                if (field === "user"){
+                    this.options_non_blocked[field] = await this.store.odoo_middleware.getFromOdoo("operadores", data || "*")
+
+                }
+                console.log("users loaded:", this.options_non_blocked)
             },
             async saveForm(data, context){
+                //reasign data-non blocked fields id to the object 
+                let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
+                console.log(non_blocked_fields)
+                non_blocked_fields.forEach(field => {
+                    if (this.options_non_blocked[field].find(opt => opt.name === data[field])){
+                        data[field] = this.options_non_blocked[field].find(opt => opt.name === data[field]).id
+                        console.log(data[field])
+                    }
+                })
+                console.log(data)
+                let saved = await this.store.odoo_middleware.getFromOdoo(context, "", data)
+                if (saved.saved){
+                    this.store.closeModal()
+                }
+                /*
                 let required_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
                 if (required_fields.some(field => !data[field])){
                     return 0;
@@ -97,7 +115,7 @@
                 console.log(saved)
                 if (saved.saved){
                     this.store.closeModal()
-                }
+                }*/
             }
         },
         async mounted() {
@@ -106,7 +124,9 @@
             delete this.form_data.map_cols
             
             // Load users FIRST
-            await this.setOptionsUser("*")
+            for (const field of this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)){
+                await this.setOptions("*", field)
+            }
             
             // THEN convert operator object to ID
             let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
@@ -120,7 +140,7 @@
             
             console.log("--------mounted-------")
             console.log("form_data:", this.form_data)
-            console.log("users:", this.users)
+            console.log("users:", this.options_non_blocked)
         },
         components: {
             Button,
