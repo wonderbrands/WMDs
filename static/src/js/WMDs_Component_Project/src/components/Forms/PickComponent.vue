@@ -25,9 +25,6 @@
                             <div v-if="slotProps.value">
                                 {{ slotProps.value.name }}
                             </div>
-                            <span v-else>
-                                {{ slotProps.placeholder }}
-                            </span>
                         </template>
                         <template #option="slotProps">
                             <div>
@@ -35,7 +32,7 @@
                             </div>
                         </template>
                     </Select>
-                    <label :for="field">{{ map_cols.filter(col => col.field === field)[0].label }}</label>
+                    <label :for="field">{{ map_cols.filter(col => col.field === field)[0].name }}</label>
                 </FloatLabel>
             </div>
             <div v-if="extra_data">
