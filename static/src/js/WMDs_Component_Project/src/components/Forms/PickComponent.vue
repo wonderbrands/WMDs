@@ -89,10 +89,8 @@
                 let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
                 console.log(non_blocked_fields)
                 non_blocked_fields.forEach(field => {
-                    if (this.options_non_blocked[field].find(opt => opt.name === data[field])){
-                        data[field] = this.options_non_blocked[field].find(opt => opt.name === data[field]).id
-                        console.log(data[field])
-                    }
+                    data[field] = this.options_non_blocked[field].find(opt => opt.id === data[field])
+                    console.log(data[field])
                 })
                 console.log(data)
                 let saved = await this.store.odoo_middleware.getFromOdoo(context, "", data)
