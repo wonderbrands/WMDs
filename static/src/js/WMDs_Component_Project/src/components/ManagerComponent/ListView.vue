@@ -35,7 +35,7 @@
               v-if="col.type === 'selectable'"
               v-model="filters[col.field]"
               :options="col.options"
-              optionLabel="name"
+              optionLabel="label"
               optionValue="value"
               :showClear="true"
               placeholder="Filtrar..."
