@@ -21,9 +21,8 @@
                             :invalid="!form_data[field]"
                             class="w-full" 
                             optionLabel="name"
-                            optionValue="name"
+                            optionValue="code"
                             />
-                    <label :for="field">{{ map_cols.filter(col => col.field === field)[0].name }}</label>
                 </FloatLabel>
             </div>
             <div v-if="extra_data">
