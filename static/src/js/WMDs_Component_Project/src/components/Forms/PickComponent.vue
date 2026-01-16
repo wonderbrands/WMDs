@@ -104,7 +104,7 @@
             this.map_cols = this.store.form_context.data.map_cols
             this.form_data = this.store.form_context.data
             delete this.form_data.map_cols
-            this.setOptionsUser(this.form_data.operator ? this.form_data.operator : "")
+            this.setOptionsUser(this.form_data.operator ? this.form_data.operator.name : "*")
             this.extra_data = await this.store.odoo_middleware.getFromOdoo("pick_products", this.form_data.id)
             console.log("--------mounted-------")
             console.log(this.form_data)

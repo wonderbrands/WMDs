@@ -34,15 +34,15 @@ class AvailableOperators(http.Controller):
             if index == 5:
                 break
             ret_value.append({
-                'code': user.id,
+                'id': user.id,
                 'name': user.name,
             })
         return {
             'results': [
                 {
-                    'code': user.id,
+                    'id': user.id,
                     'name': user.name,
-                    'login': user.login,
+                    'email': user.login,
                 }
                 for user in users
             ]
