@@ -4,6 +4,8 @@ from odoo import http
 class StockBarcodeControllerInherit(StockBarcodeController):
 
     def get_barcode_data(self, model, res_id):
+        pass
+        """
         result = super().get_barcode_data(model, res_id)
 
         record = result["data"].get("record", {})
@@ -17,4 +19,4 @@ class StockBarcodeControllerInherit(StockBarcodeController):
         else:
             record["operator"] = False
 
-        return result
+        return result"""
