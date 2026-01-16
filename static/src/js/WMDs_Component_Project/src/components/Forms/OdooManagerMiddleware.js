@@ -449,7 +449,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
 
     async logRecord(term, params){
         try {
-            const response = await fetch('/wmds/v2/engine/post/log_record', {
+            const response = await fetch('/wmds/v2/engine/post/log_stock_record', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -476,7 +476,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
 
     async changeStatus(term, params){
         try {
-            const response = await fetch('/wmds/v2/engine/post/change_status', {
+            const response = await fetch('/wmds/v2/engine/post/change_wmds_status', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
