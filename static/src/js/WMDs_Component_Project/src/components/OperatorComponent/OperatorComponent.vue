@@ -79,10 +79,6 @@ export default {
                         label: "Asignados a mi",
                         selectable: false,
                         children: [
-                            { key: "ingreso-0", label: "WH/IN/0001", data: "WH/IN/0001", leaf: true },
-                            { key: "ingreso-1", label: "WH/IN/0002", data: "WH/IN/0002", leaf: true },
-                            { key: "ingreso-2", label: "WH/IN/0003", data: "WH/IN/0003", leaf: true },
-                            { key: "ingreso-3", label: "WH/IN/0004", data: "WH/IN/0004", leaf: true }
                         ]
                     }
                 ],
@@ -93,10 +89,7 @@ export default {
                         label: "Asignados a mi",
                         selectable: false,
                         children: [
-                            { key: "disponibilizar-0", label: "WH/INT/0001", data: "WH/INT/0001", leaf: true },
-                            { key: "disponibilizar-1", label: "WH/INT/0002", data: "WH/INT/0002", leaf: true },
-                            { key: "disponibilizar-2", label: "WH/INT/0003", data: "WH/INT/0003", leaf: true },
-                            { key: "disponibilizar-3", label: "WH/INT/0004", data: "WH/INT/0004", leaf: true }
+                           
                         ]
                     }
                 ],
@@ -107,10 +100,7 @@ export default {
                         label: "Asignados a mi",
                         selectable: false,
                         children: [
-                            { key: "traslados-0", label: "WH/INT/0012", data: "WH/INT/0012", leaf: true },
-                            { key: "traslados-1", label: "WH/INT/0013", data: "WH/INT/0013", leaf: true },
-                            { key: "traslados-2", label: "WH/INT/0014", data: "WH/INT/0014", leaf: true },
-                            { key: "traslados-3", label: "WH/INT/0015", data: "WH/INT/0015", leaf: true }
+                           
                         ]
                     }
                 ],
