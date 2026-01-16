@@ -94,17 +94,21 @@ class GetPicks(http.Controller):
                             "label": "Borrador"
                         },
                         {
+                            "value": "waiting",
+                            "label": "En espera de otra operación"
+                        },
+                        {
                             "value": "assigned",
                             "label": "Disponible",
                             "default": True
                         },
                         {
                             "value": "confirmed",
-                            "label": "Confirmado"
+                            "label": "En espera"
                         },
                         {
                             "value": "done",
-                            "label": "Entregado"
+                            "label": "Hecho"
                         },
                         {
                             "value": "cancel",
