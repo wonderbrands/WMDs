@@ -22,10 +22,10 @@
                         optionLabel="name"
                         optionValue="id">
                         
-                        <template #filter="{ filterModel, filterCallback }">
+                        <template #filter="{ filterModel }">
                             <InputText 
                                 v-model="filterModel.value" 
-                                @input="(e) => { filterCallback(); setOptionsUser(e.target.value); }"
+                                @input="setOptionsUser(filterModel.value)"
                                 placeholder="Buscar..."
                                 class="w-full"
                             />
@@ -77,9 +77,9 @@
         },
         methods: {
             setOptionsUser: async function(user) {
-                console.log("input")
-                this.users = await this.store.odoo_middleware.getFromOdoo("operadores", user)
-                console.log(this.users)
+                console.log("input:", user)
+                this.users = await this.store.odoo_middleware.getFromOdoo("operadores", user || "*")
+                console.log("users loaded:", this.users)
             },
             async saveForm(data, context){
                 let required_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
@@ -105,16 +105,22 @@
             this.form_data = this.store.form_context.data
             delete this.form_data.map_cols
             
-            // Convert object to ID if it's an object
+            // Load users FIRST
+            await this.setOptionsUser("*")
+            
+            // THEN convert operator object to ID
             let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
             non_blocked_fields.forEach(field => {
-                if (this.form_data[field] && typeof this.form_data[field] === 'object') {
+                if (this.form_data[field] && typeof this.form_data[field] === 'object' && this.form_data[field].id) {
                     this.form_data[field] = this.form_data[field].id
                 }
             })
             
-            await this.setOptionsUser(this.form_data.operator ? this.form_data.operator.name : "*")
             this.extra_data = await this.store.odoo_middleware.getFromOdoo("pick_products", this.form_data.id)
+            
+            console.log("--------mounted-------")
+            console.log("form_data:", this.form_data)
+            console.log("users:", this.users)
         },
         components: {
             Button,
