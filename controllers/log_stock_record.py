@@ -32,7 +32,7 @@ class LogStockRecord(http.Controller):
                 picking = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1)
             picking.wmds_log.create({
                 'log': message,
-                'user': operator_id,
+                'user': operator_id.id,
                 'date': datetime.now()
             })
             return {
