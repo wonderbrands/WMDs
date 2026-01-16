@@ -39,23 +39,7 @@
         </Card>
     </div>
 
-    <!-- QR SCANNER -->
-    <div v-else style="padding: 1em;">
-        <button @click="closeScanner">⬅ Volver</button>
-
-        <video
-            ref="qrScanner"
-            playsinline
-            muted
-            style="
-                width: 100%;
-                height: 60vh;
-                object-fit: cover;
-                margin-top: 1em;
-                background: black;
-            "
-        ></video>
-    </div>
+   
 </template>
 
 <script>
@@ -167,65 +151,14 @@ export default {
         this.store.loading = false;
     },
 
-    watch: {
-        operator_task(newVal) {
-            if (!newVal) return;
-
-            this.$nextTick(async () => {
-                const video = this.$refs.qrScanner;
-                if (!video) return;
-
-                this.scanner = new window.QrScanner(
-                    video,
-                    result => {
-                        console.log("Decoded QR:", result.data || result);
-                        this.closeScanner();
-                    },
-                    {
-                        preferredCamera: "environment",
-                        highlightScanRegion: true,
-                        highlightCodeOutline: true,
-                        returnDetailedScanResult: true
-                    }
-                );
-
-                // ✅ IMPORTANT: do NOT call video.play()
-                await this.scanner.start();
-            });
-        }
-    },
 
     methods: {
-        async requestCameraPermission() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-                stream.getTracks().forEach(t => t.stop());
-                return true;
-            } catch (err) {
-                console.error("Camera permission error:", err);
-                alert("Camera not available or permission denied");
-                return false;
-            }
-        },
 
         async openTask(event) {
-            const node = event?.node || event;
-            if (!node || !node.data || node.selectable === false) return;
-
-            const allowed = await this.requestCameraPermission();
-            if (!allowed) return;
-
-            this.operator_task = true;
+            console.log("openTask", event)
+           
+            
         },
-
-        closeScanner() {
-            if (this.scanner) {
-                this.scanner.stop();
-                this.scanner.destroy();
-                this.scanner = null;
-            }
-            this.operator_task = false;
-        }
     }
 };
 </script>
