@@ -20,7 +20,7 @@
                         :invalid="!form_data[field]"
                         class="w-full" 
                         optionLabel="name"
-                        optionValue="id">
+                        :optionValue=form_data[field]>
                         
                         <template #filter="{ filterModel }">
                             <InputText 

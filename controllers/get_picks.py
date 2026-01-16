@@ -226,7 +226,7 @@ class GetPicks(http.Controller):
         try:
             operator = kw.get('operator')
             picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
-            picking.operator = operator["code"]
+            picking.operator = operator["id"]
 
             return{
                 "saved": True
