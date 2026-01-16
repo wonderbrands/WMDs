@@ -33,7 +33,8 @@ class LogStockRecord(http.Controller):
             picking.wmds_log.create({
                 'log': message,
                 'user': operator_id.id,
-                'date': datetime.now()
+                'date': datetime.now(),
+                'pick': picking.id
             })
             return {
                 "saved": True
