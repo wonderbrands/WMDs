@@ -190,6 +190,16 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                 return {
                     url: "https://www.google.com"
                 }
+            
+            case "log_record":
+                return {
+                    saved: true
+                }
+            
+            case "change_status":
+                return {
+                    saved: true
+                }
 
             default:
                 break;
@@ -230,6 +240,12 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
 
             case "get_barcode_url":
                 return await this.getBarcodeUrl(params)
+
+            case "log_record":
+                return await this.logRecord(term, params)
+            
+            case "change_status":
+                return await this.changeStatus(term, params)
 
             default:
                 break;
@@ -423,6 +439,60 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
                 return []
             }
             return result.result.url
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    async logRecord(term, params){
+        try {
+            const response = await fetch('/wmds/v2/engine/post/log_record', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    async changeStatus(term, params){
+        try {
+            const response = await fetch('/wmds/v2/engine/post/change_status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
         } catch (error) {
             return {
                 'error': 'Error while doing request',

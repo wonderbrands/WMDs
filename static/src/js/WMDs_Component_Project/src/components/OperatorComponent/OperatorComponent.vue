@@ -162,6 +162,20 @@ export default {
                 "",
                 { pick_name: pick }
             )
+            await this.store.odoo_middleware.getFromOdoo(
+                "log_record",
+                "",
+                {
+                    pick_name: pick,
+                    operator_mail: this.store.role.email,
+                    message: `La operación ha sido abierta por el operador`,
+                }
+            )
+            await this.store.odoo_middleware.getFromOdoo(
+                "change_status", 
+                "",
+                { pick_name: pick, status: "in_progress" }
+            )
             window.location.href = urlBarcode
             
         },

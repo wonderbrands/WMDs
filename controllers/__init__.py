@@ -7,3 +7,5 @@ from . import operators
 from . import get_picks
 from . import pending_tasks
 from . import get_operation_url
+from . import log_stock_record
+from . import inherit_barcode_module_record
