@@ -1,4 +1,4 @@
-from odoo.addons.stock_barcode.controllers.main import StockBarcodeController
+from odoo.addons.stock_barcode.controllers.stock_barcode import StockBarcodeController
 from odoo import http
 
 class StockBarcodeControllerInherit(StockBarcodeController):
