@@ -23,12 +23,15 @@
                             class="w-full">
                         <template #value="slotProps">
                             <div v-if="slotProps.value">
-                                {{ slotProps.value }}
+                                {{ slotProps.value.name }}
                             </div>
+                            <span v-else>
+                                {{ slotProps.placeholder }}
+                            </span>
                         </template>
                         <template #option="slotProps">
                             <div>
-                                {{ slotProps.label }}
+                                {{ slotProps.option.name }}
                             </div>
                         </template>
                     </Select>
