@@ -19,8 +19,7 @@
                         placeholder="Selecciona un usuario para asignar" 
                         :invalid="!form_data[field]"
                         class="w-full" 
-                        optionLabel="name"
-                        :optionValue=form_data[field]>
+                        optionLabel="name">
                         
                         <template #filter="{ filterModel }">
                             <InputText 
@@ -108,13 +107,7 @@
             // Load users FIRST
             await this.setOptionsUser("*")
             
-            // THEN convert operator object to ID
-            let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
-            non_blocked_fields.forEach(field => {
-                if (this.form_data[field] && typeof this.form_data[field] === 'object' && this.form_data[field].id) {
-                    this.form_data[field] = this.form_data[field].id
-                }
-            })
+            // No conversion needed - keep the whole object
             
             this.extra_data = await this.store.odoo_middleware.getFromOdoo("pick_products", this.form_data.id)
             
