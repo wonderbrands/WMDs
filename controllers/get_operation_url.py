@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class GetURLOfPick(http.Controller):
 
     @http.route(
-        '/wmds/v2/engine/get/pick-url',
+        '/wmds/v2/engine/get/barcode-url',
         type='json',
         auth='user',
         methods=['POST'],
