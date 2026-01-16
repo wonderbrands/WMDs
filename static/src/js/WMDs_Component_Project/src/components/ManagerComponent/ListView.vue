@@ -22,7 +22,7 @@
         @sort="onSort"
         @row-click="onRowClick($event, store.main_manager_screen.value)"
       >
-        <Column
+      <Column
           v-for="col of server_data.map_cols"
           :key="col.field"
           :field="col.field"
@@ -51,6 +51,15 @@
               class="p-column-filter"
               @input="onFilterChange"
             />
+          </template>
+
+          <template #body="slotProps">
+            <span v-if="col.type === 'one2many'">
+              {{ slotProps.data[col.field]?.name || '' }}
+            </span>
+            <span v-else>
+              {{ slotProps.data[col.field] }}
+            </span>
           </template>
         </Column>
       </DataTable>

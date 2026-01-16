@@ -78,6 +78,7 @@ class GetPicks(http.Controller):
                 {
                     "name": "Operador",
                     "field": "operator",
+                    "type": "one2many",
                     "non_blocked_field": True
                 },
                 {
@@ -139,7 +140,11 @@ class GetPicks(http.Controller):
                             "id": pick.id,
                             "name": pick.name,
                             "origin": pick.origin,
-                            "operator": None if not pick.operator else pick.operator.name,
+                            "operator": None if not pick.operator else {
+                                "name": pick.operator.name,
+                                "id": pick.operator.id,
+                                "email": pick.operator.login
+                            },
                             "scheduled_date": pick.scheduled_date,
                             "state": convert_value_in_label(map_cols, pick.state, "state"),
                             "wmds_status": convert_value_in_label(map_cols, pick.wmds_status, "wmds_status")
