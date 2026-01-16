@@ -5,6 +5,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+def convert_value_in_label(map_cols, value, key):
+    if not value:
+        return ""
+
+    for pick_state in map_cols:
+        if pick_state['field'] == key:
+            for state_translate in pick_state['options']:
+                if state_translate['value'] == value:
+                    return state_translate['label']
+
+
 class GetPicks(http.Controller):
 
     @http.route(
@@ -114,6 +126,8 @@ class GetPicks(http.Controller):
 
             ]
 
+            
+
             return {
                     "map_cols": map_cols,
                     "data": [
@@ -123,8 +137,8 @@ class GetPicks(http.Controller):
                             "origin": pick.origin,
                             "operator": None if not pick.operator else pick.operator.name,
                             "scheduled_date": pick.scheduled_date,
-                            "state": [state_translate for state_translate in [pick_state for pick_state in map_cols if pick_state['field'] == 'state'][0]["options"] if state_translate['value'] == pick.state][0]["label"],
-                            "wmds_status": [state_translate for state_translate in [pick_state for pick_state in map_cols if pick_state['field'] == 'wmds_status'][0]["options"] if state_translate['value'] == pick.wmds_status][0]["label"],
+                            "state": convert_value_in_label(map_cols, pick.state, "state"),
+                            "wmds_status": convert_value_in_label(map_cols, pick.wmds_status, "wmds_status")
                         } for pick in picks
                     ],
                     "total_count": len(request.env['stock.picking'].sudo().search(col_domain))
