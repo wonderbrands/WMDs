@@ -68,12 +68,10 @@
             }
         },
         methods: {
-            eraseIfNotSelected(user, users){
-                console.log("changed")
-            },
             setOptionsUser: async function(user) {
                 console.log("input")
                 this.users = await this.store.odoo_middleware.getFromOdoo("operadores", user)
+                console.log(this.users)
             },
             async saveForm(data, context){
                 let required_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
@@ -98,8 +96,11 @@
             this.map_cols = this.store.form_context.data.map_cols
             this.form_data = this.store.form_context.data
             delete this.form_data.map_cols
-            this.setOptionsUser(this.form_data.user_id ? this.form_data.user_id : "")
+            this.setOptionsUser(this.form_data.operator ? this.form_data.operator : "")
             this.extra_data = await this.store.odoo_middleware.getFromOdoo("pick_products", this.form_data.id)
+            console.log("--------mounted-------")
+            console.log(this.form_data)
+            console.log(this.users)
         },
         components: {
             Button,
