@@ -18,7 +18,7 @@
                             filter
                             :showClear="true"
                             placeholder="Selecciona un usuario para asignar" 
-                            @change="setOptionsUser(form_data[field])" 
+                            @input="setOptionsUser(form_data[field])" 
                             :invalid="!form_data[field]"
                             class="w-full">
                         <template #value="slotProps">
@@ -110,7 +110,7 @@
             this.map_cols = this.store.form_context.data.map_cols
             this.form_data = this.store.form_context.data
             delete this.form_data.map_cols
-            this.setOptionsUser("")
+            this.setOptionsUser(this.form_data.user_id ? this.form_data.user_id : "")
             this.extra_data = await this.store.odoo_middleware.getFromOdoo("pick_products", this.form_data.id)
         },
         components: {

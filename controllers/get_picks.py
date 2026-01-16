@@ -83,7 +83,8 @@ class GetPicks(http.Controller):
                         },
                         {
                             "value": "assigned",
-                            "label": "Asignado"
+                            "label": "Disponible",
+                            "default": True
                         },
                         {
                             "value": "confirmed",
@@ -104,10 +105,10 @@ class GetPicks(http.Controller):
                     "field": "wmds_status",
                     "type": "selectable",
                     "options": [
-                        { "name": "No asignado", "value": "not_assigned", "default": True }, 
-                        { "name": "No iniciado", "value": "not_started" },
-                        { "name": "En progreso", "value": "in_progress" },
-                        { "name": "Completado", "value": "completed" },
+                        { "label": "No asignado", "value": "not_assigned", "default": True }, 
+                        { "label": "No iniciado", "value": "not_started" },
+                        { "label": "En progreso", "value": "in_progress" },
+                        { "label": "Completado", "value": "completed" },
                     ]
                 }
 
@@ -122,8 +123,8 @@ class GetPicks(http.Controller):
                             "origin": pick.origin,
                             "operator": None if not pick.operator else pick.operator.name,
                             "scheduled_date": pick.scheduled_date,
-                            "state": pick.state,
-                            "wmds_status": None if not pick.wmds_status else pick.wmds_status.name,
+                            "state": [state_translate for state_translate in [pick_state for pick_state in map_cols if pick_state['field'] == 'state'][0].options if state_translate['value'] == pick.state][0].label,
+                            "wmds_status": [state_translate for state_translate in [pick_state for pick_state in map_cols if pick_state['field'] == 'wmds_status'][0].options if state_translate['value'] == pick.wmds_status][0].label,
                         } for pick in picks
                     ],
                     "total_count": len(request.env['stock.picking'].sudo().search(col_domain))
