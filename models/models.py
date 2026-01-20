@@ -61,7 +61,7 @@ class StockWMDS(models.Model):
                     #change the destiny, from stock to bloqueado
                     destiny = self.location_dest_id.complete_name     
                     destiny = destiny.replace('Stock', 'Bloqueado')
-                    self.location_dest_id = self.env['stock.location'].search([('name', '=', destiny)], limit=1).id
+                    self.location_dest_id = self.env['stock.location'].search([('complete_name', '=', destiny)], limit=1).id
             else:
                 raise UserError('No se pudo encontrar la orden de compra asociada a la recepcion')                
 
