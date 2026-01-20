@@ -21,7 +21,8 @@ Planned replacement for the current WMS
         "website",
         "portal",
         "stock",
-        "stock_barcode"
+        "stock_barcode",
+        "purchase"
     ],
 
      'external_dependencies': {
