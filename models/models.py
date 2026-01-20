@@ -80,38 +80,32 @@ class PurchaseWMDS(models.Model):
 
     @api.model
     def create(self, vals):
-        log_message = ''
-        is_commercial = vals.get('check_commertial', False)
-        
-        if is_commercial:
-            log_message = 'Confirmado por comercial, entra directo a stock'
-        else:
-            log_message = 'No conmfirmado por comercial, entra a ubicación espejo \"Bloqueado\"'
-
-        vals['wmds_log'] = [
-            (0, 0, {
-                'log': log_message,
+        if 'check_commertial' in vals:
+            is_comm = vals.get('check_commertial')
+            log_msg = 'Confirmado por comercial, entra directo a stock' if is_comm else 'No confirmado por comercial, entra a ubicación espejo "Bloqueado"'
+            
+            log_entry = (0, 0, {
+                'log': log_msg,
                 'user': self.env.user.id,
                 'date': fields.Datetime.now(),
             })
-        ]
-        res = super(PurchaseWMDS, self).create(vals)
-        return res
+            vals['wmds_log'] = [log_entry]
+            
+        return super(PurchaseWMDS, self.sudo()).create(vals)
 
-    @api.onchange('check_commertial')
-    def _onchange_check_commertial(self):
-        if self.check_commertial:
-            log_message = 'Confirmado por comercial, entra directo a stock'
-        else:
-            log_message = 'Enviado a WMDS'
-
-        if self.wmds_log and self.wmds_log[-1].log == log_message:
-            return
-
-        new_log = (0, 0, {
-            'log': log_message,
-            'user': self.env.user.id, 
-            'date': fields.Datetime.now(),
-        })
+    def write(self, vals):
+        if 'check_commertial' in vals:
+            is_comm = vals.get('check_commertial')
+            log_msg = 'Confirmado por comercial, entra directo a stock' if is_comm else 'No confirmado por comercial, entra a ubicación espejo "Bloqueado"'
+            
+            for record in self:
+                if record.check_commertial != is_comm:
+                    record.sudo().write({
+                        'wmds_log': [(0, 0, {
+                            'log': log_msg,
+                            'user': self.env.user.id,
+                            'date': fields.Datetime.now(),
+                        })]
+                    })
         
-        self.wmds_log = [new_log]
+        return super(PurchaseWMDS, self).write(vals)

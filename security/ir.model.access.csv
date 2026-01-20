@@ -1,3 +1,4 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_manager_log,access_manager_log,model_wmds_log,wmds.group_wmds_manager,1,0,0,0
 access_manager_status,access_manager_status,model_wmds_stock_status,wmds.group_wmds_manager,1,1,1,1
+
