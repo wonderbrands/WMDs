@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from odoo import models, fields, api
 from datetime import datetime
+from odoo.exceptions import UserError
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -44,12 +45,26 @@ class StockWMDS(models.Model):
         return res
 
     def button_validate(self):
-        _logger.info("===============================")
-        _logger.info("Validando picking %s", self.name)
-        _logger.info(f"documento origen: {self.origin}")
-        _logger.info(f"tipo de operacion: {self.picking_type_id.name}")
-        _logger.info(f"origen: {self.location_id.name}")
-        _logger.info(f"destino: {self.location_dest_id.name}")
+        _logger.debug("===============================")
+        _logger.debug("Validando picking %s", self.name)
+        _logger.debug(f"documento origen: {self.origin}")
+        _logger.debug(f"tipo de operacion: {self.picking_type_id.name}")
+        _logger.debug(f"origen: {self.location_id.full_name}")
+        _logger.debug(f"destino: {self.location_dest_id.full_name}")
+        #the destiny will change if it is a storage operation
+        if self.picking_type_id.name == 'Storage':
+            #get the asociated po
+            po = self.env['purchase.order'].search([('name', '=', self.origin)])
+            if po:
+                #does it have the validation of the commercial team?
+                if not po.check_commertial:
+                    #change the destiny, from stock to bloqueado
+                    destiny = self.location_dest_id.full_name     
+                    destiny = destiny.replace('Stock', 'Bloqueado')
+                    self.location_dest_id = self.env['stock.location'].search([('name', '=', destiny)], limit=1).id
+            else:
+                raise UserError('No se pudo encontrar la orden de compra asociada a la recepcion')                
+
             
         return super(StockWMDS, self).button_validate()
 

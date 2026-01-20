@@ -38,6 +38,7 @@ Planned replacement for the current WMS
         "template/wmds_template.xml",
         "data/wmds_status.xml",
         "views/wmds_stock.xml",
+        "views/wmds_po.xml",
         "views/user.xml",
         "security/ir.model.access.csv",
     ],
