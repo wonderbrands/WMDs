@@ -51,7 +51,7 @@ class StockWMDS(models.Model):
         _logger.info(f"origen: {self.location_id.name}")
         _logger.info(f"destino: {self.location_dest_id.name}")
             
-        return super(self).button_validate()
+        return super(StockWMDS, self).button_validate()
 
 ################################################
 # Herencia de PURCHASE
