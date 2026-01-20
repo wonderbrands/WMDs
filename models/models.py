@@ -49,8 +49,8 @@ class StockWMDS(models.Model):
         _logger.debug("Validando picking %s", self.name)
         _logger.debug(f"documento origen: {self.origin}")
         _logger.debug(f"tipo de operacion: {self.picking_type_id.name}")
-        _logger.debug(f"origen: {self.location_id.full_name}")
-        _logger.debug(f"destino: {self.location_dest_id.full_name}")
+        _logger.debug(f"origen: {self.location_id.complete_name}")
+        _logger.debug(f"destino: {self.location_dest_id.complete_name}")
         #the destiny will change if it is a storage operation
         if self.picking_type_id.name == 'Storage':
             #get the asociated po
@@ -59,7 +59,7 @@ class StockWMDS(models.Model):
                 #does it have the validation of the commercial team?
                 if not po.check_commertial:
                     #change the destiny, from stock to bloqueado
-                    destiny = self.location_dest_id.full_name     
+                    destiny = self.location_dest_id.complete_name     
                     destiny = destiny.replace('Stock', 'Bloqueado')
                     self.location_dest_id = self.env['stock.location'].search([('name', '=', destiny)], limit=1).id
             else:
