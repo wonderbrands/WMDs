@@ -86,7 +86,7 @@ class PurchaseWMDS(models.Model):
         if is_commercial:
             log_message = 'Confirmado por comercial, entra directo a stock'
         else:
-            log_message = 'Enviado a WMDS'
+            log_message = 'No conmfirmado por comercial, entra a ubicación espejo \"Bloqueado\"'
 
         vals['wmds_log'] = [
             (0, 0, {
