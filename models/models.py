@@ -48,8 +48,10 @@ class StockWMDS(models.Model):
         _logger.info("Validando picking %s", self.name)
         _logger.info(f"documento origen: {self.origin}")
         _logger.info(f"tipo de operacion: {self.picking_type_id.name}")
+        _logger.info(f"origen: {self.location_id.name}")
+        _logger.info(f"destino: {self.location_dest_id.name}")
             
-        return super(StockPicking, self).button_validate()
+        return super(self).button_validate()
 
 ################################################
 # Herencia de PURCHASE
