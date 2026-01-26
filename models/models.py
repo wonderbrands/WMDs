@@ -63,9 +63,9 @@ class StockWMDS(models.Model):
                     destiny = self.location_dest_id.complete_name
                     #check if it has stock/almacenaje
                     if 'Stock/Almacenaje' in destiny:
-                        destiny = destiny.replace('Stock/Almacenaje', 'Bloqueado')
+                        destiny = destiny.replace('Stock/Almacenaje', 'Cuarentena')
                     elif 'Stock' in destiny:
-                        destiny = destiny.replace('Stock', 'Bloqueado')
+                        destiny = destiny.replace('Stock', 'Cuarentena')
                     else:
                         raise UserError('No se pudo encontrar el destino de la recepcion')
                     self.location_dest_id = self.env['stock.location'].search([('complete_name', '=', destiny)], limit=1).id
