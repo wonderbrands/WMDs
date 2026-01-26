@@ -35,7 +35,7 @@ class LogStockRecord(http.Controller):
 
             if picking.picking_type_id.name == "Storage":
                 po = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
-                request.env["purchase.order"].sudo().create({
+                request.env["wmds.log"].sudo().create({
                     'log': f"El acomodo {picking.name} ha sido completado",
                     'user': False if not operator_id else operator_id.id,
                     'date': datetime.now(),
@@ -43,7 +43,7 @@ class LogStockRecord(http.Controller):
                 })
             if picking.picking_type_id.name == "Recepciones":
                 po = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
-                request.env["purchase.order"].sudo().create({
+                request.env["wmds.log"].sudo().create({
                     'log': f"Se ha ejecutado la recepción {picking.name}",
                     'user': False if not operator_id else operator_id.id,
                     'date': datetime.now(),
