@@ -36,7 +36,7 @@ patch(BarcodeModel.prototype, {
                 body: JSON.stringify({
                     jsonrpc: "2.0",
                     params: {
-                        pick_id: this.record.id,
+                        pick_id: pick_info.id,
                         type: "external",
                         operator_mail: user,
                         message: `Pick validade`,
