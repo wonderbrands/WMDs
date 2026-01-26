@@ -22,27 +22,56 @@ class LogStockRecord(http.Controller):
         pick_name = kw.get('pick_name')
         operator_mail = kw.get('operator_mail')
         message = kw.get('message')
+        type_of_log = kw.get('type')
 
-        operator_id = request.env['res.users'].sudo().search([('login', '=', operator_mail)], limit=1)
-
-        try:
+        if type_of_log == "external":
+            operator_id = False
+            if operator_mail:
+                operator_id = request.env['res.users'].sudo().search([('login', '=', operator_mail)], limit=1)
             if pick_id:
-                picking = request.env['stock.picking'].sudo().search([('id', '=', pick_id)], limit=1)
+                    picking = request.env['stock.picking'].sudo().search([('id', '=', pick_id)], limit=1)
             if pick_name:
                 picking = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1)
-            picking.wmds_log.create({
-                'log': message,
-                'user': operator_id.id,
-                'date': datetime.now(),
-                'pick': picking.id
-            })
-            return {
-                "saved": True
-            }
-        except Exception as e:
-            return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
+
+            if picking.picking_type_id.name == "Storage":
+                po = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
+                request.env["purchase.order"].sudo().create({
+                    'log': f"El acomodo {picking.name} ha sido completado",
+                    'user': False if not operator_id else operator_id.id,
+                    'date': datetime.now(),
+                    'purchase': False if not po else po.id
+                })
+            if picking.picking_type_id.name == "Recepciones":
+                po = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
+                request.env["purchase.order"].sudo().create({
+                    'log': f"Se ha ejecutado la recepción {picking.name}",
+                    'user': False if not operator_id else operator_id.id,
+                    'date': datetime.now(),
+                    'purchase': False if not po else po.id
+                })
+
+
+        else:
+            operator_id = request.env['res.users'].sudo().search([('login', '=', operator_mail)], limit=1)
+
+            try:
+                if pick_id:
+                    picking = request.env['stock.picking'].sudo().search([('id', '=', pick_id)], limit=1)
+                if pick_name:
+                    picking = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1)
+                picking.wmds_log.create({
+                    'log': message,
+                    'user': operator_id.id,
+                    'date': datetime.now(),
+                    'pick': picking.id
+                })
+                return {
+                    "saved": True
+                }
+            except Exception as e:
+                return {
+                    "error": f"{str(e)}\n{traceback.format_exc()}"
+                }
 
     @http.route(
         '/wmds/v2/engine/post/change_wmds_status',

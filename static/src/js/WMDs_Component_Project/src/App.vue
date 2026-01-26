@@ -42,6 +42,15 @@
           return this.store.role
         }  
     },
+    beforeMount(){
+      if (this.store.role.checkIfPersisted()){
+        const persisted =  window.sessionStorage.getItem("wmds_logged_user");
+        this.role.user = persisted.name
+        this.role.permissions = persisted.permissions
+        this.role.role = persisted.role
+        this.role.is_identified = persisted.is_identified
+      }
+    },
     watch: {
       "store.current_screen"(newVal) {
         if (newVal === "operator_screen") {

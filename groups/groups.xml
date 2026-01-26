@@ -8,6 +8,14 @@
 
         <record model="res.groups" id="group_wmds_operator">
             <field name="name">WMDs Operator</field>
+        </record>
+
+        <record id="role_wmds_forklift_operator" model="res.groups">
+            <field name="name">WMDs Operator - Forklift operator</field>
+        </record>    
+
+         <record id="role_wmds_picker" model="res.groups">
+            <field name="name">WMDs Operator - Picker</field>
         </record>    
     </data>
     

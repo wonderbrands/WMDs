@@ -134,12 +134,10 @@
             this.form_data = this.store.form_context.data
             delete this.form_data.map_cols
             
-            // Load users FIRST
             for (const field of this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)){
                 await this.setOptions("*", field)
             }
             
-            // THEN convert operator object to ID
             let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
             non_blocked_fields.forEach(field => {
                 if (this.form_data[field] && typeof this.form_data[field] === 'object' && this.form_data[field].id) {

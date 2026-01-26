@@ -20,14 +20,20 @@ class PendingTasks(http.Controller):
             email = kw.get('email')
 
             map_task = {
-                "picks": "Pick"
+                "picks": "Pick",
+                "ingresos": "Recepciones",
+                "acomodo": "Storage"
             }
 
-            pending_tasks = request.env['stock.picking'].sudo().search([
+            fields = [
                 ('picking_type_id.name', '=', map_task[task]),
                 ('state', '=', 'assigned'),
-                ('operator.login', '=', email)
-            ])
+            ]
+
+            if task not in ["acomodo"]:
+                fields.append(('operator.login', '=', email))
+
+            pending_tasks = request.env['stock.picking'].sudo().search(fields)
 
             return [
                 {

@@ -55,3 +55,29 @@ class UserAccess(http.Controller):
                 'error': 'User has no access',
                 'message': 'User has no permission to access  WMDS app'
             }
+
+    @http.route('/wmds/v2/engine/get/user_role_permissions', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_valid_user(self, **kw):
+        email = kw.get('email')
+        if not email:
+            return {
+                'error': 'Bad request',
+                'message': 'Missing required field: email'
+            }
+        user = request.env['res.users'].sudo().search([('login', '=', email)], limit=1)
+        if not user:
+            return {
+                'error': 'Not found',
+                'message': 'User not found'
+            }
+        
+        groups = [group.name 
+                    for group in user.groups_id 
+                    if group.name.startswith("WMDs") and 
+                    group.name not in ["WMDs Operator", "WMDs Manager"]]
+
+        return {
+            "name": user.name,
+            "login": user.login,
+            "permissions": groups
+        }

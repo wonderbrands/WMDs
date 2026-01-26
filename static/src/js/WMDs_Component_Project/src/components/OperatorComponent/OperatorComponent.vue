@@ -63,7 +63,8 @@ export default {
             scanner: null,
 
             tasks: [
-                { id: "ingreso", title: "Recepciones", description: "Validación de los productos ingresados a almacén." },
+                { id: "ingresos", title: "Recepciones", description: "Validación de los productos ingresados a almacén." },
+                { id: "acomodo", title: "Acomodo/Storage", description: "Acomodo de los productos ingresados"},
                 { id: "disponibilizar", title: "Disponibilizar", description: "Traslado de productos desde posición de ingreso a alguna ubicación de almacén" },
                 { id: "traslados", title: "Traslados", description: "Traslado de una ubicación interna de almacen a otra" },
                 { id: "picks", title: "Picks", description: "Preparación del producto para proceso de entrega" },
@@ -73,7 +74,7 @@ export default {
             ],
 
             assigned_tasks: {
-                ingreso: [
+                ingresos: [
                     {
                         key: "ingreso-root",
                         label: "Asignados a mi",
@@ -82,14 +83,12 @@ export default {
                         ]
                     }
                 ],
-
-                disponibilizar: [
+                acomodo: [
                     {
-                        key: "disponibilizar-root",
-                        label: "Asignados a mi",
+                        key: "acomodo-root",
+                        label: "Abiertos",
                         selectable: false,
                         children: [
-                           
                         ]
                     }
                 ],
@@ -124,23 +123,26 @@ export default {
     async mounted() {
         this.store.loading = true;
 
-        const picks = await this.store.odoo_middleware.getFromOdoo(
-            "pending_tasks",
-            "picks",
-            { email: this.store.role.email }
-        );
+        const tasks = ["picks", "ingresos", "acomodo"];
 
-        this.assigned_tasks.picks[0].children =
-            (picks || []).map((p, i) => ({
-                key: `picks-${i}`,
-                label: p.label || p,
-                data: p.data || p,
-                leaf: true
-            }));
+        for (const element of tasks) {
+            const tarea = await this.store.odoo_middleware.getFromOdoo(
+                "pending_tasks",
+                element,
+                { email: this.store.role.email }
+            );
+
+            this.assigned_tasks[element][0].children =
+                (tarea || []).map((p, i) => ({
+                    key: `${element}-${i}`,
+                    label: p.label || p,
+                    data: p.data || p,
+                    leaf: true
+                }));
+        }
 
         this.store.loading = false;
     },
-
 
     methods: {
 

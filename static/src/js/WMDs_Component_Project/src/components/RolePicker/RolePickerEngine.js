@@ -140,12 +140,72 @@ class RolePickerProd extends RolePickerEngineDefinition {
     }
 
     async getPermissions() {
-        return []
+        try {
+            const response = await fetch('/wmds/v2/engine/get/user_role_permissions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    "jsonrpc": "2.0",
+                    "params": {
+                        "email": this.email
+                    }
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            this.permissions = result.result.permissions
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    persistSessionInStorage(){
+        window.sessionStorage.setItem("wmds_logged_user", 
+            JSON.stringify({
+                "name": this.user,
+                "email": this.email,
+                "permissions": this.permissions,
+                "role": this.role,
+                "is_identified": this.is_identified,
+                "logged_at": new Date()
+            }))
+    }
+
+
+    checkIfPersisted() {
+        const KEY = "wmds_logged_user";
+        const itemStr = window.sessionStorage.getItem(KEY);
+
+        if (!itemStr) {
+            return false;
+        }
+
+        try {
+            const loggedUser = JSON.parse(itemStr);
+            const loggedAt = new Date(loggedUser.logged_at);
+            const now = new Date();
+
+            const twelveHoursMs = 12 * 60 * 60 * 1000;
+
+            if (now.getTime() - loggedAt.getTime() > twelveHoursMs) {
+                window.sessionStorage.removeItem(KEY);
+                return false;
+            }
+            return true;
+
+        } catch (error) {
+            window.sessionStorage.removeItem(KEY);
+            return false;
+        }
     }
 
 }
 
- 
 export default function RolePickerEngine() {
     if(import.meta.env.VITE_ENVIRONMENT === 'DEV') {
         return new RolePickerDev()

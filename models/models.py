@@ -3,6 +3,7 @@ from odoo import models, fields, api
 from datetime import datetime
 from odoo.exceptions import UserError
 import logging
+import requests
 
 _logger = logging.getLogger(__name__)
 
@@ -59,8 +60,14 @@ class StockWMDS(models.Model):
                 #does it have the validation of the commercial team?
                 if not po.check_commertial:
                     #change the destiny, from stock to bloqueado
-                    destiny = self.location_dest_id.complete_name     
-                    destiny = destiny.replace('Stock', 'Bloqueado')
+                    destiny = self.location_dest_id.complete_name
+                    #check if it has stock/almacenaje
+                    if 'Stock/Almacenaje' in destiny:
+                        destiny = destiny.replace('Stock/Almacenaje', 'Bloqueado')
+                    elif 'Stock' in destiny:
+                        destiny = destiny.replace('Stock', 'Bloqueado')
+                    else:
+                        raise UserError('No se pudo encontrar el destino de la recepcion')
                     self.location_dest_id = self.env['stock.location'].search([('complete_name', '=', destiny)], limit=1).id
             else:
                 raise UserError('No se pudo encontrar la orden de compra asociada a la recepcion')                
@@ -82,7 +89,7 @@ class PurchaseWMDS(models.Model):
     def create(self, vals):
         if 'check_commertial' in vals:
             is_comm = vals.get('check_commertial')
-            log_msg = 'Confirmado por comercial, entra directo a stock' if is_comm else 'No confirmado por comercial, entra a ubicación espejo "Bloqueado"'
+            log_msg = 'Vo.Bo de COMEX otorgado' if is_comm else 'COMEX no ha dado Vo.Bo'
             
             log_entry = (0, 0, {
                 'log': log_msg,
@@ -96,7 +103,7 @@ class PurchaseWMDS(models.Model):
     def write(self, vals):
         if 'check_commertial' in vals:
             is_comm = vals.get('check_commertial')
-            log_msg = 'Confirmado por comercial, entra directo a stock' if is_comm else 'No confirmado por comercial, entra a ubicación espejo "Bloqueado"'
+            log_msg = 'Vo.Bo de COMEX otorgado' if is_comm else 'COMEX ha retirado Vo.Bo'
             
             for record in self:
                 if record.check_commertial != is_comm:
