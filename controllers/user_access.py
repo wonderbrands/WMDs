@@ -57,7 +57,7 @@ class UserAccess(http.Controller):
             }
 
     @http.route('/wmds/v2/engine/get/user_role_permissions', type='json', auth='user', methods=['POST'], csrf=True)
-    def get_valid_user(self, **kw):
+    def get_user_role_permissions(self, **kw):
         email = kw.get('email')
         if not email:
             return {
