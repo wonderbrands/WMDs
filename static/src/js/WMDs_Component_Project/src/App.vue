@@ -49,10 +49,10 @@
         const persisted =  window.sessionStorage.getItem("wmds_logged_user");
         if (persisted){
           const json_persisted = JSON.parse(persisted)
-          this.role.user = persisted.name
-          this.role.permissions = persisted.permissions
-          this.role.role = persisted.role
-          this.role.is_identified = persisted.is_identified
+          this.role.user = json_persisted.name
+          this.role.permissions = json_persisted.permissions
+          this.role.role = json_persisted.role
+          this.role.is_identified = json_persisted.is_identified
         }
       }
     },
