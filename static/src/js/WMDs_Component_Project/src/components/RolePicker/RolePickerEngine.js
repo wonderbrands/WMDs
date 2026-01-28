@@ -79,6 +79,7 @@ class RolePickerProd extends RolePickerEngineDefinition {
             this.user= data.result.name
             this.email= data.result.login
             this.is_identified = true
+            this.persistSessionInStorage()
             
             
             

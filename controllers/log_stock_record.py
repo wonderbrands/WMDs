@@ -35,20 +35,31 @@ class LogStockRecord(http.Controller):
 
             if picking.picking_type_id.name == "Storage":
                 po = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
-                request.env["wmds.log"].sudo().create({
-                    'log': f"El acomodo {picking.name} ha sido completado",
-                    'user': False if not operator_id else operator_id.id,
-                    'date': datetime.now(),
-                    'purchase': False if not po else po.id
-                })
-            if picking.picking_type_id.name == "Recepciones":
+                if po:
+                    request.env["wmds.log"].sudo().create({
+                        'log': f"El acomodo {picking.name} ha sido completado",
+                        'user': False if not operator_id else operator_id.id,
+                        'date': datetime.now(),
+                        'purchase': False if not po else po.id
+                    })
+            elif picking.picking_type_id.name == "Recepciones":
                 po = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
-                request.env["wmds.log"].sudo().create({
-                    'log': f"Se ha ejecutado la recepción {picking.name}",
-                    'user': False if not operator_id else operator_id.id,
-                    'date': datetime.now(),
-                    'purchase': False if not po else po.id
-                })
+                if po:
+                    request.env["wmds.log"].sudo().create({
+                        'log': f"Se ha ejecutado la recepción {picking.name}",
+                        'user': False if not operator_id else operator_id.id,
+                        'date': datetime.now(),
+                        'purchase': False if not po else po.id
+                    })
+            elif picking.picking_type_id.name == "Recepciones":
+                so = request.env["sale.order"].sudo().search([('name', '=', picking.origin)], limit=1)
+                if so:
+                    request.env["wmds.log"].sudo().create({
+                        'log': f"Se ha ejecutado el pick {picking.name}",
+                        'user': False if not operator_id else operator_id.id,
+                        'date': datetime.now(),
+                        'sale': False if not so else so.id
+                    })
 
 
         else:
