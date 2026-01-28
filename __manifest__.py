@@ -22,7 +22,8 @@ Planned replacement for the current WMS
         "portal",
         "stock",
         "stock_barcode",
-        "purchase"
+        "purchase",
+        "wms_integrator_module" #por el campo de carrier relational
     ],
 
      'external_dependencies': {
