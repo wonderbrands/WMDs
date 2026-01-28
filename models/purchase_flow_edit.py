@@ -7,43 +7,10 @@ import requests
 
 _logger = logging.getLogger(__name__)
 
-class WMDSStockStatus(models.Model):
-    _name = 'wmds.stock.status'
-    _description = 'Estados WMDS'
 
-    name = fields.Char('Name', required=True)
-    value = fields.Char('Value', required=True)
-
-class WMDSLog(models.Model):
-    _name = 'wmds.log'
-    _description = 'Log compartido WMDS'
-
-    pick = fields.Many2one('stock.picking', 'Pick')
-    purchase = fields.Many2one('purchase.order', 'Purchase Order')
-
-    log = fields.Text('Log')
-    date = fields.Datetime('Date', default=fields.Datetime.now) # Default automático
-    user = fields.Many2one('res.users', 'User')
-
-###################################################
-# Herencia de STOCK PICKING
-###################################################
-class StockWMDS(models.Model):
+class StockWMDSPurchase(models.Model):
     _inherit = 'stock.picking'
 
-    operator = fields.Many2one('res.users', 'Operator')
-    wmds_status = fields.Many2one('wmds.stock.status', 'WMDS Status')
-    
-    wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log')
-
-    @api.model
-    def create(self, vals):
-        res = super(StockWMDS, self).create(vals)
-        if not res.operator:
-            not_assigned = self.env['wmds.stock.status'].search([('value', '=', 'not_assigned')], limit=1)
-            if not_assigned:
-                res.wmds_status = not_assigned.id
-        return res
 
     def button_validate(self):
         _logger.debug("===============================")
@@ -84,21 +51,6 @@ class PurchaseWMDS(models.Model):
     wmds_log = fields.One2many('wmds.log', 'purchase', string='WMDS Log')
     
     check_commertial = fields.Boolean('Vo.Bo Comex', default=False)
-
-    @api.model
-    def create(self, vals):
-        if 'check_commertial' in vals:
-            is_comm = vals.get('check_commertial')
-            log_msg = 'Vo.Bo de COMEX otorgado' if is_comm else 'COMEX no ha dado Vo.Bo'
-            
-            log_entry = (0, 0, {
-                'log': log_msg,
-                'user': self.env.user.id,
-                'date': fields.Datetime.now(),
-            })
-            vals['wmds_log'] = [log_entry]
-            
-        return super(PurchaseWMDS, self.sudo()).create(vals)
 
     def write(self, vals):
         if 'check_commertial' in vals:

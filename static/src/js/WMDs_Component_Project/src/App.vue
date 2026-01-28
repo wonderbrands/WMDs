@@ -43,6 +43,8 @@
         }  
     },
     beforeMount(){
+      console.log(this.store.role.checkIfPersisted())
+      console.log(window.sessionStorage.getItem("wmds_logged_user"))
       if (this.store.role.checkIfPersisted()){
         const persisted =  window.sessionStorage.getItem("wmds_logged_user");
         this.role.user = persisted.name

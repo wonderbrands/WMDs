@@ -39,7 +39,7 @@ patch(BarcodeModel.prototype, {
                         pick_id: pick_info.id,
                         type: "external",
                         operator_mail: user,
-                        message: `Pick validade`,
+                        message: ``,
                     }
                   })
             })   
