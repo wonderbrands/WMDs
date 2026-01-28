@@ -99,9 +99,18 @@
                         {
                             pick_id: data.id,
                             operator_mail: this.store.role.email,
-                            message: `Pick ${data.name} asignada a ${data.operator.name}`,
+                            message: `Traslado ${data.name} asignado a ${data.operator.name}`,
                         }
                     )
+                    await this.store.odoo_middleware.getFromOdoo("log_record", "",
+                        {
+                            pick_id: data.id,
+                            type: "external",
+                            operator_mail: this.store.role.email,
+                            message: ``,
+                        }
+                    )
+                    
                     await this.store.odoo_middleware.getFromOdoo("change_status", "",
                         {
                             pick_id: data.id,

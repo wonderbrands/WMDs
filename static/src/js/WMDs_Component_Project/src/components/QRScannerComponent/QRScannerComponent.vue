@@ -60,6 +60,7 @@
     },
     mounted() {
         this.initCamera();
+        this.store.loading = false
     },
     beforeUnmount() {
         this.closeScanner();

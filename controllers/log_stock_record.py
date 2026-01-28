@@ -51,7 +51,7 @@ class LogStockRecord(http.Controller):
                         'date': datetime.now(),
                         'purchase': False if not po else po.id
                     })
-            elif picking.picking_type_id.name == "Recepciones":
+            elif picking.picking_type_id.name == "Pick":
                 so = request.env["sale.order"].sudo().search([('name', '=', picking.origin)], limit=1)
                 if so:
                     request.env["wmds.log"].sudo().create({
