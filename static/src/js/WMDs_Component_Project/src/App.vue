@@ -7,6 +7,7 @@
       :onScan="(data) => store.role.getUserFromServer(data)" 
       v-if="!role.is_identified"/>
     <div style="width: 100%; height: 100%;" v-else>
+      <LogoutComponent />
       <RolePicker v-if="store.current_screen === 'role_picker'" />
       <ManagerComponent v-else-if="store.current_screen === 'manager_screen'" />
       <OperatorComponent v-else-if="store.current_screen === 'operator_screen'"/>
@@ -21,6 +22,7 @@
   import ManagerComponent from "./components/ManagerComponent/ManagerComponent.vue"
   import OperatorComponent from "./components/OperatorComponent/OperatorComponent.vue"
   import QRScannerComponent from "./components/QRScannerComponent/QRScannerComponent.vue"
+  import LogoutComponent from "./components/RolePicker/LogoutComponent.vue"
   import { useGeneralStore } from "./store/index"
   
   export default {
@@ -30,7 +32,8 @@
       RolePicker, 
       ManagerComponent,
       OperatorComponent,
-      QRScannerComponent
+      QRScannerComponent,
+      LogoutComponent
     },
     data() {
       return {

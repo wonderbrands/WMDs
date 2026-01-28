@@ -205,6 +205,15 @@ class RolePickerProd extends RolePickerEngineDefinition {
         }
     }
 
+    logout(){
+        window.sessionStorage.removeItem("wmds_logged_user");
+        this.user = null
+        this.email = null
+        this.role = null
+        this.permissions = null
+        this.is_identified = false
+    }
+
 }
 
 export default function RolePickerEngine() {
