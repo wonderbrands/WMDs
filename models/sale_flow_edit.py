@@ -13,15 +13,40 @@ class SOWMDS(models.Model):
     def create(self, vals):
         res = super(SOWMDS, self).create(vals)
         if vals.get('carrier_selection_relational'):
+            carrier_name = res.carrier_selection_relational.name
             self.env['wmds.log'].sudo().create({
                 'sale': res.id,
-                'log': f"Se ha asignado el carrier {res.carrier_selection_relational.name} a la orden",
+                'log': f"Se ha asignado el carrier {carrier_name} a la orden (Creación)",
                 'user': self.env.user.id,
                 'date': fields.Datetime.now(),
             })
         return res
 
     def write(self, vals):
+
+        if 'state' in vals:
+            new_state = vals['state']
+            
+            state_map = {
+                'draft': 'Cotización (Borrador)',
+                'sent': 'Cotización Enviada',
+                'sale': 'Orden de Venta (Confirmado)',
+                'done': 'Bloqueado / Realizado',
+                'cancel': 'Cancelado'
+            }
+            
+            msg_state = state_map.get(new_state, f"Estado cambiado a: {new_state}")
+
+            for record in self:
+                if record.state != new_state:
+                    self.env['wmds.log'].sudo().create({
+                        'sale': record.id,
+                        'log': msg_state,
+                        'user': self.env.user.id,
+                        'date': fields.Datetime.now(),
+                    })
+
+
         res = super(SOWMDS, self).write(vals)
 
         if 'carrier_selection_relational' in vals:
@@ -31,7 +56,6 @@ class SOWMDS(models.Model):
                     msg = f"Se ha asignado el carrier {carrier.name} a la orden"
                 else:
                     msg = "Se ha desasignado el carrier de la orden"
-
 
                 self.env['wmds.log'].sudo().create({
                     'sale': record.id,

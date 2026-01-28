@@ -24,7 +24,8 @@ patch(BarcodeModel.prototype, {
         const session_wmds = window.sessionStorage.getItem("wmds_logged_user");
         let user = ""
         if (session_wmds){
-            user = session_wmds.email
+            const json_session = JSON.parse(session_wmds)
+            user = json_session.email
         } 
 
         try {

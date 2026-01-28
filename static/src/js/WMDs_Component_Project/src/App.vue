@@ -47,10 +47,13 @@
       console.log(window.sessionStorage.getItem("wmds_logged_user"))
       if (this.store.role.checkIfPersisted()){
         const persisted =  window.sessionStorage.getItem("wmds_logged_user");
-        this.role.user = persisted.name
-        this.role.permissions = persisted.permissions
-        this.role.role = persisted.role
-        this.role.is_identified = persisted.is_identified
+        if (persisted){
+          const json_persisted = JSON.parse(persisted)
+          this.role.user = persisted.name
+          this.role.permissions = persisted.permissions
+          this.role.role = persisted.role
+          this.role.is_identified = persisted.is_identified
+        }
       }
     },
     watch: {
