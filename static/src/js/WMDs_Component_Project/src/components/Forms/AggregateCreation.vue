@@ -9,15 +9,14 @@
                         v-model="creation.create_by_aggregate.input_aggregate_data" 
                         @keyup.enter="splitInput"
                         rows="1"
-                        autoResize
                         class="w-full"
-                        style="min-height: 45px; padding-top: 1rem;" 
+                        style="resize: none; overflow-y: auto; height: 45px; padding-top: 10px;" 
                     />
                     <label for="aggregate">
                         {{ creation.create_by_aggregate.input_aggregate_instructions }}
                     </label>
                 </FloatLabel>  
-                <small class="text-gray-500">Tip: Pega tu columna de Excel aquí y presiona Enter.</small>
+                <small class="text-gray-500">Pega la columna y presiona <b>Enter</b>.</small>
             </div>
 
             <div class="flex justify-between align-items-center mb-2" v-if="aggregates.length > 0">
@@ -101,7 +100,7 @@
 
 <script>
     import InputText from 'primevue/inputtext';
-    import Textarea from 'primevue/textarea'; // IMPORTANTE: Importar Textarea
+    import Textarea from 'primevue/textarea';
     import FloatLabel from 'primevue/floatlabel';
     import DataTable from 'primevue/datatable';
     import Column from 'primevue/column';
@@ -111,7 +110,6 @@
 
     export default {
         name: "AggregateCreation", 
-        // Registramos el componente Textarea
         components: { InputText, Textarea, FloatLabel, DataTable, Column, Button },
         directives: { 'tooltip': Tooltip },
         props: {
@@ -129,46 +127,30 @@
         },
         computed: {
             hasErrors() {
-                const errorFound = this.aggregates.some(item => item.error !== null);
-                console.log("Calculando hasErrors:", errorFound);
-                return errorFound;
+                return this.aggregates.some(item => item.error !== null);
             }
         },
         methods: {
             splitInput() {
-                console.log("--- INICIO splitInput ---");
                 const text = this.creation.create_by_aggregate.input_aggregate_data;
-                console.log("Texto crudo recibido:", text); // AHORA SÍ VERÁS LOS SALTOS DE LÍNEA AQUÍ
+                console.log("Texto recibido:", text); 
 
                 if (!text || text.trim().length === 0) return;
 
-                // NOTA: He eliminado 'Espacio' de la lista porque tus datos "Panel 1" tienen espacios.
-                // Si dejamos espacio, te va a partir "Panel" y "1" en dos filas distintas.
-                const CANDIDATE_SEPARATORS = [
-                    { char: '\n', label: 'Salto' }, 
-                    { char: '\t', label: 'Tab' },
-                    { char: ',',  label: 'Coma' }, 
-                    { char: ';',  label: 'Punto y coma' },
-                    { char: '|',  label: 'Pipe' }
-                ];
+                // 1. ESTRATEGIA DE SEPARACIÓN AGRESIVA
+                // Usamos una Regex directa para cortar por:
+                // \r\n (Windows), \n (Linux/Unix), \r (Mac viejo) O \t (Tabulador de Excel)
+                // Esto fuerza el corte sin importar qué detecte el navegador
+                const splitRegex = /[\r\n\t]+/; 
 
-                let maxCount = 0;
-                let winner = '\n'; // Default a Salto de línea, ideal para Excel
-                
-                CANDIDATE_SEPARATORS.forEach(sep => {
-                    const count = text.split(sep.char).length - 1;
-                    if (count > maxCount) { maxCount = count; winner = sep.char; }
-                });
-                console.log("Separador ganador:", winner);
+                const rawValues = text
+                    .split(splitRegex)        // Cortar por cualquier salto o tab
+                    .map(i => i.trim())       // Limpiar espacios extra
+                    .filter(i => i !== '');   // Quitar vacíos
 
-                let separatorRegex = winner;
-                // Detectar mezcla de Tab y Enter (común al pegar rangos grandes de Excel)
-                if (text.includes('\n') && text.includes('\t')) {
-                    separatorRegex = /[\n\t]+/; 
-                }
+                console.log("Elementos detectados:", rawValues);
 
-                const rawValues = text.split(separatorRegex).map(i => i.trim()).filter(i => i !== ''); 
-                
+                // 2. Agregar a la lista
                 let addedCount = 0;
                 rawValues.forEach(val => {
                     const existsInPending = this.aggregates.some(agg => agg.value === val);
@@ -180,12 +162,11 @@
                     }
                 });
 
+                // 3. Limpiar Input
                 this.creation.create_by_aggregate.input_aggregate_data = '';
                 this.isValidated = false; 
             },
 
-            // ... (Resto de métodos: removeAggregate, deleteSelected, clearError, sendData, forceSaveValid, moveAllToSuccess se mantienen igual) ...
-            
             removeAggregate(itemToRemove) {
                 this.aggregates = this.aggregates.filter(item => item.value !== itemToRemove.value);
                 this.selectedAggregates = this.selectedAggregates.filter(item => item.value !== itemToRemove.value);
