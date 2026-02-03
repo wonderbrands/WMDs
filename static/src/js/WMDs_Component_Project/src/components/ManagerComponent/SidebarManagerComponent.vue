@@ -7,6 +7,7 @@
              :disabled="selected==option"
              :raised="selected==option"
              :severity="selected==option ? 'warn' : undefined"
+             :style="selected==option ? 'text:black': undefined"
              >
                 {{ store.available_main_manager_screens[option].title }}
             </Button>
@@ -18,7 +19,9 @@
                 @click="selectScreen(child.screen)"
                 :disabled="selected==child.screen"
                 :raised="selected==child.screen"
-                :severity="selected==child.screen ? 'warn' : undefined">
+                :severity="selected==child.screen ? 'warn' : undefined"
+                :style="selected==child.screen ? 'text:black': undefined"
+                >
                     {{ child.title }}
                 </Button>
             </template>

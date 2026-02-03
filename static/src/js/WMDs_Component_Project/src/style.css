@@ -105,6 +105,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;   
+    overflow-y: auto;
+
     .toggle_sidebar{
         z-index: 1;
         width: 40px;
@@ -122,12 +124,8 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        margin-top: 7em;
-        overflow-y: scroll;
-
         button{
             width: 100%;
-            background-color: white;
             padding: .5em;
             text-align: left;
         }

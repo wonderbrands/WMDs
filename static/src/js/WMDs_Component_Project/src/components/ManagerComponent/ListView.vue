@@ -5,7 +5,8 @@
       <p>{{ store.main_manager_screen.description }}</p>
       <div v-if="store.main_manager_screen.create_by_aggregate">
         <Button 
-        :label="store.main_manager_screen.create_by_aggregate.button_string" /> 
+        :label="store.main_manager_screen.create_by_aggregate.button_string" 
+        @click="onRowClick($event, store.main_manager_screen)"/> 
       </div>
     </div>
     <div class="table_wrapper">
