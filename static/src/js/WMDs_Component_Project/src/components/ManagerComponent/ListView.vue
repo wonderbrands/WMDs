@@ -118,6 +118,7 @@ export default {
       console.log(event)
       console.log(modal)
       if(modal.create_by_aggregate){
+        event.data = {}
         event.data.create_by_aggregate = modal.create_by_aggregate
         event.data.form_type = "new"
         this.store.openModal(modal.value, event)
