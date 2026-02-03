@@ -47,7 +47,7 @@
                 <form string="WMDS Status">
                     <sheet>
                         <group>
-                            <field name="name" required="1"/>
+                            <field name="name" required="1"    />
                             <field name="value" required="1"/>
                         </group>
                     </sheet>

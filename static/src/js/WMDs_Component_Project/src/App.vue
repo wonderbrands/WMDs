@@ -1,5 +1,5 @@
 <template>
-  <LoadingComponent v-if="store.loading" />  
+  <LoadingComponent v-if="store.loading" />
   <QRScannerComponent 
       context="user_initial_scanner" 
       instructions="Escanea tu QR para iniciar sesión"
@@ -7,7 +7,6 @@
       :onScan="(data) => store.role.getUserFromServer(data)" 
       v-if="!role.is_identified"/>
     <div style="width: 100%; height: 100%;" v-else>
-      <LogoutComponent />
       <RolePicker v-if="store.current_screen === 'role_picker'" />
       <ManagerComponent v-else-if="store.current_screen === 'manager_screen'" />
       <OperatorComponent v-else-if="store.current_screen === 'operator_screen'"/>
@@ -46,7 +45,6 @@
         }  
     },
     beforeMount(){
-      console.log(this.store.role.checkIfPersisted())
       console.log(window.sessionStorage.getItem("wmds_logged_user"))
       if (this.store.role.checkIfPersisted()){
         const persisted =  window.sessionStorage.getItem("wmds_logged_user");

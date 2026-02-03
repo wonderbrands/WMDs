@@ -3,8 +3,11 @@
     <div class="title_section">
       <h1>{{ store.main_manager_screen.title }}</h1>
       <p>{{ store.main_manager_screen.description }}</p>
+      <div v-if="store.main_manager_screen.create_by_aggregate">
+        <Button 
+        :label="store.main_manager_screen.create_by_aggregate.button_string" /> 
+      </div>
     </div>
-
     <div class="table_wrapper">
       <DataTable
         v-if="server_data"
@@ -20,7 +23,7 @@
         :sortOrder="filters.sort_order === 'asc' ? 1 : filters.sort_order === 'desc' ? -1 : null"
         @page="onPage"
         @sort="onSort"
-        @row-click="onRowClick($event, store.main_manager_screen.value)"
+        @row-click="onRowClick($event, store.main_manager_screen)"
       >
       <Column
           v-for="col of server_data.map_cols"
@@ -73,6 +76,7 @@ import DataTable from "primevue/datatable";
 import Column from "primevue/column";
 import InputText from "primevue/inputtext";
 import Select from "primevue/select";
+import Button from "primevue/button"
 
 export default {
   name: "ListView",
@@ -81,7 +85,8 @@ export default {
     DataTable,
     Column,
     InputText,
-    Select
+    Select, 
+    Button
   },
 
   data() {
@@ -109,7 +114,14 @@ export default {
     /* -------------------- ROW -------------------- */
     onRowClick(event, modal) {
       event.data.map_cols = this.server_data.map_cols;
-      this.store.openModal(modal, event);
+
+      if(modal.create_by_aggregate){
+        event.data.create_by_aggregate = modal.create_by_aggregate
+        event.data.form_type = event.data.map_cols.id ? event.data.map_cols.id : "new"
+        this.store.openModal(modal.value, event)
+      } else {
+        this.store.openModal(modal.value, event);
+      }
     },
 
     /* -------------------- SORT -------------------- */

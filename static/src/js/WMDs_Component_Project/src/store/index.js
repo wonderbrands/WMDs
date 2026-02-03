@@ -54,10 +54,16 @@ export const useGeneralStore = defineStore('general_store', {
                     ]
                 },
                 {
-                    title: "Crear plan de pickeo", 
+                    title: "Planes de pickeo", 
                     description: "",
                     screen: "batch_pick",
-                    value: "batch_pick"
+                    value: "batch_pick",
+                    create_by_aggregate: {
+                        button_string: "Crear plan de pickeo",
+                        input_aggregate_instructions: "Pedidos o Picks",
+                        input_aggregate_data: null,
+                        fields: ["order", "picking_name"]
+                    }
                 }
             ]
                         
