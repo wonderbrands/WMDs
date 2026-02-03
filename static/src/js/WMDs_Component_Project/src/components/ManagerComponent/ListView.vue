@@ -114,7 +114,9 @@ export default {
   methods: {
     /* -------------------- ROW -------------------- */
     onRowClick(event, modal) {
-
+      console.log("event")
+      console.log(event)
+      console.log(modal)
       if(modal.create_by_aggregate){
         event.data.create_by_aggregate = modal.create_by_aggregate
         event.data.form_type = "new"
