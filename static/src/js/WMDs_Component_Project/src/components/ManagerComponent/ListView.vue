@@ -114,13 +114,13 @@ export default {
   methods: {
     /* -------------------- ROW -------------------- */
     onRowClick(event, modal) {
-      event.data.map_cols = this.server_data.map_cols;
 
       if(modal.create_by_aggregate){
         event.data.create_by_aggregate = modal.create_by_aggregate
-        event.data.form_type = event.data.map_cols.id ? event.data.map_cols.id : "new"
+        event.data.form_type = "new"
         this.store.openModal(modal.value, event)
       } else {
+        event.data.map_cols = this.server_data.map_cols;
         this.store.openModal(modal.value, event);
       }
     },
