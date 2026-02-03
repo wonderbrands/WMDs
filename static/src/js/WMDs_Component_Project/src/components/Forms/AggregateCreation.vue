@@ -1,27 +1,29 @@
 <template>
     <div>
         <div class="mb-6 p-4 border-round-xl surface-card shadow-1">
+            <h3 class="mt-0 mb-3 text-700">1. Carga de Datos</h3>
             
             <div class="mb-4">
                 <FloatLabel>
-                    <InputText id="aggregate" 
-                    v-model="creation.create_by_aggregate.input_aggregate_data" 
-                    :placeholder="creation.create_by_aggregate.input_aggregate_instructions" 
-                    @keyup.enter="splitInput"
-                    class="w-full"
+                    <Textarea id="aggregate" 
+                        v-model="creation.create_by_aggregate.input_aggregate_data" 
+                        @keyup.enter="splitInput"
+                        rows="1"
+                        autoResize
+                        class="w-full"
+                        style="min-height: 45px; padding-top: 1rem;" 
                     />
                     <label for="aggregate">
                         {{ creation.create_by_aggregate.input_aggregate_instructions }}
                     </label>
                 </FloatLabel>  
-                <small class="text-gray-500">Tip: Escribe una "x" para simular error.</small>
+                <small class="text-gray-500">Tip: Pega tu columna de Excel aquí y presiona Enter.</small>
             </div>
 
             <div class="flex justify-between align-items-center mb-2" v-if="aggregates.length > 0">
                 <span class="text-sm text-gray-600">
                     {{ aggregates.length }} elementos en lista
                 </span>
-                
                 <Button 
                     v-if="selectedAggregates.length > 0"
                     :label="'Borrar (' + selectedAggregates.length + ')'" 
@@ -46,7 +48,6 @@
                 editMode="cell" 
             >
                 <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
-                
                 <Column header="Dato (Editable)">
                     <template #body="slotProps">
                         <InputText 
@@ -58,7 +59,6 @@
                         />
                     </template>
                 </Column>
-
                 <Column header="Estado / Errores">
                     <template #body="slotProps">
                         <span v-if="slotProps.data.error" class="text-red-600 font-bold text-sm flex align-items-center gap-2">
@@ -67,41 +67,19 @@
                         <span v-else-if="isValidated" class="text-green-600 font-bold text-sm flex align-items-center gap-2">
                             <i class="pi pi-check-circle"></i> Listo
                         </span>
-                        <span v-else class="text-gray-400 text-sm">
-                            ...
-                        </span>
+                        <span v-else class="text-gray-400 text-sm">...</span>
                     </template>
                 </Column>
-
                 <Column header="Acciones" headerStyle="width: 5rem; text-align: center" bodyStyle="text-align: center">
                     <template #body="slotProps">
-                        <Button 
-                            icon="pi pi-trash" 
-                            severity="danger" 
-                            text 
-                            rounded 
-                            aria-label="Eliminar" 
-                            @click="removeAggregate(slotProps.data)" 
-                        />
+                        <Button icon="pi pi-trash" severity="danger" text rounded @click="removeAggregate(slotProps.data)" />
                     </template>
                 </Column>
             </DataTable>
 
             <div class="flex justify-end gap-2" v-if="aggregates.length > 0">
-                <Button 
-                    v-if="hasErrors"
-                    label="Guardar ignorando errores" 
-                    icon="pi pi-exclamation-triangle" 
-                    severity="warning"
-                    @click="forceSaveValid" 
-                    v-tooltip="'Guardar solo los verdes y dejar los rojos aquí'"
-                />
-                <Button 
-                    label="Validar y Enviar" 
-                    icon="pi pi-send" 
-                    @click="sendData" 
-                    :severity="hasErrors ? 'secondary' : 'primary'"
-                />
+                <Button v-if="hasErrors" label="Guardar ignorando errores" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" v-tooltip="'Guardar solo los verdes'" />
+                <Button label="Validar y Enviar" icon="pi pi-send" @click="sendData" :severity="hasErrors ? 'secondary' : 'primary'" />
             </div>
         </div>
 
@@ -113,19 +91,17 @@
                 <Column field="value" header="Dato Guardado"></Column>
                 <Column header="Estado">
                     <template #body>
-                        <span class="inline-flex align-items-center border-round px-2 py-1 bg-green-100 text-green-700 text-sm font-bold">
-                            Enviado
-                        </span>
+                        <span class="inline-flex align-items-center border-round px-2 py-1 bg-green-100 text-green-700 text-sm font-bold">Enviado</span>
                     </template>
                 </Column>
             </DataTable>
         </div>
-
     </div>
 </template>
 
 <script>
     import InputText from 'primevue/inputtext';
+    import Textarea from 'primevue/textarea'; // IMPORTANTE: Importar Textarea
     import FloatLabel from 'primevue/floatlabel';
     import DataTable from 'primevue/datatable';
     import Column from 'primevue/column';
@@ -135,7 +111,8 @@
 
     export default {
         name: "AggregateCreation", 
-        components: { InputText, FloatLabel, DataTable, Column, Button },
+        // Registramos el componente Textarea
+        components: { InputText, Textarea, FloatLabel, DataTable, Column, Button },
         directives: { 'tooltip': Tooltip },
         props: {
           creation: { type: Object, required: true },
@@ -161,37 +138,37 @@
             splitInput() {
                 console.log("--- INICIO splitInput ---");
                 const text = this.creation.create_by_aggregate.input_aggregate_data;
-                console.log("Texto crudo recibido:", text);
+                console.log("Texto crudo recibido:", text); // AHORA SÍ VERÁS LOS SALTOS DE LÍNEA AQUÍ
 
-                if (!text || text.trim().length === 0) {
-                    console.log("Texto vacío. Saliendo de splitInput.");
-                    return;
-                }
+                if (!text || text.trim().length === 0) return;
 
+                // NOTA: He eliminado 'Espacio' de la lista porque tus datos "Panel 1" tienen espacios.
+                // Si dejamos espacio, te va a partir "Panel" y "1" en dos filas distintas.
                 const CANDIDATE_SEPARATORS = [
-                    { char: '\n', label: 'Salto' }, { char: '\t', label: 'Tab' },
-                    { char: ',',  label: 'Coma' }, { char: ';',  label: 'Punto y coma' },
+                    { char: '\n', label: 'Salto' }, 
+                    { char: '\t', label: 'Tab' },
+                    { char: ',',  label: 'Coma' }, 
+                    { char: ';',  label: 'Punto y coma' },
                     { char: '|',  label: 'Pipe' }
                 ];
+
                 let maxCount = 0;
-                let winner = '\n';
+                let winner = '\n'; // Default a Salto de línea, ideal para Excel
                 
-                console.log("Analizando separadores...");
                 CANDIDATE_SEPARATORS.forEach(sep => {
                     const count = text.split(sep.char).length - 1;
                     if (count > maxCount) { maxCount = count; winner = sep.char; }
                 });
-                console.log("Separador ganador:", winner, "con ocurrencias:", maxCount);
+                console.log("Separador ganador:", winner);
 
                 let separatorRegex = winner;
+                // Detectar mezcla de Tab y Enter (común al pegar rangos grandes de Excel)
                 if (text.includes('\n') && text.includes('\t')) {
-                    console.log("Detectada mezcla de Tab y Enter (Excel mode)");
                     separatorRegex = /[\n\t]+/; 
                 }
 
                 const rawValues = text.split(separatorRegex).map(i => i.trim()).filter(i => i !== ''); 
-                console.log("Valores parseados:", rawValues);
-
+                
                 let addedCount = 0;
                 rawValues.forEach(val => {
                     const existsInPending = this.aggregates.some(agg => agg.value === val);
@@ -200,98 +177,58 @@
                     if (!existsInPending && !existsInSent) {
                         this.aggregates.push({ value: val, error: null });
                         addedCount++;
-                    } else {
-                        console.log("Valor duplicado omitido:", val);
                     }
                 });
-                console.log("Total nuevos elementos agregados:", addedCount);
 
                 this.creation.create_by_aggregate.input_aggregate_data = '';
                 this.isValidated = false; 
-                console.log("Limpieza completada. Estado isValidated reset a false.");
             },
 
+            // ... (Resto de métodos: removeAggregate, deleteSelected, clearError, sendData, forceSaveValid, moveAllToSuccess se mantienen igual) ...
+            
             removeAggregate(itemToRemove) {
-                console.log("Intentando eliminar item:", itemToRemove.value);
                 this.aggregates = this.aggregates.filter(item => item.value !== itemToRemove.value);
                 this.selectedAggregates = this.selectedAggregates.filter(item => item.value !== itemToRemove.value);
-                console.log("Item eliminado. Restantes:", this.aggregates.length);
             },
-
             deleteSelected() {
-                console.log("--- INICIO deleteSelected ---");
-                console.log("Cantidad a borrar:", this.selectedAggregates.length);
                 this.aggregates = this.aggregates.filter(item => !this.selectedAggregates.includes(item));
                 this.selectedAggregates = []; 
-                console.log("Borrado masivo completado. Restantes:", this.aggregates.length);
             },
-
             clearError(item) {
-                console.log("Editando item:", item.value);
-                if (item.error) {
-                    console.log("Limpiando error previo:", item.error);
-                    item.error = null;
-                }
+                if (item.error) item.error = null;
             },
-
             rowClass(data) {
                 return data.error ? 'bg-red-50' : '';
             },
-
             sendData() {
-                console.log("--- INICIO sendData (Validación) ---");
                 this.isValidated = true;
                 let errorCount = 0;
-                
-                console.log("Validando", this.aggregates.length, "elementos...");
                 this.aggregates.forEach(item => {
                     if (!item.value || item.value.trim() === '') {
-                         console.log("Error encontrado: Valor vacío");
                          item.error = "El valor no puede estar vacío";
                          errorCount++;
                          return;
                     }
-
                     if (item.value.toLowerCase().includes('x')) {
-                        console.log("Error simulado encontrado en:", item.value);
                         item.error = "Error: Formato inválido (simulado)";
                         errorCount++;
                     } else {
                         item.error = null;
                     }
                 });
-
-                console.log("Total errores encontrados:", errorCount);
-
-                if (errorCount === 0) {
-                    console.log("Validación exitosa (0 errores). Moviendo todo a success.");
-                    this.moveAllToSuccess();
-                } else {
-                    console.log("Validación fallida. Se requiere acción del usuario.");
-                }
+                if (errorCount === 0) this.moveAllToSuccess();
             },
-
             forceSaveValid() {
-                console.log("--- INICIO forceSaveValid ---");
                 const validItems = this.aggregates.filter(item => item.error === null);
-                console.log("Elementos válidos identificados:", validItems.length);
-                
                 this.sentAggregates.push(...validItems);
-                
                 this.aggregates = this.aggregates.filter(item => item.error !== null);
-                console.log("Elementos inválidos que se quedan:", this.aggregates.length);
-                
                 this.selectedAggregates = []; 
-                console.log("Guardado forzoso completado.");
             },
-
             moveAllToSuccess() {
-                console.log("Moviendo todos los items a la tabla de enviados...");
                 this.sentAggregates.push(...this.aggregates);
                 this.aggregates = [];
                 this.selectedAggregates = [];
                 this.isValidated = false;
-                console.log("Movimiento completado. Tabla aggregates vacía.");
             }
         }
     }
