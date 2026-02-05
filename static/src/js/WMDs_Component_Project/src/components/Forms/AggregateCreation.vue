@@ -15,6 +15,7 @@
                         :optionValue="field.optionValue || 'id'"
                         :placeholder="'Selecciona ' + field.label" 
                         class="w-full"
+                        :class="{'p-invalid': field.required && !extraValues[field.name] && triedToSave}"
                         filter
                     />
 
@@ -22,6 +23,7 @@
                         v-else
                         v-model="extraValues[field.name]"
                         class="w-full"
+                        :class="{'p-invalid': field.required && !extraValues[field.name] && triedToSave}"
                     />
                 </div>
             </div>
@@ -76,7 +78,7 @@
                             v-model="slotProps.data.value" 
                             class="w-full p-inputtext-sm"
                             :class="{'p-invalid': slotProps.data.error}"
-                            @input="clearError(slotProps.data)"
+                            @input="onInputChange(slotProps.data)"
                             placeholder="Valor vacío..."
                         />
                     </template>
@@ -89,7 +91,7 @@
                         <span v-else-if="isValidated" class="text-green-600 font-bold text-sm flex align-items-center gap-2">
                             <i class="pi pi-check-circle"></i> Listo
                         </span>
-                        <span v-else class="text-gray-400 text-sm">...</span>
+                        <span v-else class="text-gray-400 text-sm">Pendiente de validar...</span>
                     </template>
                 </Column>
                 <Column header="Acciones" headerStyle="width: 5rem; text-align: center" bodyStyle="text-align: center">
@@ -100,20 +102,23 @@
             </DataTable>
 
             <div class="flex justify-end gap-2" v-if="aggregates.length > 0">
-                <Button 
-                    v-if="hasErrors && hasValidItems"
-                    label="Guardar elementos válidos" 
-                    icon="pi pi-save" 
-                    severity="warning" 
-                    @click="forceSaveValid"
-                />
-                <Button 
-                    v-else-if="!hasErrors"
-                    label="Guardar todos" 
-                    icon="pi pi-save" 
-                    severity="success" 
-                    @click="forceSaveValid"
-                />
+                <template v-if="isValidated">
+                    <Button 
+                        v-if="hasErrors && hasValidItems" 
+                        label="Guardar válidos" 
+                        icon="pi pi-save" 
+                        severity="warning" 
+                        @click="forceSaveValid" 
+                        v-tooltip="'Guardar solo los verdes y eliminar rojos'" 
+                    />
+                    <Button 
+                        v-else-if="!hasErrors" 
+                        label="Guardar todos" 
+                        icon="pi pi-save" 
+                        severity="success" 
+                        @click="forceSaveValid" 
+                    />
+                </template>
                 <Button label="Validar" icon="pi pi-send" @click="sendData" :severity="hasErrors ? 'secondary' : 'primary'" />
             </div>
         </div>
@@ -161,7 +166,8 @@
                 selectedAggregates: [], 
                 isValidated: false,
                 extraValues: {},
-                optionsCache: {}
+                optionsCache: {},
+                triedToSave: false      
             }
         },
         computed: {
@@ -203,14 +209,12 @@
                     .map(i => i.trim())       
                     .filter(i => i !== '');   
 
-                let addedCount = 0;
                 rawValues.forEach(val => {
                     const existsInPending = this.aggregates.some(agg => agg.value === val);
                     const existsInSent = this.sentAggregates.some(agg => agg.value === val);
                     
                     if (!existsInPending && !existsInSent) {
                         this.aggregates.push({ value: val, error: null });
-                        addedCount++;
                     }
                 });
 
@@ -226,8 +230,9 @@
                 this.aggregates = this.aggregates.filter(item => !this.selectedAggregates.includes(item));
                 this.selectedAggregates = []; 
             },
-            clearError(item) {
+            onInputChange(item) {
                 if (item.error) item.error = null;
+                this.isValidated = false;
             },
             rowClass(data) {
                 return data.error ? 'bg-red-50' : '';
@@ -236,23 +241,20 @@
                 this.store.loading = true;
                 this.isValidated = true;
                 let errorCount = 0;
-                let server_Validaton = null;
-
+                
                 for (const item of this.aggregates) {
                     if (!item.value || item.value.trim() === '') {
                          item.error = "El valor no puede estar vacío";
                          errorCount++;
+                         continue;
                     }
-                }
-                
-                for (const item of this.aggregates) {
-                    if (item.error) continue;
-                    
-                    server_Validaton = await this.store.odoo_middleware.getFromOdoo(
+
+                    const server_Validaton = await this.store.odoo_middleware.getFromOdoo(
                         this.creation.create_by_aggregate.validate_item_endpoint,
                         item.value,
                         null
                     );
+                    
                     if (server_Validaton.error){
                         item.error = server_Validaton.error_msg;
                         errorCount++
@@ -261,20 +263,26 @@
                     }                     
                 }
 
+                if (errorCount === 0) this.moveAllToSuccess();
                 this.store.loading = false;
             },
             async forceSaveValid() {
-                const validItems = this.aggregates.filter(item => item.error === null && item.value && item.value.trim() !== '');
+                this.triedToSave = true;
+
+                const fields = this.creation.create_by_aggregate.extra_fields || [];
+                const missingRequired = fields.some(f => f.required && !this.extraValues[f.name]);
                 
-                if (validItems.length === 0) {
-                    console.log('No hay elementos válidos para guardar');
+                if (missingRequired) {
                     return;
                 }
 
+                const validItems = this.aggregates.filter(item => item.error === null && item.value && item.value.trim() !== '');
+                
+                if (validItems.length === 0) return;
+
                 this.store.loading = true;
                 
-                let server_Validaton = null;
-                server_Validaton = await this.store.odoo_middleware.getFromOdoo(
+                const server_Validaton = await this.store.odoo_middleware.getFromOdoo(
                     this.creation.create_by_aggregate.save_aggregate_endpoint,
                     "", 
                     {
@@ -284,7 +292,6 @@
                 );
 
                 if (!server_Validaton.error){
-                    console.log(`Guardados ${validItems.length} elemento(s) correctamente`);
                     this.sentAggregates.push(...validItems);
                     this.aggregates = this.aggregates.filter(item => item.error !== null);
                     this.selectedAggregates = []; 
@@ -293,7 +300,7 @@
                         this.store.closeModal();
                     }
                 } else {
-                    console.error('Error al guardar:', server_Validaton.error_msg);
+                    console.error(server_Validaton.error_msg);
                 } 
                 this.store.loading = false;
             },

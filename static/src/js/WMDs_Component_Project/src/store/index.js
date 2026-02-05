@@ -70,7 +70,7 @@ export const useGeneralStore = defineStore('general_store', {
                                 type: "selectable",       
                                 source: "operadores",     
                                 optionLabel: "name",      
-                                optionValue: "code",     
+                                optionValue: "id",     
                                 required: true
                             }
                         ]                        
