@@ -101,7 +101,7 @@
             </DataTable>
 
             <div class="flex justify-end gap-2" v-if="aggregates.length > 0">
-                <Button v-if="hasErrors" label="Guardar ignorando errores" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" v-tooltip="'Guardar solo los verdes y eliminar rojos'" />
+                <Button v-if="hasErrors" label="Guardar ignorando errores" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" v-tooltip="'Guardar solo los verdes'" />
                 <Button v-else label="Guardar" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" />
                 <Button label="Validar" icon="pi pi-send" @click="sendData" :severity="hasErrors ? 'secondary' : 'primary'" />
             </div>
@@ -180,7 +180,6 @@
             },
             splitInput() {
                 const text = this.creation.create_by_aggregate.input_aggregate_data;
-                console.log("Texto recibido:", text); 
 
                 if (!text || text.trim().length === 0) return;
 
@@ -190,8 +189,6 @@
                     .split(splitRegex)        
                     .map(i => i.trim())       
                     .filter(i => i !== '');   
-
-                console.log("Elementos detectados:", rawValues);
 
                 let addedCount = 0;
                 rawValues.forEach(val => {
@@ -227,15 +224,14 @@
                 this.isValidated = true;
                 let errorCount = 0;
                 let server_Validaton = null;
-                
+
                 for (const item of this.aggregates) {
                     if (!item.value || item.value.trim() === '') {
                          item.error = "El valor no puede estar vacío";
                          errorCount++;
-                         continue;
                     }
                 }
-
+                
                 for (const item of this.aggregates) {
                     if (item.error) continue;
                     
@@ -260,12 +256,13 @@
                 const fields = this.creation.create_by_aggregate.extra_fields || [];
                 const missingRequired = fields.some(f => f.required && !this.extraValues[f.name]);
                 
-                if (missingRequired) {
-                    return;
-                }
+                if (missingRequired) return;
+
+                const validItems = this.aggregates.filter(item => item.error === null && item.value && item.value.trim() !== '');
+                
+                if (validItems.length === 0) return;
 
                 this.store.loading = true;
-                const validItems = this.aggregates.filter(item => item.error === null);
                 
                 let server_Validaton = null;
                 server_Validaton = await this.store.odoo_middleware.getFromOdoo(
@@ -279,11 +276,14 @@
 
                 if (!server_Validaton.error){
                     this.sentAggregates.push(...validItems);
-                    this.aggregates = [];
+                    this.aggregates = this.aggregates.filter(item => item.error !== null);
                     this.selectedAggregates = []; 
-                    this.store.closeModal()
+                    
+                    if (this.aggregates.length === 0) {
+                        this.store.closeModal();
+                    }
                 } else {
-                    console.error(server_Validaton.error_msg)
+                    console.error(server_Validaton.error_msg);
                 } 
                 this.store.loading = false;
             },
