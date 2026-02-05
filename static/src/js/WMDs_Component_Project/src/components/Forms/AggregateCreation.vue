@@ -23,6 +23,7 @@
                         v-else
                         v-model="extraValues[field.name]"
                         class="w-full"
+                        :class="{'p-invalid': field.required && !extraValues[field.name] && triedToSave}"
                     />
                 </div>
             </div>
@@ -101,9 +102,30 @@
             </DataTable>
 
             <div class="flex justify-end gap-2" v-if="aggregates.length > 0">
-                <Button v-if="hasErrors" label="Guardar ignorando errores" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" v-tooltip="'Guardar solo los verdes'" />
-                <Button v-else label="Guardar" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" />
+                <Button 
+                    v-if="hasErrors && hasValidItems"
+                    label="Guardar elementos válidos" 
+                    icon="pi pi-save" 
+                    severity="warning" 
+                    @click="forceSaveValid"
+                    :disabled="!hasValidItems"
+                />
+                <Button 
+                    v-else-if="!hasErrors"
+                    label="Guardar todos" 
+                    icon="pi pi-save" 
+                    severity="success" 
+                    @click="forceSaveValid"
+                    :disabled="aggregates.length === 0"
+                />
                 <Button label="Validar" icon="pi pi-send" @click="sendData" :severity="hasErrors ? 'secondary' : 'primary'" />
+            </div>
+
+            <div v-if="showExtraFieldsError" class="mt-2 p-2 border-round bg-red-100 border-1 border-red-300">
+                <p class="text-red-700 m-0 text-sm">
+                    <i class="pi pi-exclamation-triangle mr-2"></i>
+                    Complete todos los campos obligatorios antes de guardar.
+                </p>
             </div>
         </div>
 
@@ -157,6 +179,16 @@
         computed: {
             hasErrors() {
                 return this.aggregates.some(item => item.error !== null);
+            },
+            hasValidItems() {
+                return this.aggregates.some(item => item.error === null && item.value && item.value.trim() !== '');
+            },
+            validCount() {
+                return this.aggregates.filter(item => item.error === null && item.value && item.value.trim() !== '').length;
+            },
+            showExtraFieldsError() {
+                const fields = this.creation.create_by_aggregate.extra_fields || [];
+                return this.triedToSave && fields.some(f => f.required && !this.extraValues[f.name]);
             }
         },
         async mounted() {
@@ -256,11 +288,15 @@
                 const fields = this.creation.create_by_aggregate.extra_fields || [];
                 const missingRequired = fields.some(f => f.required && !this.extraValues[f.name]);
                 
-                if (missingRequired) return;
+                if (missingRequired) {
+                    return;
+                }
 
                 const validItems = this.aggregates.filter(item => item.error === null && item.value && item.value.trim() !== '');
                 
-                if (validItems.length === 0) return;
+                if (validItems.length === 0) {
+                    return;
+                }
 
                 this.store.loading = true;
                 
