@@ -51,6 +51,7 @@
         if (persisted){
           const json_persisted = JSON.parse(persisted)
           this.role.user = json_persisted.name
+          this.role.email = json_persisted.email
           this.role.permissions = json_persisted.permissions
           this.role.role = json_persisted.role
           this.role.is_identified = json_persisted.is_identified
