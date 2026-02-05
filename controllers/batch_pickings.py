@@ -10,7 +10,7 @@ class BatchPickController(http.Controller):
         ref_cap = reference.upper().strip()
         pick_odoo = None
 
-        if ref_cap.startswith("S"):
+        if ref_cap.startswith("SO"):
             so = request.env['sale.order'].sudo().search([("name", "=", ref_cap)], limit=1)
             
             if not so:
@@ -22,7 +22,7 @@ class BatchPickController(http.Controller):
             pick_odoo = so.picking_ids.filtered_domain([
                 ('picking_type_id.name', '=', 'Pick'),
                 ('state', '!=', 'cancel')
-            ], limit=1)
+            ])[:1]
 
             if not pick_odoo:
                 return None, f"La SO {ref_cap} no tiene un pick de tipo 'Pick' válido."

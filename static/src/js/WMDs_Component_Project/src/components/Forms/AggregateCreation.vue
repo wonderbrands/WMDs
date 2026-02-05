@@ -101,7 +101,7 @@
             </DataTable>
 
             <div class="flex justify-end gap-2" v-if="aggregates.length > 0">
-                <Button v-if="hasErrors" label="Guardar ignorando errores" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" v-tooltip="'Guardar solo los verdes'" />
+                <Button v-if="hasErrors" label="Guardar ignorando errores" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" v-tooltip="'Guardar solo los verdes y eliminar rojos'" />
                 <Button v-else label="Guardar" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" />
                 <Button label="Validar" icon="pi pi-send" @click="sendData" :severity="hasErrors ? 'secondary' : 'primary'" />
             </div>
@@ -227,14 +227,15 @@
                 this.isValidated = true;
                 let errorCount = 0;
                 let server_Validaton = null;
-                this.aggregates.forEach(item => {
+                
+                for (const item of this.aggregates) {
                     if (!item.value || item.value.trim() === '') {
                          item.error = "El valor no puede estar vacío";
                          errorCount++;
-                         return;
+                         continue;
                     }
-                });
-                
+                }
+
                 for (const item of this.aggregates) {
                     if (item.error) continue;
                     
@@ -251,7 +252,6 @@
                     }                     
                 }
 
-                if (errorCount === 0) this.moveAllToSuccess();
                 this.store.loading = false;
             },
             async forceSaveValid() {
@@ -279,7 +279,7 @@
 
                 if (!server_Validaton.error){
                     this.sentAggregates.push(...validItems);
-                    this.aggregates = this.aggregates.filter(item => item.error !== null);
+                    this.aggregates = [];
                     this.selectedAggregates = []; 
                     this.store.closeModal()
                 } else {
