@@ -10,7 +10,7 @@ class BatchPickController(http.Controller):
         ref_cap = reference.upper().strip()
         pick_odoo = None
 
-        if ref_cap.startswith("S"):
+        if ref_cap.startswith("SO"):
             so = request.env['sale.order'].sudo().search([("name", "=", ref_cap)], limit=1)
             
             if not so:
@@ -93,12 +93,15 @@ class BatchPickController(http.Controller):
                 }
             
             if pick_obj.batch_id:
-                return {
-                    'error': True, 
-                    'error_msg': f"El pick {pick_obj.name} ya pertenece al batch {pick_obj.batch_id.name}"
-                }
+                continue
 
             valid_picks.append(pick_obj)
+
+        if not valid_picks:
+             return {
+                'error': True,
+                'error_msg': "No se encontraron picks válidos o todos los picks ya pertenecen a un batch."
+            }
 
         try:
             pick_ids = [p.id for p in valid_picks]
