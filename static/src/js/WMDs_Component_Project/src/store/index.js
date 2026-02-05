@@ -61,8 +61,19 @@ export const useGeneralStore = defineStore('general_store', {
                     create_by_aggregate: {
                         button_string: "Crear plan de pickeo",
                         input_aggregate_instructions: "Pedidos o Picks",
-                        input_aggregate_data: null,
-                        fields: ["order", "picking_name"]
+                        validate_item_endpoint: "validate_pick_for_batch",
+                        save_aggregate_endpoint: "save_picks_in_batch",
+                        extra_fields: [
+                            {
+                                name: "operator_id",     
+                                label: "Asignar Operador", 
+                                type: "selectable",       
+                                source: "operadores",     
+                                optionLabel: "name",      
+                                optionValue: "code",     
+                                required: true
+                            }
+                        ]                        
                     }
                 }
             ]

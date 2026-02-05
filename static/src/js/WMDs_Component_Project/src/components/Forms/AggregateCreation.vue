@@ -3,6 +3,30 @@
         <div class="mb-6 p-4 border-round-xl surface-card shadow-1">
             <h3 class="mt-0 mb-3 text-700">1. Carga de Datos</h3>
             
+            <div v-if="creation.create_by_aggregate.extra_fields" class="grid formgrid mb-4">
+                <div v-for="field in creation.create_by_aggregate.extra_fields" :key="field.name" class="col-12 md:col-6">
+                    <label class="block text-sm font-medium mb-2">{{ field.label }}</label>
+                    
+                    <Select 
+                        v-if="field.type === 'selectable'"
+                        v-model="extraValues[field.name]" 
+                        :options="optionsCache[field.source]" 
+                        :optionLabel="field.optionLabel || 'name'"
+                        :optionValue="field.optionValue || 'id'"
+                        :placeholder="'Selecciona ' + field.label" 
+                        class="w-full"
+                        :class="{'p-invalid': field.required && !extraValues[field.name] && triedToSave}"
+                        filter
+                    />
+
+                    <InputText 
+                        v-else
+                        v-model="extraValues[field.name]"
+                        class="w-full"
+                    />
+                </div>
+            </div>
+
             <div class="mb-4">
                 <FloatLabel>
                     <Textarea id="aggregate" 
@@ -78,7 +102,8 @@
 
             <div class="flex justify-end gap-2" v-if="aggregates.length > 0">
                 <Button v-if="hasErrors" label="Guardar ignorando errores" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" v-tooltip="'Guardar solo los verdes'" />
-                <Button label="Validar y Enviar" icon="pi pi-send" @click="sendData" :severity="hasErrors ? 'secondary' : 'primary'" />
+                <Button v-else label="Guardar" icon="pi pi-exclamation-triangle" severity="warning" @click="forceSaveValid" />
+                <Button label="Validar" icon="pi pi-send" @click="sendData" :severity="hasErrors ? 'secondary' : 'primary'" />
             </div>
         </div>
 
@@ -106,11 +131,12 @@
     import Column from 'primevue/column';
     import Button from 'primevue/button';
     import Tooltip from 'primevue/tooltip';
+    import Select from 'primevue/select';
     import { useGeneralStore } from "../../store/index"
 
     export default {
         name: "AggregateCreation", 
-        components: { InputText, Textarea, FloatLabel, DataTable, Column, Button },
+        components: { InputText, Textarea, FloatLabel, DataTable, Column, Button, Select },
         directives: { 'tooltip': Tooltip },
         props: {
           creation: { type: Object, required: true },
@@ -122,7 +148,10 @@
                 aggregates: [],         
                 sentAggregates: [],     
                 selectedAggregates: [], 
-                isValidated: false      
+                isValidated: false,
+                extraValues: {},
+                optionsCache: {},
+                triedToSave: false      
             }
         },
         computed: {
@@ -130,27 +159,40 @@
                 return this.aggregates.some(item => item.error !== null);
             }
         },
+        async mounted() {
+            await this.loadExtraFieldOptions();
+        },
         methods: {
+            async loadExtraFieldOptions() {
+                const fields = this.creation.create_by_aggregate.extra_fields || [];
+                
+                for (const field of fields) {
+                    if (field.type === 'selectable' && field.source) {
+                        this.store.loading = true;
+                        const results = await this.store.odoo_middleware.getFromOdoo(
+                            field.source, 
+                            ""
+                        );
+                        this.optionsCache[field.source] = results || [];
+                        this.store.loading = false;
+                    }
+                }
+            },
             splitInput() {
                 const text = this.creation.create_by_aggregate.input_aggregate_data;
                 console.log("Texto recibido:", text); 
 
                 if (!text || text.trim().length === 0) return;
 
-                // 1. ESTRATEGIA DE SEPARACIÓN AGRESIVA
-                // Usamos una Regex directa para cortar por:
-                // \r\n (Windows), \n (Linux/Unix), \r (Mac viejo) O \t (Tabulador de Excel)
-                // Esto fuerza el corte sin importar qué detecte el navegador
                 const splitRegex = /[\r\n\t]+/; 
 
                 const rawValues = text
-                    .split(splitRegex)        // Cortar por cualquier salto o tab
-                    .map(i => i.trim())       // Limpiar espacios extra
-                    .filter(i => i !== '');   // Quitar vacíos
+                    .split(splitRegex)        
+                    .map(i => i.trim())       
+                    .filter(i => i !== '');   
 
                 console.log("Elementos detectados:", rawValues);
 
-                // 2. Agregar a la lista
                 let addedCount = 0;
                 rawValues.forEach(val => {
                     const existsInPending = this.aggregates.some(agg => agg.value === val);
@@ -162,7 +204,6 @@
                     }
                 });
 
-                // 3. Limpiar Input
                 this.creation.create_by_aggregate.input_aggregate_data = '';
                 this.isValidated = false; 
             },
@@ -181,29 +222,70 @@
             rowClass(data) {
                 return data.error ? 'bg-red-50' : '';
             },
-            sendData() {
+            async sendData() {
+                this.store.loading = true;
                 this.isValidated = true;
                 let errorCount = 0;
+                let server_Validaton = null;
                 this.aggregates.forEach(item => {
                     if (!item.value || item.value.trim() === '') {
                          item.error = "El valor no puede estar vacío";
                          errorCount++;
                          return;
                     }
-                    if (item.value.toLowerCase().includes('x')) {
-                        item.error = "Error: Formato inválido (simulado)";
-                        errorCount++;
+                });
+                
+                for (const item of this.aggregates) {
+                    if (item.error) continue;
+                    
+                    server_Validaton = await this.store.odoo_middleware.getFromOdoo(
+                        this.creation.create_by_aggregate.validate_item_endpoint,
+                        item.value,
+                        null
+                    );
+                    if (server_Validaton.error){
+                        item.error = server_Validaton.error_msg;
+                        errorCount++
                     } else {
                         item.error = null;
-                    }
-                });
+                    }                     
+                }
+
                 if (errorCount === 0) this.moveAllToSuccess();
+                this.store.loading = false;
             },
-            forceSaveValid() {
+            async forceSaveValid() {
+                this.triedToSave = true;
+
+                const fields = this.creation.create_by_aggregate.extra_fields || [];
+                const missingRequired = fields.some(f => f.required && !this.extraValues[f.name]);
+                
+                if (missingRequired) {
+                    return;
+                }
+
+                this.store.loading = true;
                 const validItems = this.aggregates.filter(item => item.error === null);
-                this.sentAggregates.push(...validItems);
-                this.aggregates = this.aggregates.filter(item => item.error !== null);
-                this.selectedAggregates = []; 
+                
+                let server_Validaton = null;
+                server_Validaton = await this.store.odoo_middleware.getFromOdoo(
+                    this.creation.create_by_aggregate.save_aggregate_endpoint,
+                    "", 
+                    {
+                        batch_create: validItems,
+                        ...this.extraValues
+                    }
+                );
+
+                if (!server_Validaton.error){
+                    this.sentAggregates.push(...validItems);
+                    this.aggregates = this.aggregates.filter(item => item.error !== null);
+                    this.selectedAggregates = []; 
+                    this.store.closeModal()
+                } else {
+                    console.error(server_Validaton.error_msg)
+                } 
+                this.store.loading = false;
             },
             moveAllToSuccess() {
                 this.sentAggregates.push(...this.aggregates);

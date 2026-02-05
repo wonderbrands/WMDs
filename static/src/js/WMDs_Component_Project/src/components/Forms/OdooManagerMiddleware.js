@@ -200,7 +200,17 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                 return {
                     saved: true
                 }
+            
+            case "validate_pick_for_batch":
+                return {
+                    valid: true
+                }
 
+            case "save_picks_in_batch":
+                return {
+                    saved: true
+                }
+            
             default:
                 break;
         }
@@ -246,7 +256,13 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             
             case "change_status":
                 return await this.changeStatus(term, params)
-
+            
+            case "validate_pick_for_batch":
+                return await this.validatePickForBatch(term)
+                   
+            case "save_picks_in_batch":
+                return await this.savePicksInBatch(params)
+                    
             default:
                 break;
         }
@@ -477,6 +493,62 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
     async changeStatus(term, params){
         try {
             const response = await fetch('/wmds/v2/engine/post/change_wmds_status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    async validatePickForBatch(term){
+        try {
+            const response = await fetch('/wmds/v2/engine/post/validate_pick_for_batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                 },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params:{
+                        pick: term
+                    }
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+                   
+    async savePicksInBatch(params){
+        try {
+            const response = await fetch('/wmds/v2/engine/post/save_batch', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
