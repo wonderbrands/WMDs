@@ -10,7 +10,7 @@ class BatchPickController(http.Controller):
         ref_cap = reference.upper().strip()
         pick_odoo = None
 
-        if ref_cap.startswith("SO"):
+        if ref_cap.startswith("S"):
             so = request.env['sale.order'].sudo().search([("name", "=", ref_cap)], limit=1)
             
             if not so:
