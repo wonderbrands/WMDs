@@ -13,29 +13,51 @@ class StockWMDSPurchase(models.Model):
 
 
     def button_validate(self):
-        _logger.debug("===============================")
-        _logger.debug("Validando picking %s", self.name)
-        _logger.debug(f"documento origen: {self.origin}")
-        _logger.debug(f"tipo de operacion: {self.picking_type_id.name}")
-        _logger.debug(f"origen: {self.location_id.complete_name}")
-        _logger.debug(f"destino: {self.location_dest_id.complete_name}")
-        if self.picking_type_id.name == 'Storage':
-            po = self.env['purchase.order'].search([('name', '=', self.origin)])
-            if po:
+        for picking in self:
+            _logger.debug("===============================")
+            _logger.debug("Validando picking %s", picking.name)
+            _logger.debug(f"documento origen: {picking.origin}")
+            _logger.debug(f"tipo de operacion: {picking.picking_type_id.name}")
+            _logger.debug(f"origen: {picking.location_id.complete_name}")
+            _logger.debug(f"destino: {picking.location_dest_id.complete_name}")
+
+            if picking.picking_type_id.name == 'Storage':
+                po = self.env['purchase.order'].search(
+                    [('name', '=', picking.origin)],
+                    limit=1
+                )
+
+                if not po:
+                    raise UserError(
+                        'No se pudo encontrar la orden de compra asociada a la recepción'
+                    )
+
                 if not po.check_commertial:
-                    destiny = self.location_dest_id.complete_name
+                    destiny = picking.location_dest_id.complete_name
+
                     if 'Stock/Almacenaje' in destiny:
                         destiny = destiny.replace('Stock/Almacenaje', 'Cuarentena')
                     elif 'Stock' in destiny:
                         destiny = destiny.replace('Stock', 'Cuarentena')
                     else:
-                        raise UserError('No se pudo encontrar el destino de la recepcion')
-                    self.location_dest_id = self.env['stock.location'].search([('complete_name', '=', destiny)], limit=1).id
-            else:
-                raise UserError('No se pudo encontrar la orden de compra asociada a la recepcion')                
+                        raise UserError(
+                            'No se pudo encontrar el destino de la recepción'
+                        )
 
-            
+                    location = self.env['stock.location'].search(
+                        [('complete_name', '=', destiny)],
+                        limit=1
+                    )
+
+                    if not location:
+                        raise UserError(
+                            'No se encontró la ubicación de cuarentena'
+                        )
+
+                    picking.location_dest_id = location.id
+
         return super(StockWMDSPurchase, self).button_validate()
+
 
 class PurchaseWMDS(models.Model):
     _inherit = 'purchase.order'
