@@ -30,13 +30,24 @@ export default class MandatoryUncompleted{
         if(!mandatory){
             return null
         }
-
-        Object.assign(parsed, mandatory)
+        let json_mandatory = JSON.parse(mandatory)
+        Object.assign(parsed, json_mandatory)
         if (logged.email == parsed.user){
             Object.assign(this, parsed)
             this.logged = true
         } 
     }
     
-
+    doneMandatory(){
+        localStorage.removeItem("mandadoty_uncompleted")
+        const defaults = {
+            screen : null,
+            component: null,
+            component_props: {},
+            data: {},
+            user: null,
+            logged: false
+        }
+        Object.assign(this, {...defaults})
+    }
 }

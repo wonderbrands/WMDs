@@ -56,6 +56,10 @@
         onScan: {
             type: Function,
             required: false
+        },
+        extra_data: {
+            type: Object,
+            required: false
         }
     },
     mounted() {
@@ -82,6 +86,8 @@
                         
                         if (this.onScan) {
                             this.onScan(qrData);
+                        } else if (this.context) {
+                            this.store.executeActionByContext(this.context, qrData, this.extra_data);
                         }
                         this.store.last_scanned_element = qrData;
                         this.closeScanner();

@@ -224,9 +224,27 @@ class GetPicks(http.Controller):
     )
     def post_pick_assign_operator(self, **kw):
         try:
+            operation_type = kw.get('operation_type')
             operator = kw.get('operator')
-            picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
-            picking.operator = operator["id"]
+            operator_mail = kw.get('operator_mail')
+
+            if not operation_type:
+                picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
+                picking.operator = operator["id"]
+
+            else:
+                picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
+                next_op = self.env['stock.picking'].search([
+                    ('group_id', '=', picking.group_id.id),
+                    ('picking_type_id.name', '=', operation_type),
+                    ('state', 'not in', ['cancel'])
+                ], limit=1)
+                operator = request.env['res.users'].sudo().search([
+                    ('login', '=', operator_mail),
+                ], limit=1)
+                next_op.operator = operator.id
+
+
 
             return{
                 "saved": True

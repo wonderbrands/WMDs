@@ -134,6 +134,24 @@ export const useGeneralStore = defineStore('general_store', {
             this.main_manager_screen = this.available_main_manager_screens[newScreen]
         }
         
+    },
+    executeActionByContext(context, data, extra) {
+        const actionsMap = {
+            'assign_pack_for_operator': async (qr, extra) => {
+                await this.odoo_middleware.assignPick(
+                    {
+                        id: extra.pick_id,
+                        operation_type: extra.operation_type,
+                        operator_mail: JSON.parse(qr).email
+                    }
+                )
+                this.mandatory_uncompleted.doneMandatory()
+            },
+        };
+
+        if (actionsMap[context]) {
+            actionsMap[context](data, extra);
+        }
     }
   }
 })
