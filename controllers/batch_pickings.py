@@ -112,9 +112,9 @@ class BatchPickController(http.Controller):
             
            
             new_batch.action_confirm()
-            console.log(f"[Backend] >> Batch {new_batch.name} confirmado automáticamente")
 
             op_name = operator_user.name if operator_user else "Sin asignar"
+            new_batch.operator =  operator_user.id
 
             for pick in valid_picks:
                 if operator_user:
