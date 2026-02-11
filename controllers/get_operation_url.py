@@ -26,7 +26,7 @@ class GetURLOfPick(http.Controller):
             action_id = request.env['ir.actions.actions'].sudo().search(
                 [
                     (
-                        'name', '=', 'Acción del cliente de recolección de código de barras'
+                        'name', '=', 'Barcode Picking Client Action'
                     )
                 ], 
                 limit=1
@@ -38,13 +38,32 @@ class GetURLOfPick(http.Controller):
                     "message": "Missing required field: pick_id or action_id"
                 }
 
-            pick_id = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1).id
-            if not pick_id:
-                return {
-                    "error": "Bad request",
-                    "message": "Pick not found"
-                }
-            url = f"/odoo/barcode/{pick_id}/action-{action_id.id}"
+            if pick_name.startswith("BATCH"):
+                barcode_action = request.env['ir.actions.actions'].sudo().search(
+                    [
+                        (
+                            'name', '=', 'Barcode Batch Picking Client Action'
+                        )
+                    ], 
+                    limit=1
+                )
+                batch_id = request.env['stock.picking.batch'].sudo().search([('name', '=', pick_name)], limit=1).id
+                if not batch_id:
+                    return {
+                        "error": "Bad request",
+                        "message": "Pick not found"
+                    }
+                url = f"/odoo/barcode/{batch_id}/action-{barcode_action}"
+
+            else:
+                pick_id = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1).id
+                if not pick_id:
+                    return {
+                        "error": "Bad request",
+                        "message": "Pick not found"
+                    }
+                url = f"/odoo/barcode/{pick_id}/action-{action_id.id}"
+
             return {
                 "url": url
             }

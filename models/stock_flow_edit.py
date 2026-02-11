@@ -33,4 +33,9 @@ class StockWMDS(models.Model):
                 res.wmds_status = not_assigned.id
         return res
 
-    
+
+class BatchWMDS(models.Model):
+    _inherit = 'stock.picking.batch'
+
+    operator = fields.Many2one('res.users', 'Operator')
+    wmds_log = fields.One2many('wmds.log', 'batch_pick', string='WMDS Log')

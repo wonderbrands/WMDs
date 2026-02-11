@@ -12,7 +12,6 @@ class BatchPickController(http.Controller):
 
         if ref_cap.startswith("S"):
             so = request.env['sale.order'].sudo().search([("name", "=", ref_cap)], limit=1)
-            
             if not so:
                 return None, f"La SO {ref_cap} no existe."
             
@@ -35,9 +34,12 @@ class BatchPickController(http.Controller):
             
             if not pick_odoo:
                 return None, f"El pick {ref_cap} no existe."
-
         else:
             return None, f"Formato no reconocido: {ref_cap}. Use SO... o WH/PICK..."
+
+        # NUEVA VALIDACIÓN: Verificar si ya tiene un batch asignado
+        if pick_odoo.batch_id:
+            return None, f"El pick {pick_odoo.name} ya pertenece al lote {pick_odoo.batch_id.name}."
 
         if pick_odoo.state != "assigned":
             return None, f"El pick {pick_odoo.name} no está disponible (Estado: {pick_odoo.state})."
@@ -47,7 +49,6 @@ class BatchPickController(http.Controller):
     @http.route('/wmds/v2/engine/post/validate_pick_for_batch', type='json', auth='user', methods=['POST'], csrf=True)
     def validate_pick_for_batch(self, **kw):
         pick_ref = kw.get("pick")
-        
         pick_obj, error_msg = self._get_and_validate_picking(pick_ref)
 
         if error_msg:
@@ -83,7 +84,6 @@ class BatchPickController(http.Controller):
 
         for item in picks_to_process:
             ref = item.get('value') if isinstance(item, dict) else item
-            
             pick_obj, error_msg = self._get_and_validate_picking(ref)
 
             if error_msg:
@@ -92,15 +92,12 @@ class BatchPickController(http.Controller):
                     'error_msg': f"Error en lote con '{ref}': {error_msg}"
                 }
             
-            if pick_obj.batch_id:
-                continue
-
             valid_picks.append(pick_obj)
 
         if not valid_picks:
              return {
                 'error': True,
-                'error_msg': "No se encontraron picks válidos o todos los picks ya pertenecen a un batch."
+                'error_msg': "No se encontraron picks válidos."
             }
 
         try:
@@ -113,6 +110,10 @@ class BatchPickController(http.Controller):
             
             new_batch = request.env['stock.picking.batch'].sudo().create(batch_vals)
             
+           
+            new_batch.action_confirm()
+            console.log(f"[Backend] >> Batch {new_batch.name} confirmado automáticamente")
+
             op_name = operator_user.name if operator_user else "Sin asignar"
 
             for pick in valid_picks:
@@ -122,15 +123,16 @@ class BatchPickController(http.Controller):
                 request.env['wmds.log'].sudo().create({
                     'pick': pick.id,
                     'user': request.env.user.id,
-                    'log': f"Metido en el batch {new_batch.name}, asignado al operador {op_name}"
+                    'log': f"Metido en el batch {new_batch.name} (Confirmado), asignado al operador {op_name}"
                 })
 
         except Exception as e:
-            return {'error': True, 'error_msg': f"Error de sistema al crear batch: {str(e)}"}
+            return {'error': True, 'error_msg': f"Error de sistema al crear/confirmar batch: {str(e)}"}
         
         return {
             'status': "ok",
-            'message': f"Batch {new_batch.name} creado exitosamente con {len(valid_picks)} órdenes.",
+            'message': f"Batch {new_batch.name} creado y confirmado exitosamente con {len(valid_picks)} órdenes.",
             'batch_name': new_batch.name,
-            'batch_id': new_batch.id
+            'batch_id': new_batch.id,
+            'state': new_batch.state
         }

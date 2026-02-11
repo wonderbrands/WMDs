@@ -1,45 +1,32 @@
 <template>
-    <!-- TASK LIST -->
-    <div
-        v-if="!operator_task"
-        style="overflow-y: scroll; padding: 1em; width: 100%; height: 100%; display: flex; flex-direction: column;"
-    >
-        <h3 style="margin: 1em;">Bienvendido {{ store.role.user }}</h3>
-        <Card v-for="task in tasks" :key="task.id" style="margin: 1em;">
+    <div v-if="!operator_task" class="task-container">
+        <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
+        
+        <Card v-for="task in activeTasks" :key="task.id" class="task-card">
             <template #title>{{ task.title }}</template>
             <template #subtitle>{{ task.description }}</template>
 
-            <template
-                #content
-                v-if="
-                    assigned_tasks[task.id] &&
-                    assigned_tasks[task.id][0] &&
-                    assigned_tasks[task.id][0].children
-                "
-            >
-                <span v-if="assigned_tasks[task.id][0].children.length > 0" style="font-style: italic; color: red;">
-                    {{ assigned_tasks[task.id][0].children.length }} pendientes
+            <template #content v-if="task.assigned.length > 0">
+                <span class="pending-badge">
+                    {{ task.assigned[0].children.length }} pendientes
                 </span>
             </template>
 
             <template #footer>
                 <Tree
-                    v-if="assigned_tasks[task.id] && assigned_tasks[task.id][0] && assigned_tasks[task.id][0].children.length > 0"
-                    :value="assigned_tasks[task.id]"
+                    v-if="hasChildren(task)"
+                    :value="task.assigned"
                     selectionMode="single"
                     v-model:selectionKeys="current_task[task.id]"
-                    style="width: 100%;"
                     @node-select="openTask"
+                    class="full-width"
                 />
-
-                <div v-else style="padding: 1em; color: #666; font-style: italic;">
+                <div v-else class="empty-tasks">
                     Sin tareas asignadas
                 </div>
             </template>
         </Card>
     </div>
-
-   
 </template>
 
 <script>
@@ -49,128 +36,110 @@ import { useGeneralStore } from "../../store/index";
 
 export default {
     name: "OperatorComponent",
-
-    components: {
-        Card,
-        Tree
-    },
+    components: { Card, Tree },
 
     data() {
         return {
             store: useGeneralStore(),
             current_task: {},
             operator_task: false,
-            scanner: null,
-
-            tasks: [
-                { id: "ingresos", title: "Recepciones", description: "Validación de los productos ingresados a almacén." },
-                { id: "acomodo", title: "Acomodo/Storage", description: "Acomodo de los productos ingresados"},
-                { id: "disponibilizar", title: "Disponibilizar", description: "Traslado de productos desde posición de ingreso a alguna ubicación de almacén" },
-                { id: "traslados", title: "Traslados", description: "Traslado de una ubicación interna de almacen a otra" },
-                { id: "picks", title: "Picks", description: "Preparación del producto para proceso de entrega" },
-                { id: "devoluciones", title: "Devoluciones", description: "" },
-                { id: "resurtidos", title: "Resurtidos", description: "" },
-                { id: "conteo_ciclico", title: "Conteo cíclico", description: "Conteo de unidades disponibles de N producto en X ubicación" }
+            taskDefinitions: [
+                { id: "ingresos", title: "Recepciones", description: "Validación de productos ingresados.", fetch: true, label: "Asignados a mi" },
+                { id: "acomodo", title: "Acomodo/Storage", description: "Acomodo de productos.", fetch: true, label: "Abiertos" },
+                { id: "traslados", title: "Traslados", description: "Traslado interno entre ubicaciones.", fetch: false, label: "Asignados a mi" },
+                { id: "batch_pick", title: "Plan de pickeo", description: "Preparación para empaque.", fetch: true, label: "Asignados a mi" },
+                { id: "conteo_ciclico", title: "Conteo cíclico", description: "Conteo de unidades.", fetch: false, label: "Pendientes" }
             ],
-
-            assigned_tasks: {
-                ingresos: [
-                    {
-                        key: "ingreso-root",
-                        label: "Asignados a mi",
-                        selectable: false,
-                        children: [
-                        ]
-                    }
-                ],
-                acomodo: [
-                    {
-                        key: "acomodo-root",
-                        label: "Abiertos",
-                        selectable: false,
-                        children: [
-                        ]
-                    }
-                ],
-
-                traslados: [
-                    {
-                        key: "traslados-root",
-                        label: "Asignados a mi",
-                        selectable: false,
-                        children: [
-                           
-                        ]
-                    }
-                ],
-
-                picks: [
-                    {
-                        key: "picks-root",
-                        label: "Asignados a mi",
-                        selectable: false,
-                        children: []
-                    }
-                ],
-
-                devoluciones: [],
-                resurtidos: [],
-                conteo_ciclico: []
-            }
+            tasks: []
         };
+    },
+
+    computed: {
+        activeTasks() {
+            return this.tasks;
+        }
     },
 
     async mounted() {
         this.store.loading = true;
+        
+        this.tasks = this.taskDefinitions.map(t => ({
+            ...t,
+            assigned: [{
+                key: `${t.id}-root`,
+                label: t.label,
+                selectable: false,
+                children: []
+            }]
+        }));
 
-        const tasks = ["picks", "ingresos", "acomodo"];
+        try {
+            const fetchPromises = this.tasks
+                .filter(t => t.fetch)
+                .map(async (task) => {
+                    const data = await this.store.odoo_middleware.getFromOdoo(
+                        "pending_tasks",
+                        task.id,
+                        { email: this.store.role.email }
+                    );
+                    
+                    task.assigned[0].children = (data || []).map((p, i) => ({
+                        key: `${task.id}-${i}`,
+                        label: p.label || p,
+                        data: p.data || p,
+                        leaf: true
+                    }));
+                });
 
-        for (const element of tasks) {
-            const tarea = await this.store.odoo_middleware.getFromOdoo(
-                "pending_tasks",
-                element,
-                { email: this.store.role.email }
-            );
-
-            this.assigned_tasks[element][0].children =
-                (tarea || []).map((p, i) => ({
-                    key: `${element}-${i}`,
-                    label: p.label || p,
-                    data: p.data || p,
-                    leaf: true
-                }));
+            await Promise.all(fetchPromises);
+        } catch (error) {
+            console.error("Error cargando tareas:", error);
+        } finally {
+            this.store.loading = false;
         }
-
-        this.store.loading = false;
     },
 
     methods: {
-
-        async openTask(event) {
-            console.log("openTask", event)
-            const pick = event.data;
-            const urlBarcode = await this.store.odoo_middleware.getFromOdoo(
-                "get_barcode_url", 
-                "",
-                { pick_name: pick }
-            )
-            await this.store.odoo_middleware.getFromOdoo(
-                "log_record",
-                "",
-                {
-                    pick_name: pick,
-                    operator_mail: this.store.role.email,
-                    message: `La operación ha sido abierta por el operador`,
-                }
-            )
-            await this.store.odoo_middleware.getFromOdoo(
-                "change_status", 
-                "",
-                { pick_name: pick, status: "in_progress" }
-            )
-            window.location.href = urlBarcode
-            
+        hasChildren(task) {
+            return task.assigned?.[0]?.children?.length > 0;
         },
+
+        async openTask({ data: pick }) {
+            const { odoo_middleware, role } = this.store;
+            
+            const urlPromise = odoo_middleware.getFromOdoo("get_barcode_url", "", { pick_name: pick });
+            
+            /*await Promise.all([
+                urlPromise,
+                odoo_middleware.getFromOdoo("log_record", "", {
+                    pick_name: pick,
+                    operator_mail: role.email,
+                    message: `La operación ha sido abierta por el operador`,
+                }),
+                odoo_middleware.getFromOdoo("change_status", "", { 
+                    pick_name: pick, 
+                    status: "in_progress" 
+                })
+            ]);*/
+
+            window.location.href = await urlPromise;
+        }
     }
 };
 </script>
+
+<style scoped>
+.task-container {
+    overflow-y: scroll; 
+    padding: 1em; 
+    width: 100%; 
+    height: 100%; 
+    display: flex; 
+    flex-direction: column;
+}
+.welcome-header { margin: 1em; }
+.task-card { margin: 1em; }
+.pending-badge { font-style: italic; color: red; }
+.empty-tasks { padding: 1em; color: #666; font-style: italic; }
+.full-width { width: 100%; }
+</style>

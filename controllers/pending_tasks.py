@@ -25,15 +25,23 @@ class PendingTasks(http.Controller):
                 "acomodo": "Storage"
             }
 
-            fields = [
-                ('picking_type_id.name', '=', map_task[task]),
-                ('state', '=', 'assigned'),
-            ]
+            if task=="batch_pick":
+                pending_tasks = request.env['stock.picking.batch'].sudo().search(
+                    ('state', '=', 'in_progress'),
+                    ('operator.login', '=', email)
+                )
 
-            if task not in ["acomodo"]:
-                fields.append(('operator.login', '=', email))
+            else:
+                fields = [
+                    ('picking_type_id.name', '=', map_task[task]),
+                    ('state', '=', 'assigned'),
+                ]
 
-            pending_tasks = request.env['stock.picking'].sudo().search(fields)
+                if task not in ["acomodo"]:
+                    fields.append(('operator.login', '=', email))
+
+                pending_tasks = request.env['stock.picking'].sudo().search(fields)
+
 
             return [
                 {

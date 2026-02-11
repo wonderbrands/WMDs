@@ -6,7 +6,6 @@
             <div v-if="creation.create_by_aggregate.extra_fields" class="grid formgrid mb-4">
                 <div v-for="field in creation.create_by_aggregate.extra_fields" :key="field.name" class="col-12 md:col-6">
                     <label class="block text-sm font-medium mb-2">{{ field.label }}</label>
-                    
                     <Select 
                         v-if="field.type === 'selectable'"
                         v-model="extraValues[field.name]" 
@@ -18,7 +17,6 @@
                         :class="{'p-invalid': field.required && !extraValues[field.name] && triedToSave}"
                         filter
                     />
-
                     <InputText 
                         v-else
                         v-model="extraValues[field.name]"
@@ -37,24 +35,19 @@
                         class="w-full"
                         style="resize: none; overflow-y: auto; height: 45px; padding-top: 10px;" 
                     />
-                    <label for="aggregate">
-                        {{ creation.create_by_aggregate.input_aggregate_instructions }}
-                    </label>
+                    <label for="aggregate">{{ creation.create_by_aggregate.input_aggregate_instructions }}</label>
                 </FloatLabel>  
                 <small class="text-gray-500">Pega la columna y presiona <b>Enter</b>.</small>
             </div>
 
             <div class="flex justify-between align-items-center mb-2" v-if="aggregates.length > 0">
-                <span class="text-sm text-gray-600">
-                    {{ aggregates.length }} elementos en lista
-                </span>
+                <span class="text-sm text-gray-600">{{ aggregates.length }} elementos en lista</span>
                 <Button 
                     v-if="selectedAggregates.length > 0"
                     :label="'Borrar (' + selectedAggregates.length + ')'" 
                     icon="pi pi-trash" 
                     severity="danger" 
-                    outlined
-                    size="small"
+                    outlined size="small"
                     @click="deleteSelected"
                 />
             </div>
@@ -65,11 +58,9 @@
                 selectionMode="multiple" 
                 :metaKeySelection="false"
                 dataKey="value"
-                tableStyle="min-width: 50rem"
                 v-if="aggregates.length > 0"
                 class="mb-4"
                 :rowClass="rowClass"
-                editMode="cell" 
             >
                 <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
                 <Column header="Dato (Editable)">
@@ -79,7 +70,6 @@
                             class="w-full p-inputtext-sm"
                             :class="{'p-invalid': slotProps.data.error}"
                             @input="onInputChange(slotProps.data)"
-                            placeholder="Valor vacío..."
                         />
                     </template>
                 </Column>
@@ -88,13 +78,13 @@
                         <span v-if="slotProps.data.error" class="text-red-600 font-bold text-sm flex align-items-center gap-2">
                             <i class="pi pi-exclamation-circle"></i> {{ slotProps.data.error }}
                         </span>
-                        <span v-else-if="isValidated" class="text-green-600 font-bold text-sm flex align-items-center gap-2">
-                            <i class="pi pi-check-circle"></i> Listo
+                        <span v-else-if="slotProps.data.validated" class="text-green-600 font-bold text-sm flex align-items-center gap-2">
+                            <i class="pi pi-check-circle"></i> Listo para guardar
                         </span>
                         <span v-else class="text-gray-400 text-sm">Pendiente de validar...</span>
                     </template>
                 </Column>
-                <Column header="Acciones" headerStyle="width: 5rem; text-align: center" bodyStyle="text-align: center">
+                <Column header="Acciones" headerStyle="width: 5rem; text-align: center">
                     <template #body="slotProps">
                         <Button icon="pi pi-trash" severity="danger" text rounded @click="removeAggregate(slotProps.data)" />
                     </template>
@@ -102,24 +92,30 @@
             </DataTable>
 
             <div class="flex justify-end gap-2" v-if="aggregates.length > 0">
-                <template v-if="isValidated">
+                <template v-if="hasValidatedItems">
                     <Button 
-                        v-if="hasErrors && hasValidItems" 
-                        label="Guardar válidos" 
+                        v-if="hasErrors" 
+                        label="Guardar válidos (ignorar errores)" 
                         icon="pi pi-save" 
                         severity="warning" 
-                        @click="forceSaveValid" 
-                        v-tooltip="'Guardar solo los verdes y eliminar rojos'" 
+                        @click="saveValidRecords" 
+                        v-tooltip="'Guardar solo los verdes'" 
                     />
                     <Button 
-                        v-else-if="!hasErrors" 
-                        label="Guardar todos" 
-                        icon="pi pi-save" 
+                        v-else 
+                        label="Confirmar y Guardar Todo" 
+                        icon="pi pi-check-square" 
                         severity="success" 
-                        @click="forceSaveValid" 
+                        @click="saveValidRecords" 
                     />
                 </template>
-                <Button label="Validar" icon="pi pi-send" @click="sendData" :severity="hasErrors ? 'secondary' : 'primary'" />
+                
+                <Button 
+                    label="Validar Datos" 
+                    icon="pi pi-send" 
+                    @click="validateData" 
+                    :severity="isValidated ? 'secondary' : 'primary'" 
+                />
             </div>
         </div>
 
@@ -174,8 +170,8 @@
             hasErrors() {
                 return this.aggregates.some(item => item.error !== null);
             },
-            hasValidItems() {
-                return this.aggregates.some(item => item.error === null && item.value && item.value.trim() !== '');
+            hasValidatedItems() {
+                return this.aggregates.some(item => item.validated && !item.error);
             }
         },
         async mounted() {
@@ -184,14 +180,10 @@
         methods: {
             async loadExtraFieldOptions() {
                 const fields = this.creation.create_by_aggregate.extra_fields || [];
-                
                 for (const field of fields) {
                     if (field.type === 'selectable' && field.source) {
                         this.store.loading = true;
-                        const results = await this.store.odoo_middleware.getFromOdoo(
-                            field.source, 
-                            ""
-                        );
+                        const results = await this.store.odoo_middleware.getFromOdoo(field.source, "");
                         this.optionsCache[field.source] = results || [];
                         this.store.loading = false;
                     }
@@ -199,90 +191,57 @@
             },
             splitInput() {
                 const text = this.creation.create_by_aggregate.input_aggregate_data;
-
                 if (!text || text.trim().length === 0) return;
-
-                const splitRegex = /[\r\n\t]+/; 
-
-                const rawValues = text
-                    .split(splitRegex)        
-                    .map(i => i.trim())       
-                    .filter(i => i !== '');   
+                const rawValues = text.split(/[\r\n\t]+/).map(i => i.trim()).filter(i => i !== ''); 
 
                 rawValues.forEach(val => {
-                    const existsInPending = this.aggregates.some(agg => agg.value === val);
-                    const existsInSent = this.sentAggregates.some(agg => agg.value === val);
-                    
-                    if (!existsInPending && !existsInSent) {
-                        this.aggregates.push({ value: val, error: null });
+                    if (!this.aggregates.some(agg => agg.value === val) && !this.sentAggregates.some(agg => agg.value === val)) {
+                        this.aggregates.push({ value: val, error: null, validated: false });
                     }
                 });
-
                 this.creation.create_by_aggregate.input_aggregate_data = '';
                 this.isValidated = false; 
             },
-
-            removeAggregate(itemToRemove) {
-                this.aggregates = this.aggregates.filter(item => item.value !== itemToRemove.value);
-                this.selectedAggregates = this.selectedAggregates.filter(item => item.value !== itemToRemove.value);
-            },
-            deleteSelected() {
-                this.aggregates = this.aggregates.filter(item => !this.selectedAggregates.includes(item));
-                this.selectedAggregates = []; 
-            },
-            onInputChange(item) {
-                if (item.error) item.error = null;
-                this.isValidated = false;
-            },
-            rowClass(data) {
-                return data.error ? 'bg-red-50' : '';
-            },
-            async sendData() {
+            async validateData() {
                 this.store.loading = true;
                 this.isValidated = true;
-                let errorCount = 0;
                 
                 for (const item of this.aggregates) {
                     if (!item.value || item.value.trim() === '') {
                          item.error = "El valor no puede estar vacío";
-                         errorCount++;
+                         item.validated = false;
                          continue;
                     }
 
-                    const server_Validaton = await this.store.odoo_middleware.getFromOdoo(
+                    const serverValidation = await this.store.odoo_middleware.getFromOdoo(
                         this.creation.create_by_aggregate.validate_item_endpoint,
                         item.value,
                         null
                     );
                     
-                    if (server_Validaton.error){
-                        item.error = server_Validaton.error_msg;
-                        errorCount++
+                    if (serverValidation.error){
+                        item.error = serverValidation.error_msg;
+                        item.validated = false;
                     } else {
                         item.error = null;
+                        item.validated = true; // Marcamos como listo
                     }                     
                 }
-
-                if (errorCount === 0) this.moveAllToSuccess();
                 this.store.loading = false;
             },
-            async forceSaveValid() {
+            // MÉTODO DE GUARDADO: Ejecución manual
+            async saveValidRecords() {
                 this.triedToSave = true;
 
+                // Validación de campos extra
                 const fields = this.creation.create_by_aggregate.extra_fields || [];
-                const missingRequired = fields.some(f => f.required && !this.extraValues[f.name]);
-                
-                if (missingRequired) {
-                    return;
-                }
+                if (fields.some(f => f.required && !this.extraValues[f.name])) return;
 
-                const validItems = this.aggregates.filter(item => item.error === null && item.value && item.value.trim() !== '');
-                
+                const validItems = this.aggregates.filter(item => item.validated && !item.error);
                 if (validItems.length === 0) return;
 
                 this.store.loading = true;
-                
-                const server_Validaton = await this.store.odoo_middleware.getFromOdoo(
+                const response = await this.store.odoo_middleware.getFromOdoo(
                     this.creation.create_by_aggregate.save_aggregate_endpoint,
                     "", 
                     {
@@ -291,24 +250,35 @@
                     }
                 );
 
-                if (!server_Validaton.error){
+                if (!response.error){
                     this.sentAggregates.push(...validItems);
-                    this.aggregates = this.aggregates.filter(item => item.error !== null);
+                    // Removemos de la lista de trabajo solo los que se enviaron
+                    this.aggregates = this.aggregates.filter(item => !validItems.includes(item));
                     this.selectedAggregates = []; 
                     
                     if (this.aggregates.length === 0) {
                         this.store.closeModal();
                     }
-                } else {
-                    console.error(server_Validaton.error_msg);
-                } 
+                }
                 this.store.loading = false;
-            },
-            moveAllToSuccess() {
-                this.sentAggregates.push(...this.aggregates);
-                this.aggregates = [];
-                this.selectedAggregates = [];
                 this.isValidated = false;
+            },
+            onInputChange(item) {
+                item.error = null;
+                item.validated = false;
+                this.isValidated = false;
+            },
+            removeAggregate(itemToRemove) {
+                this.aggregates = this.aggregates.filter(item => item.value !== itemToRemove.value);
+            },
+            deleteSelected() {
+                this.aggregates = this.aggregates.filter(item => !this.selectedAggregates.includes(item));
+                this.selectedAggregates = []; 
+            },
+            rowClass(data) {
+                if (data.error) return 'bg-red-50';
+                if (data.validated) return 'bg-green-50';
+                return '';
             }
         }
     }
