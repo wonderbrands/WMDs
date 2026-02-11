@@ -1,53 +1,51 @@
 <template>
     <div class="sidebar_manager">
-        <Button class="toggle_sidebar"/>
-        <div style="margin-top: 7em; width: 100%; height: 100%;">
-            <div class="options" v-for="option in Object.keys(store.available_main_manager_screens)" :key="option">
-                <Button v-if="!with_submenu.includes(option)" 
-                @click="selectScreen(option)"
-                :disabled="selected==option"
-                :raised="selected==option"
-                :severity="selected==option ? 'warn' : undefined"
-                :style="selected==option ? 'text:black': undefined"
-                >
-                    {{ store.available_main_manager_screens[option].title }}
-                </Button>
-                <Button v-else @click="deploySubMenu(option)">
-                    {{ store.available_main_manager_screens[option].title }}
-                </Button>
-                <template v-if="deployed_submenus.includes(option)">
-                    <Button v-for="child in store.available_main_manager_screens[option].children" 
-                    @click="selectScreen(child.screen)"
-                    :disabled="selected==child.screen"
-                    :raised="selected==child.screen"
-                    :severity="selected==child.screen ? 'warn' : undefined"
-                    :style="selected==child.screen ? 'text:black': undefined"
-                    class="submenu_child"
+        <Button class="toggle_sidebar" icon="pi pi-bars" />
+        <div class="sidebar_content">
+            <div style="margin-top: 7em; width: 100%;">
+                <div class="options" v-for="option in Object.keys(store.available_main_manager_screens)" :key="option">
+                    
+                    <Button v-if="!with_submenu.includes(option)" 
+                        @click="selectScreen(option)"
+                        :class="{'selected_option': selected == option}"
+                        :disabled="selected == option"
                     >
-                        {{ child.title }}
+                        {{ store.available_main_manager_screens[option].title }}
                     </Button>
-                </template>
-                <!--
-                <Button @click="store.setMainManagerScreen('home')">Inicio</Button>
-                <Button @click="store.setMainManagerScreen('ingreso')">Recibos</Button>
-                <Button @click="store.setMainManagerScreen('disponibilizar')">Disponibilizar</Button>
-                <Button @click="store.setMainManagerScreen('traslado')">Traslado</Button>
-                <Button @click="store.setMainManagerScreen('pick')">Pick</Button>
 
-                <Button @click="store.setMainManagerScreen('devolucion')">Devoluciones</Button>
-                <Button @click="store.setMainManagerScreen('resurtido')">Resurtido</Button>
-                <Button @click="store.setMainManagerScreen('conteos')">Conteos</Button>-->
+                    <Button v-else 
+                        @click="deploySubMenu(option)"
+                        :class="{'active_submenu': deployed_submenus.includes(option)}"
+                    >
+                        {{ store.available_main_manager_screens[option].title }}
+                    </Button>
+
+                    <template v-if="deployed_submenus.includes(option)">
+                        <Button v-for="child in store.available_main_manager_screens[option].children" 
+                            :key="child.screen"
+                            @click="selectScreen(child.screen)"
+                            class="submenu_child"
+                            :class="{'selected_option': selected == child.screen}"
+                            :disabled="selected == child.screen"
+                        >
+                            {{ child.title }}
+                        </Button>
+                    </template>
+                </div>
+                
+                    <LogoutComponent />
+                </div><div class="options">
             </div>
-
-            <LogoutComponent />
         </div>
     </div>
 </template>
+
 <script>
     import Button from "primevue/button";
     import Tree from 'primevue/tree';
     import LogoutComponent from "../RolePicker/LogoutComponent.vue"
     import { useGeneralStore } from "../../store/index"
+
     export default {
         name: "SidebarManagerComponent", 
         data: function() {
@@ -71,7 +69,6 @@
                 this.store.setMainManagerScreen(screen)
             }
         },
-
         components: {
             Button, 
             Tree,

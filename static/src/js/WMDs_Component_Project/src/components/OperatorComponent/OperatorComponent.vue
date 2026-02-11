@@ -26,17 +26,19 @@
                 </div>
             </template>
         </Card>
+        <LogoutComponent />
     </div>
 </template>
 
 <script>
 import Card from "primevue/card";
 import Tree from "primevue/tree";
+import LogoutComponent from "../RolePicker/LogoutComponent.vue"
 import { useGeneralStore } from "../../store/index";
 
 export default {
     name: "OperatorComponent",
-    components: { Card, Tree },
+    components: { Card, Tree, LogoutComponent },
 
     data() {
         return {

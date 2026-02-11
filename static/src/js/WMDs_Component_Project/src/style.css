@@ -18,7 +18,6 @@
     flex-direction: column;
     justify-content: center;
     align-items: center;
-
     button{
         margin: 10px;
         width: 40vw;
@@ -42,7 +41,6 @@ body{
     display: flex;
     flex-direction: row;
     position: relative;
-
     .back_button{
         button{
             width: 40px;
@@ -52,7 +50,6 @@ body{
         top: 10px;
         left: clamp(250px, 28vw, 28vw);
     }
-
     button{
         margin: 10px;
         width: 40vw;
@@ -70,7 +67,7 @@ body{
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    z-index: 3;
+    z-index: 100;
 }
 
 .modal_box{
@@ -93,7 +90,7 @@ body{
     right: 10px;
 }
 
-.sidebar_manager{
+.sidebar_manager {
     height: 100vh;
     width: 25vw;
     min-width: 217px;
@@ -101,12 +98,21 @@ body{
     position: relative;
     display: flex;
     flex-direction: column;
-    align-items: center;   
-    overflow-y: auto;
+    overflow: visible !important; 
     z-index: 10;
 
-    .toggle_sidebar{
-        z-index: 1;
+    .sidebar_content {
+        width: 100%;
+        height: 100%;
+        overflow-y: auto;
+        overflow-x: hidden;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .toggle_sidebar {
+        z-index: 15;
         width: 40px;
         height: 40px;
         border-radius: 20px;
@@ -117,38 +123,57 @@ body{
         margin-top: 2em;
     }
 
-    .options{
+    .options {
         width: 100%;
         display: flex;
         flex-direction: column;
         align-items: center;
-        button{
+        
+        button {
             width: 100%;
             background-color: white;
-            padding: .5em;
+            padding: .7em;
             text-align: left;
+            border: none;
+            border-bottom: 1px solid #eee;
+            transition: all 0.2s ease;
+            color: #4b5563;
+        }
+
+        .selected_option {
+            background-color: #111827 !important; /* Negro intenso */
+            color: #facc15 !important; /* Amarillo/Oro del loader */
+            font-weight: bold !important;
+            border-left: 4px solid #facc15 !important;
+            opacity: 1 !important;
+        }
+
+        .active_submenu {
+            background-color: #f3f4f6;
+            font-weight: 600;
         }
 
         .submenu_child {
             width: 90% !important; 
             margin-left: 1.5em !important;
-            font-size: 0.9em;
+            font-size: 0.85em;
+            border-bottom: 1px solid #f3f4f6;
         }        
     }
 
-    /* FIX LOGOUT BUTTON */
     .LogoutComponent {
         width: 100%;
         display: flex;
         justify-content: center;
-        margin-top: auto; /* Empuja el logout al fondo */
+        margin-top: auto;
         padding-bottom: 2em;
-
         button {
-            width: 80% !important; /* Anula el 40vw del manager_screen */
+            width: 80% !important;
             height: auto !important;
-            border-radius: 8px !important; /* Forma de botón normal */
+            border-radius: 8px !important;
             margin: 0px !important;
+            background-color: #ef4444 !important;
+            color: white !important;
         }
     }
 }
@@ -159,7 +184,6 @@ body{
     display: flex;
     flex-direction: column-reverse;
     align-items: center;
-
     .main_manager_screen{
        width: 100%;
        height: 100%;
@@ -168,24 +192,12 @@ body{
        flex-direction: column;
        align-items: center;
     }
-
     .list_view{
         width: 100%;
         height: 100%;
        overflow-y: scroll;
-
-       .table_wrapper {
-        width: 100%;
-      }
-      .p-paginator-content{
-        button{
-            width: auto !important;
-        }
-      }
-    }
-
-    .title_section{
-        width: 70%;
+       .table_wrapper { width: 100%; }
+       .p-paginator-content { button { width: auto !important; } }
     }
 }
 
@@ -200,56 +212,20 @@ body{
     padding-bottom: 3em;
     position: relative;
     overflow: hidden;
-
-    .title_section{
-        width: 100%;
-        height: 10vh;
-        min-height: 80px;
-        text-align: center;
-    }
-
+    .title_section{ width: 100%; height: 10vh; min-height: 80px; text-align: center; }
     .form_items{
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: center;
-        align-content: flex-start;
-        overflow-y: scroll;
-
+        width: 100%; height: 100%; display: flex; flex-direction: row; flex-wrap: wrap;
+        align-items: center; justify-content: center; align-content: flex-start; overflow-y: scroll;
         .field{
-            width: 50%;
-            height: 10vh;
-            min-width: 40px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            margin-top: 2rem;
+            width: 50%; height: 10vh; min-width: 40px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; margin-top: 2rem;
             .p-floatlabel{
-                width: 100%;
-                height: 100%;
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                .p-inputtext{
-                    width: 90%;
-                }
-                .p-select{
-                    width: 90%;
-                }
+                width: 100%; height: 100%; display: flex; flex-direction: column;
+                align-items: center; justify-content: center;
+                .p-inputtext{ width: 90%; }
+                .p-select{ width: 90%; }
             }
         }
     }
-    .p-button{
-        width: 20vw;
-        height: 7vh;
-        position: fixed;
-        right: 2vw;
-        bottom: 2vh;
-        z-index: 5;
-    }
+    .p-button{ width: 20vw; height: 7vh; position: fixed; right: 2vw; bottom: 2vh; z-index: 5; }
 }
