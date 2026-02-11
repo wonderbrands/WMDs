@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <record id="wmds_stock_pick_batch_inherit" model="ir.ui.view">
+            <field name="name">wmds.stock.pick.batch.inherit</field>
+            <field name="model">stock.picking.batch</field>
+            <field name="inherit_id" ref="stock_picking_batch.stock_picking_batch_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//notebook" position="inside">
+                    <page string="WMDS" name="wmds_logs">
+                        <field name="wmds_log">
+                            <list>
+                                <field name="log"/>
+                                <field name="date"/>
+                                <field name="user"/>
+                            </list>
+                        </field>
+                    </page>
+                </xpath>
+            </field>
+        </record>
+
+    </data>
+</odoo>
