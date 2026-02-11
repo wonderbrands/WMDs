@@ -234,7 +234,7 @@ class GetPicks(http.Controller):
 
             else:
                 picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
-                next_op = request.env['stock.picking'].sudo.search([
+                next_op = request.env['stock.picking'].sudo().search([
                     ('group_id', '=', picking.group_id.id),
                     ('picking_type_id.name', '=', operation_type),
                     ('state', 'not in', ['cancel'])
