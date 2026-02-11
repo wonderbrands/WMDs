@@ -70,7 +70,7 @@ export default {
       }
     }
 
-    this.store.mandatory_uncompleted.loadFromStorage();
+    this.store.mandatory_uncompleted.loadFromStorage(this.role);
     console.log(this.store.mandatory_uncompleted)
 
     if (this.store.mandatory_uncompleted.screen) {
