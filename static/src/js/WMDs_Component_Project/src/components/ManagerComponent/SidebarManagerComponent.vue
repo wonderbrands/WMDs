@@ -22,6 +22,7 @@
                     :raised="selected==child.screen"
                     :severity="selected==child.screen ? 'warn' : undefined"
                     :style="selected==child.screen ? 'text:black': undefined"
+                    class="submenu_child"
                     >
                         {{ child.title }}
                     </Button>

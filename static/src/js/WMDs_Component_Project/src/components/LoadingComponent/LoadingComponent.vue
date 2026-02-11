@@ -19,7 +19,7 @@ export default {
     justify-content: center;
     align-items: center;
     position: fixed;
-    z-index: 1;
+    z-index: 500;
     left: 0;
     top: 0;
 }
