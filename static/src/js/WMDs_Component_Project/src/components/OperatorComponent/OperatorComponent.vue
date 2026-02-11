@@ -26,7 +26,7 @@
                 </div>
             </template>
         </Card>
-        <LogoutComponent />
+        <LogoutComponent style="width: 100%;"/>
     </div>
 </template>
 
