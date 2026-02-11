@@ -129,19 +129,3 @@ export default {
     }
 };
 </script>
-
-<style scoped>
-.task-container {
-    overflow-y: scroll; 
-    padding: 1em; 
-    width: 100%; 
-    height: 100%; 
-    display: flex; 
-    flex-direction: column;
-}
-.welcome-header { margin: 1em; }
-.task-card { margin: 1em; }
-.pending-badge { font-style: italic; color: red; }
-.empty-tasks { padding: 1em; color: #666; font-style: italic; }
-.full-width { width: 100%; }
-</style>
