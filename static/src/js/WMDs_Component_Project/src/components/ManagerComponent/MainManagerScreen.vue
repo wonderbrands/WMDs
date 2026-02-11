@@ -1,6 +1,6 @@
 <template>
   <article class="main_manager_screen">
-    <ListView v-if="['ingreso', 'disponibilizar', 'traslado', 'pick', 'devolucion', 'resurtido', 'batch_pick'].includes(store.main_manager_screen.value)"/>
+    <ListView v-if="['ingreso', 'disponibilizar', 'traslado', 'pick', 'devolucion', 'resurtido', 'batch_pick', 'cycle_count'].includes(store.main_manager_screen.value)"/>
   </article>
 </template>
 
@@ -8,22 +8,22 @@
     import { useGeneralStore } from "../../store/index"
     import ListView from './ListView.vue'
     export default {
-    name: 'MainManagerScreen',
+      name: 'MainManagerScreen',
 
-    data() {
-        return {
-            store: useGeneralStore(),
-        };
-    },
+      data() {
+          return {
+              store: useGeneralStore(),
+          };
+      },
 
-    mounted() {
-    },
+      mounted() {
+      },
 
-    methods: {
-        
-    },
-    components: {
-        ListView
-    }
+      methods: {
+          
+      },
+      components: {
+          ListView
+      }
     }
 </script>

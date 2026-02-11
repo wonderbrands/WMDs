@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { reactive } from 'vue'
 import RolePickerEngine from "../components/RolePicker/RolePickerEngine"
 import OdooManagerMiddleware from '../components/Forms/OdooManagerMiddleware'
+import MandatoryUncompleted from './MandatoryUncompleted'
 
 
 export const useGeneralStore = defineStore('general_store', {
@@ -14,6 +15,7 @@ export const useGeneralStore = defineStore('general_store', {
       modal_context: null,
       form_context: null,
       last_scanned_element: null,
+      mandatory_uncompleted: new MandatoryUncompleted(),
       available_main_manager_screens: {
         home:{
             title: "Inicio",
@@ -77,8 +79,14 @@ export const useGeneralStore = defineStore('general_store', {
                     }
                 }
             ]
-                        
-
+        },
+        cycle_count: {
+            title: "Conteo cíclico",
+            description: "Creación y asignación de rutinas de conteo cíclico de inventario",
+            value: "cycle_count",
+            cycle_count: {
+                button_string: "Crear conteo cíclico"
+            }
         },
         devolucion: {
             title: "Devoluciones",
@@ -94,6 +102,7 @@ export const useGeneralStore = defineStore('general_store', {
     setCurrentScreen(newScreen) {
         this.loading = true
         this.current_screen = newScreen
+        this.loading = false
     },
     currentScreenLoaded() {
         this.loading = false

@@ -8,6 +8,11 @@
         :label="store.main_manager_screen.create_by_aggregate.button_string" 
         @click="onRowClick($event, store.main_manager_screen)"/> 
       </div>
+      <div v-else-if="store.main_manager_screen.cycle_count">
+        <Button 
+        :label="store.main_manager_screen.cycle_count.button_string" 
+        @click="cycleCountCreate($event, store.main_manager_screen)"/> 
+      </div>
     </div>
     <div class="table_wrapper">
       <DataTable
@@ -102,9 +107,9 @@ export default {
       },
 
       pagination: {
-        page: 1,   // backend (1-based)
-        rows: 30,  // per page
-        first: 0   // PrimeVue (0-based)
+        page: 1,   
+        rows: 30, 
+        first: 0  
       },
 
       debounceTimeout: null
@@ -112,6 +117,11 @@ export default {
   },
 
   methods: {
+    cycleCountCreate(event, modal){
+      event.data = {}
+      event.data.cycle_count = modal.cycle_count
+      this.store.openModal(modal.value, event)
+    },
     /* -------------------- ROW -------------------- */
     onRowClick(event, modal) {
       console.log("event")
