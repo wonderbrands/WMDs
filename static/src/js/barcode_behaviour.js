@@ -98,6 +98,14 @@ patch(BarcodeModel.prototype, {
 
     async _metodo_final_post_validacion(record, result) {
         console.log("[Custom] >> 3.6 Ejecución de placeholder final ");
+        const session_wmds = window.sessionStorage.getItem("wmds_logged_user");
+        let user = "";
+        if (session_wmds) {
+            try {
+                const json_session = JSON.parse(session_wmds);
+                user = json_session.email;
+            } catch (e) { console.error("Error parseando sesión", e); }
+        }
         
         localStorage.setItem("mandatory_uncompleted",
             JSON.stringify(
@@ -112,7 +120,8 @@ patch(BarcodeModel.prototype, {
                             pick_id: record.id,
                             operation_type: "Pack"
                         }
-                    }
+                    },
+                    user: user
                 }
             )
         );
