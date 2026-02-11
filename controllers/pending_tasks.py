@@ -26,10 +26,10 @@ class PendingTasks(http.Controller):
             }
 
             if task=="batch_pick":
-                pending_tasks = request.env['stock.picking.batch'].sudo().search(
+                pending_tasks = request.env['stock.picking.batch'].sudo().search([
                     ('state', '=', 'in_progress'),
                     ('operator.login', '=', email)
-                )
+                ])
 
             else:
                 fields = [
