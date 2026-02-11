@@ -71,6 +71,7 @@ export default {
     }
 
     this.store.mandatory_uncompleted.loadFromStorage();
+    console.log(this.store.mandatory_uncompleted)
 
     if (this.store.mandatory_uncompleted.screen) {
       this.store.setCurrentScreen(this.store.mandatory_uncompleted.screen);

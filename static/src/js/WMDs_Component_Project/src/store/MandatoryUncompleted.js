@@ -26,7 +26,7 @@ export default class MandatoryUncompleted{
 
     loadFromStorage(logged){
         let parsed = {}
-        let mandatory = localStorage.getItem("mandadoty_uncompleted")
+        let mandatory = localStorage.getItem("mandatory_uncompleted")
         if(!mandatory){
             return null
         }
@@ -39,7 +39,7 @@ export default class MandatoryUncompleted{
     }
     
     doneMandatory(){
-        localStorage.removeItem("mandadoty_uncompleted")
+        localStorage.removeItem("mandatory_uncompleted")
         const defaults = {
             screen : null,
             component: null,
