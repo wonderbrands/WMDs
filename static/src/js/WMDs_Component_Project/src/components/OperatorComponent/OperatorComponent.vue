@@ -1,9 +1,9 @@
 <template>
-    <div v-if="!operator_task" class="task-container">
+    <div  class="task-container">
         <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
         
         <Card v-for="task in activeTasks" :key="task.id" class="task-card">
-            <template #title>{{ task.title }}</template>
+            <template #title>{{ task.title }}</template> 
             <template #subtitle>{{ task.description }}</template>
 
             <template #content v-if="task.assigned.length > 0">
@@ -21,6 +21,10 @@
                     @node-select="openTask"
                     class="full-width"
                 />
+                <div v-else-if="task.view"
+                @click="createView(task)">
+                    {{ task.label }}
+                </div>
                 <div v-else class="empty-tasks">
                     Sin tareas asignadas
                 </div>
@@ -44,13 +48,14 @@ export default {
         return {
             store: useGeneralStore(),
             current_task: {},
-            operator_task: false,
+            mountExtraView: false,
             taskDefinitions: [
                 { id: "ingresos", title: "Recepciones", description: "Validación de productos ingresados.", fetch: true, label: "Asignados a mi" },
                 { id: "acomodo", title: "Acomodo/Storage", description: "Acomodo de productos.", fetch: true, label: "Abiertos" },
                 { id: "traslados", title: "Traslados", description: "Traslado interno entre ubicaciones.", fetch: false, label: "Asignados a mi" },
                 { id: "batch_pick", title: "Plan de pickeo", description: "Preparación para empaque.", fetch: true, label: "Asignados a mi" },
-                { id: "conteo_ciclico", title: "Conteo cíclico", description: "Conteo de unidades.", fetch: false, label: "Pendientes" }
+                { id: "conteo_ciclico", title: "Conteo cíclico", description: "Conteo de unidades.", fetch: false, label: "Pendientes" },
+                {id: "bin", title:"Ingresar productos a bin", description:"Ingresar productos a bin", fech: false, label: "Registrar", view: "BinComponent" }
             ],
             tasks: []
         };
@@ -110,21 +115,16 @@ export default {
             const { odoo_middleware, role } = this.store;
             
             const urlPromise = odoo_middleware.getFromOdoo("get_barcode_url", "", { pick_name: pick });
-            
-            /*await Promise.all([
-                urlPromise,
-                odoo_middleware.getFromOdoo("log_record", "", {
-                    pick_name: pick,
-                    operator_mail: role.email,
-                    message: `La operación ha sido abierta por el operador`,
-                }),
-                odoo_middleware.getFromOdoo("change_status", "", { 
-                    pick_name: pick, 
-                    status: "in_progress" 
-                })
-            ]);*/
-
             window.location.href = await urlPromise;
+        },
+        createView(view){
+            this.store.mandatory_uncompleted.component_props = {
+                        context: "move_to_bin",
+                        instructions: "Ingresa a Bin",
+                        can_close: true
+            }
+            this.store.mandatory_uncompleted.component = "QRScannerComponent"
+
         }
     }
 };
