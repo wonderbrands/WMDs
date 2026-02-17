@@ -24,60 +24,39 @@ class GetURLOfPick(http.Controller):
         try:
             pick_name = kw.get('pick_name')
             
-
             if not pick_name:
                 return {
                     "error": "Bad request",
                     "message": "Missing required field: pick_name"
                 }
 
-            if pick_name.startswith("BATCH"):
-                barcode_action = request.env['ir.actions.actions'].sudo().search(
-                    [
-                        (
-                            'name', '=', 'Barcode Batch Picking Client Action'
-                        )
-                    ], 
-                    limit=1
-                )
-                batch_id = request.env['stock.picking.batch'].sudo().search([('name', '=', pick_name)], limit=1).id
-                if not batch_id:
-                    return {
-                        "error": "Bad request",
-                        "message": "Pick not found"
-                    }
-                url = f"/odoo/barcode/{batch_id}/action-{barcode_action.id}"
-
-            else:
-                pick_id = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1).id
-                if not pick_id:
-                    return {
-                        "error": "Bad request",
-                        "message": "Pick not found"
-                    }
-                action_id = request.env['ir.actions.actions'].sudo().search(
-                    [
-                        (
-                            'name', '=', 'Barcode Picking Client Action'
-                        )
-                    ], 
-                    limit=1
-                )
-                if not action_id:
-                    return {
-                        "error": "Bad request",
-                        "message": "Barcode Action not found"
-                    }
-                url = f"/odoo/barcode/{pick_id}/action-{action_id.id}"
-
-            return {
-                "url": url
-            }
             
-        except:
+            if pick_name.startswith("BATCH"):
+                action = request.env.ref('stock_barcode.stock_barcode_batch_picking_client_action', raise_if_not_found=False)
+                record = request.env['stock.picking.batch'].sudo().search([('name', '=', pick_name)], limit=1)
+                
+                if not record:
+                    return {"error": "Bad request", "message": "Batch Pick not found"}
+            else:
+                action = request.env.ref('stock_barcode.stock_barcode_picking_client_action', raise_if_not_found=False)
+                record = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1)
+                
+                if not record:
+                    return {"error": "Bad request", "message": "Pick not found"}
+
+            if not action:
+                return {"error": "Internal Error", "message": "Barcode Client Action not found in system"}
+
+            url = f"/odoo/barcode/{record.id}/action-{action.id}"
+
+            return {"url": url}
+            
+        except Exception as e:
+            logger.error(traceback.format_exc())
             return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
+                "error": "Internal Server Error",
+                "message": str(e)
+            }    
 
     @http.route(
         '/wmds/v2/engine/get/wmds-url',

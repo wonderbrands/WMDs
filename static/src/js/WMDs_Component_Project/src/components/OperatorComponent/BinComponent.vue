@@ -1,8 +1,8 @@
 <template>
     <div class="test-flow-container" style="display: flex; flex-direction: column; gap: 1rem; height: 100vh; padding: 10px;">
         
-        <div class="scanner-section" style="display: flex; gap: 10px; height: 40%;">
-            <div style="flex: 1; border: 2px dashed #3498db; border-radius: 8px; overflow: hidden;">
+        <div class="scanner-section" style="display: flex; gap: 10px; height: 40%; min-height: 250px;">
+            <div v-if="ready" style="flex: 1; border: 2px dashed #3498db; border-radius: 8px; overflow: hidden; position: relative;">
                 <QRScannerComponent 
                     context="TEST_QR"
                     instructions="Escáner QR (Prueba)"
@@ -10,7 +10,7 @@
                 />
             </div>
 
-            <div style="flex: 1; border: 2px dashed #e67e22; border-radius: 8px; overflow: hidden;">
+            <div v-if="ready" style="flex: 1; border: 2px dashed #e67e22; border-radius: 8px; overflow: hidden; position: relative;">
                 <BarcodeScannerComponent 
                     context="TEST_BARCODE"
                     instructions="Escáner Barcode (Prueba)"
@@ -59,30 +59,31 @@ export default {
     data() {
         return {
             store: useGeneralStore(),
-            logs: []
+            logs: [],
+            ready: false
         }
     },
     mounted(){
-        localStorage.removeItem("mandatory_uncompleted")
-
+        localStorage.removeItem("mandatory_uncompleted");
+        // Delay mounting scanners to ensure DOM/Refs are ready
+        setTimeout(() => {
+            this.ready = true;
+        }, 500);
     },
     methods: {
         addLog(type, data) {
             console.log(`Log Registrado (${type}):`, data);
-            
             this.logs.unshift({
                 type: type,
                 data: data,
                 time: new Date().toLocaleTimeString()
             });
-
             this.$forceUpdate();
         },
-
         processFinalLog() {
             console.log("--- RESULTADO DE LA PRUEBA ---");
             console.table(this.logs);
-            alert(`Se capturaron ${this.logs.length} elementos. Revisa la consola.`);
+            alert(`Se capturaron ${this.logs.length} elementos.`);
         }
     }
 }
