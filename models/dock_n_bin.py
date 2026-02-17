@@ -5,7 +5,7 @@ import base64
 from io import BytesIO
 
 class BinCartStorage(models.Model):
-    _inherit = "bin.storage"
+    _name = "bin.storage"
 
     name = fields.Char(string="Nombre de BIN", required=True)
 
@@ -50,7 +50,7 @@ class BinCartStorage(models.Model):
             record.qr_image = qr_base64
 
 class DockStorage(models.Model):
-    _inherit = "dock.storage"
+    _name = "dock.storage"
 
     name = fields.Char(string="Nombre de DOCK", required=True)
 
