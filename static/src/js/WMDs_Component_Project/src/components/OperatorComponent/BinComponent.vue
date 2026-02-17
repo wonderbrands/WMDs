@@ -63,7 +63,8 @@ export default {
         }
     },
     mounted(){
-        this.store.mandatory_uncompleted.doneMandatory()
+        localStorage.removeItem("mandatory_uncompleted")
+
     },
     methods: {
         addLog(type, data) {

@@ -23,14 +23,7 @@ class GetURLOfPick(http.Controller):
     def get_pick_url(self, **kw):
         try:
             pick_name = kw.get('pick_name')
-            action_id = request.env['ir.actions.actions'].sudo().search(
-                [
-                    (
-                        'name', '=', 'Barcode Picking Client Action'
-                    )
-                ], 
-                limit=1
-            )
+            
 
             if not pick_name:
                 return {
@@ -61,6 +54,19 @@ class GetURLOfPick(http.Controller):
                     return {
                         "error": "Bad request",
                         "message": "Pick not found"
+                    }
+                action_id = request.env['ir.actions.actions'].sudo().search(
+                    [
+                        (
+                            'name', '=', 'Barcode Picking Client Action'
+                        )
+                    ], 
+                    limit=1
+                )
+                if not action_id:
+                    return {
+                        "error": "Bad request",
+                        "message": "Barcode Action not found"
                     }
                 url = f"/odoo/barcode/{pick_id}/action-{action_id.id}"
 
