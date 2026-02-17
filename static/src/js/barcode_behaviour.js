@@ -29,9 +29,10 @@ patch(BarcodeModel.prototype, {
                 console.log(`[Custom] >> 3.3 Mandando log individual para Pick ID: ${pickId}`);
                 await this._enviar_log(pickInfo, "external", `Validación vía Batch: ${this.record.name}`);
             }
+
+            await this._metodo_final_post_validacion(this.record, result);
         }
 
-        await this._metodo_final_post_validacion(this.record, result);
 
         return result;
     },
@@ -114,7 +115,7 @@ patch(BarcodeModel.prototype, {
                     component: "QRScannerComponent",
                     component_props: {
                         context: "assign_pack_for_operator",
-                        instructions: "Escanea el QR del Operador para asignar el empaquetado (Pack)",
+                        instructions: "Escanea la linea de empaque para asignar el Pack",
                         can_close: true,
                         extra_data: {
                             pick_id: record.id,

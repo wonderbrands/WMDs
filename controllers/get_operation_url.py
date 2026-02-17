@@ -32,10 +32,10 @@ class GetURLOfPick(http.Controller):
                 limit=1
             )
 
-            if not pick_name or not action_id:
+            if not pick_name:
                 return {
                     "error": "Bad request",
-                    "message": "Missing required field: pick_id or action_id"
+                    "message": "Missing required field: pick_name"
                 }
 
             if pick_name.startswith("BATCH"):
@@ -53,7 +53,7 @@ class GetURLOfPick(http.Controller):
                         "error": "Bad request",
                         "message": "Pick not found"
                     }
-                url = f"/odoo/barcode/{batch_id}/action-{barcode_action}"
+                url = f"/odoo/barcode/{batch_id}/action-{barcode_action.id}"
 
             else:
                 pick_id = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1).id

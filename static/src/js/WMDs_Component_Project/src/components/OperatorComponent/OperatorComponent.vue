@@ -6,7 +6,7 @@
             <template #title>{{ task.title }}</template> 
             <template #subtitle>{{ task.description }}</template>
 
-            <template #content v-if="task.assigned.length > 0">
+            <template #content v-if="task.assigned.length > 0 && !task.view">
                 <span class="pending-badge">
                     {{ task.assigned[0].children.length }} pendientes
                 </span>
@@ -55,7 +55,7 @@ export default {
                 { id: "traslados", title: "Traslados", description: "Traslado interno entre ubicaciones.", fetch: false, label: "Asignados a mi" },
                 { id: "batch_pick", title: "Plan de pickeo", description: "Preparación para empaque.", fetch: true, label: "Asignados a mi" },
                 { id: "conteo_ciclico", title: "Conteo cíclico", description: "Conteo de unidades.", fetch: false, label: "Pendientes" },
-                {id: "bin", title:"Ingresar productos a bin", description:"Ingresar productos a bin", fech: false, label: "Registrar", view: "BinComponent" }
+                {id: "bin", title:"Ingresar productos a bin", description:"Ingresar productos a bin", fetch: false, label: "Registrar", view: "BinComponent" }
             ],
             tasks: []
         };
@@ -117,14 +117,8 @@ export default {
             const urlPromise = odoo_middleware.getFromOdoo("get_barcode_url", "", { pick_name: pick });
             window.location.href = await urlPromise;
         },
-        createView(view){
-            this.store.mandatory_uncompleted.component_props = {
-                        context: "move_to_bin",
-                        instructions: "Ingresa a Bin",
-                        can_close: true
-            }
-            this.store.mandatory_uncompleted.component = "QRScannerComponent"
-
+        createView(task){
+            this.store.mandatory_uncompleted.component = task.view
         }
     }
 };

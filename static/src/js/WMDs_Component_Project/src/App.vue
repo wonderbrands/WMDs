@@ -29,6 +29,7 @@ import ManagerComponent from "./components/ManagerComponent/ManagerComponent.vue
 import OperatorComponent from "./components/OperatorComponent/OperatorComponent.vue"
 import QRScannerComponent from "./components/QRScannerComponent/QRScannerComponent.vue"
 import LogoutComponent from "./components/RolePicker/LogoutComponent.vue"
+import BinComponent  from "./components/OperatorComponent/BinComponent.vue"
 import { useGeneralStore } from "./store/index"
 
 export default {
@@ -39,7 +40,8 @@ export default {
     ManagerComponent,
     OperatorComponent,
     QRScannerComponent,
-    LogoutComponent
+    LogoutComponent,
+    BinComponent
   },
   data() {
     return {
