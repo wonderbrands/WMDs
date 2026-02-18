@@ -26,9 +26,7 @@ class DockNBin(http.Controller):
             
             else:
                 return {
-                    "valid": True,
-                    "so": attachment.so_id.name,
-                    "name": attachment.display_name_custom
+                    "valid": False,
                 }
             
         except Exception as e:

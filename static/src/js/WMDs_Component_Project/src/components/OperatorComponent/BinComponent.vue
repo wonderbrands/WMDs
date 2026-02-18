@@ -2,30 +2,15 @@
     <div class="test-flow-container" style="display: flex; flex-direction: column; gap: 1rem; height: 100vh; padding: 10px;">
         
         <div class="scanner-section" style="display: flex; gap: 10px; height: 40%; min-height: 250px;">
-            <!--
-            <div v-if="ready" style="flex: 1; border: 2px dashed #3498db; border-radius: 8px; overflow: hidden; position: relative;">
-                <QRScannerComponent 
-                    context="TEST_QR"
-                    instructions="Escane"
-                    :onScan="(data) => addLog('QR', data)"
-                />
-            </div>
-
-            <div v-if="ready" style="flex: 1; border: 2px dashed #e67e22; border-radius: 8px; overflow: hidden; position: relative;">
-                <BarcodeScannerComponent 
-                    context="TEST_BARCODE"
-                    instructions="Escáner Barcode (Prueba)"
-                    :onScan="(data) => addLog('BARCODE', data)"
-                />
-            -->
             <div v-if="ready && !scan_bin" style="flex: 1; overflow: hidden; position: relative;">
                 <BarcodeScannerComponent 
                     context="scan_so"
                     instructions="Escanea la etiqueta de orden SO"
                     :onScan="(data) => serachAndValidateSO(data)"
                 />
-                <Button v-if="so.length >0"
-                class="p-button-success p-button-sm" label="Trasladar a BIN" />
+                <Button v-if="so.length > 0"
+                    @click="scan_bin = true"
+                    class="p-button-success p-button-sm" label="Trasladar a BIN" />
             </div>
             <div v-else-if="ready && scan_bin" style="flex: 1; overflow: hidden; position: relative;">
                 <QRScannerComponent 
@@ -45,12 +30,12 @@
 
             <div class="log-list" style="flex: 1; overflow-y: auto; background: #34495e; border-radius: 4px; padding: 10px;">
                 <div v-for="(order, index) in so" :key="index" 
-                     style="padding: 5px 0; border-bottom: 1px solid #5d6d7e; font-family: monospace;">
+                     style="padding: 5px 0; border-bottom: 1px solid #5d6d7e; font-family: monospace; display: flex; justify-content: space-between;">
                     <div>
                         {{ order }}
                     </div>
-                    <div @click="so.splice(index,1)">
-                        x
+                    <div @click="so.splice(index,1)" style="cursor: pointer; color: #e74c3c; font-weight: bold; padding: 0 10px;">
+                        X
                     </div>
                 </div>
                 <div v-if="so.length === 0" style="text-align: center; color: #7f8c8d; margin-top: 20px;">
@@ -78,48 +63,65 @@ export default {
         return {
             store: useGeneralStore(),
             scan_bin: false,
-            so:[],
+            so: [],
             ready: false
         }
     },
-    mounted(){
+    mounted() {
+        console.log("Component mounted");
         localStorage.removeItem("mandatory_uncompleted");
         setTimeout(() => {
             this.ready = true;
+            console.log("Scanner ready");
         }, 500);
     },
     methods: {
-        async serachAndValidateSO(data){
-            if (this.so.includes(data)){
+        async serachAndValidateSO(data) {
+            console.log("Raw data received:", data);
+            try {
+                let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+                let nameToValidate = parsedData.name;
+                console.log("Parsed name:", nameToValidate);
 
-            } else {
-                let response = await this.store.odoo_middleware.getFromOdoo("validate_attachment_guide'", "",
-                    {
-                        attachment_id: data,
-                    }
-                )
-                if (response.valid){
-                    this.so.push(response.name)
+                if (this.so.includes(nameToValidate)) {
+                    console.log("Order already in list");
+                    return;
                 }
-            }
-           
-        },
-        async validateBin(data){
-            if (this.so.length === 0){
 
-            } else {
-                let response = await this.store.odoo_middleware.getFromOdoo("move_to_bin", "",
-                    {
-                        bin: data,
-                        operator: this.store.role.email,
-                        orders: this.so
-                    }
-                )
-                if (response.ok){
-                    this.store.mandatory_uncompleted.doneMandatory()
+                let response = await this.store.odoo_middleware.getFromOdoo("validate_attachment_guide", "", {
+                    attachment_id: nameToValidate,
+                });
+                console.log("Odoo response:", response);
+
+                if (response.valid) {
+                    this.so.push(nameToValidate);
+                    console.log("Current SO list:", this.so);
                 }
+            } catch (e) {
+                console.log("Error parsing JSON or validating:", e);
             }
         },
+        async validateBin(data) {
+            console.log("Bin scan received:", data);
+            if (this.so.length === 0) {
+                console.log("No orders to move");
+                return;
+            }
+
+            let response = await this.store.odoo_middleware.getFromOdoo("move_to_bin", "", {
+                bin: data,
+                operator: this.store.role.email,
+                orders: this.so
+            });
+            console.log("Move to bin response:", response);
+
+            if (response.ok) {
+                console.log("Operation successful");
+                this.store.mandatory_uncompleted.doneMandatory();
+                this.so = [];
+                this.scan_bin = false;
+            }
+        }
     }
 }
 </script>
