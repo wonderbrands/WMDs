@@ -38,29 +38,47 @@
         extra_data: Object
     },
     mounted() {
+        console.log("BarcodeScanner: Iniciando flujo de montaje");
         this.initCamera();
     },
     beforeUnmount() {
+        console.log("BarcodeScanner: Destruyendo instancia antes del desmontaje");
         this.closeScanner();
     },
     methods: {
         async mountBarcodeScanner() {
             const video = this.$refs.barcodeScanner;
-            if (!video) return false;
+            if (!video) {
+                console.log("BarcodeScanner Error: Referencia de video no encontrada");
+                return false;
+            }
 
             try {
                 this.scanner = new window.QrScanner(
                     video,
                     result => {
                         const data = result.data || result;
-                        console.log("data:", data)
+                        console.log("BarcodeScanner detectado:", data);
                         if (this.onScan) this.onScan(data);
                     },
-                    { preferredCamera: "environment", highlightScanRegion: true, returnDetailedScanResult: true }
+                    { 
+                        preferredCamera: "environment", 
+                        highlightScanRegion: true, 
+                        returnDetailedScanResult: true,
+                        maxScansPerSecond: 10,
+                        highlightCodeOutline: true
+                    }
                 );
+
+                console.log("BarcodeScanner: Instancia creada, iniciando motor");
                 await this.scanner.start();
+                
+                const hasFlash = await this.scanner.hasFlash();
+                console.log("BarcodeScanner: Cámara iniciada. Flash disponible:", hasFlash);
+                
                 return true;
             } catch (err) {
+                console.log("BarcodeScanner Excepción:", err.message);
                 this.error = `Error: ${err.message}`;
                 return false;
             }
@@ -68,18 +86,24 @@
         async initCamera() {
             try {
                 this.camera_init = true;
+                console.log("BarcodeScanner: Solicitando acceso a cámara");
                 await this.$nextTick();
-                // Critical buffer for DOM rendering
-                await new Promise(resolve => setTimeout(resolve, 200));
+                await new Promise(resolve => setTimeout(resolve, 300));
+                
                 const success = await this.mountBarcodeScanner();
-                if (!success) this.camera_init = false;
+                if (!success) {
+                    console.log("BarcodeScanner: Falló mountBarcodeScanner");
+                    this.camera_init = false;
+                }
             } catch (err) {
+                console.log("BarcodeScanner Critical Error:", err);
                 this.error = "Permissions error";
                 this.camera_init = false;
             }
         },
         closeScanner() {
             if (this.scanner) {
+                console.log("BarcodeScanner: Ejecutando destroy()");
                 this.scanner.destroy();
                 this.scanner = null;
             }
