@@ -75,9 +75,9 @@ class DockNBin(http.Controller):
             for so in orders:
                 request.env["log.line"].sudo().create(
                     {
-                        "operator_id": operator_orm.id
-                        "qty": 1
-                        "message": f"Paquete {so} movido a {bin_orm.name}"
+                        "operator_id": operator_orm.id,
+                        "qty": 1,
+                        "message": f"Paquete {so} movido a {bin_orm.name}",
                         "bin_log_id": bin_orm.id
                     }
                 )
