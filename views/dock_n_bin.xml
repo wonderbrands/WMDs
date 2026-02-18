@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="action_bin_storage" model="ir.actions.act_window">
+        <field name="name">Bin Storage Locations</field>
+        <field name="res_model">bin.storage</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_bin_log" model="ir.actions.act_window">
+        <field name="name">Bin Logs</field>
+        <field name="res_model">bin.log</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_dock_storage" model="ir.actions.act_window">
+        <field name="name">Dock Storage Locations</field>
+        <field name="res_model">dock.storage</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_dock_log" model="ir.actions.act_window">
+        <field name="name">Dock Logs</field>
+        <field name="res_model">dock.log</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <menuitem
+        id="bin_storage_location_menu"
+        name="Storage Locations"
+        parent="bin_menu"
+        action="action_bin_storage"
+        sequence="10"/>
+
+    <menuitem
+        id="bin_log_submenu"
+        name="Logs"
+        parent="bin_menu"
+        action="action_bin_log"
+        sequence="20"/>
+
+    <menuitem
+        id="dock_storage_location_menu"
+        name="Storage Locations"
+        parent="dock_menu"
+        action="action_dock_storage"
+        sequence="10"/>
+
+    <menuitem
+        id="dock_log_submenu"
+        name="Logs"
+        parent="dock_menu"
+        action="action_dock_log"
+        sequence="20"/>
+
+
+    <record id="action_bin_storage" model="ir.actions.act_window">
+        <field name="name">Bins</field>
+        <field name="res_model">bin.storage</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="action_dock_storage" model="ir.actions.act_window">
+        <field name="name">Docks</field>
+        <field name="res_model">dock.storage</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <record id="view_bin_storage_list" model="ir.ui.view">
+        <field name="name">bin.storage.list</field>
+        <field name="model">bin.storage</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_bin_storage_form" model="ir.ui.view">
+        <field name="name">bin.storage.form</field>
+        <field name="model">bin.storage</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                        </group>
+                        <group>
+                            <field name="qr_image" widget="image" class="oe_avatar"/>
+                            <field name="qr_code_structure" readonly="1"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_dock_storage_list" model="ir.ui.view">
+        <field name="name">dock.storage.list</field>
+        <field name="model">dock.storage</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_dock_storage_form" model="ir.ui.view">
+        <field name="name">dock.storage.form</field>
+        <field name="model">dock.storage</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                        </group>
+                        <group>
+                            <field name="qr_image" widget="image" class="oe_avatar"/>
+                            <field name="qr_code_structure" readonly="1"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_bin_log_form" model="ir.ui.view">
+        <field name="name">bin.log.form</field>
+        <field name="model">bin.log</field>
+        <field name="arch" type="xml">
+            <form edit="0" create="0">
+                <sheet>
+                    <group>
+                        <field name="bin_id" readonly="1"/>
+                    </group>
+                    <notebook>
+                        <page string="Líneas de Log">
+                            <field name="line_ids" readonly="1">
+                                <list>
+                                    <field name="counted_at"/>
+                                    <field name="operator_id"/>
+                                    <field name="message"/>
+                                    <field name="qty"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    
+</odoo>

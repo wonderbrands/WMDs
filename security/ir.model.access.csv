@@ -1,3 +1,11 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_manager_log,access_manager_log,model_wmds_log,wmds.group_wmds_manager,1,0,0,0
 access_manager_status,access_manager_status,model_wmds_stock_status,wmds.group_wmds_manager,1,1,1,1
+
+access_bin_storage_manager,bin.storage.manager,model_bin_storage,group_wmds_manager,1,1,1,1
+access_dock_storage_manager,dock.storage.manager,model_dock_storage,group_wmds_manager,1,1,1,1
+access_bin_log_manager,bin.log.manager,model_bin_log,group_wmds_manager,1,0,0,0
+access_dock_log_manager,dock.log.manager,model_dock_log,group_wmds_manager,1,0,0,0
+access_log_line_manager,log.line.manager,model_log_line,group_wmds_manager,1,0,0,0
+
+access_sale_order_attachment_user,sale.order.attachment.user,model_sale_order_attachment,group_wmds_guideline_attacher,1,1,1,1

@@ -9,6 +9,14 @@
             <field name="inherit_id" ref="sale.view_order_form"/>
             <field name="arch" type="xml">
                 <xpath expr="//notebook" position="inside">
+                    <page string="Guias" name="attachments">
+                        <field name="attachments">
+                            <list create="True" edit="True" editable="bottom">
+                                <field name="display_name_custom"/>
+                                <field name="attachment"/>
+                            </list>
+                        </field>
+                    </page>
                     <page string="WMDS" name="wmds_logs">
                         <field name="wmds_log">
                             <list>

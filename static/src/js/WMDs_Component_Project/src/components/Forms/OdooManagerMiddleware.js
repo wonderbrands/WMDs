@@ -210,6 +210,14 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                 return {
                     saved: true
                 }
+            case "validate_attachment_guide":
+                return {
+                    ok: true
+                }
+            case "move_to_bin":
+                return {
+                    ok: true
+                }
             
             default:
                 break;
@@ -262,6 +270,12 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
                    
             case "save_picks_in_batch":
                 return await this.savePicksInBatch(params)
+            
+            case "validate_attachment_guide":
+                return await this.validateAttachmentGuide(params)
+
+            case "move_to_bin":
+                return await this.moveToBin(params)
                     
             default:
                 break;
@@ -549,6 +563,60 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
     async savePicksInBatch(params){
         try {
             const response = await fetch('/wmds/v2/engine/post/save_batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    async validateAttachmentGuide(params){
+        try {
+            const response = await fetch('/wmds/v2/engine/post/validate_attachment_guide', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    async moveToBin(params){
+        try {
+            const response = await fetch('/wmds/v2/engine/post/move_to_bin', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

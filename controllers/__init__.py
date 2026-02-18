@@ -10,3 +10,4 @@ from . import get_operation_url
 from . import log_stock_record
 from . import inherit_barcode_module_record
 from . import batch_pickings
+from . import dock_n_bin

@@ -99,9 +99,9 @@ class LogLine(models.Model):
     _description = "Log Line"
 
     operator_id = fields.Many2one("res.users", string="Operador")
-    product_id = fields.Many2one("product.product", string="Productos")
     qty = fields.Float(string="Cantidad Contada")
     counted_at = fields.Datetime(string="Fecha de Conteo", default=fields.Datetime.now)
+    message = fields.Char(string='Mensaje')
     bin_log_id = fields.Many2one("bin.log", string="BIN Log")
     dock_log_id = fields.Many2one("dock.log", string="Dock Log")
 

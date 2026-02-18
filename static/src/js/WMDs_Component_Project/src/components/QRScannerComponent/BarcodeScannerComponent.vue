@@ -53,9 +53,8 @@
                     video,
                     result => {
                         const data = result.data || result;
+                        console.log("data:", data)
                         if (this.onScan) this.onScan(data);
-                        // Optional: Restart scanner for continuous testing
-                        // setTimeout(() => this.scanner.start(), 1000);
                     },
                     { preferredCamera: "environment", highlightScanRegion: true, returnDetailedScanResult: true }
                 );

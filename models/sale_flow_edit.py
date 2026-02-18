@@ -4,15 +4,47 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+class SOAttachment(models.Model):
+    _name = "sale.order.attachment"
+    _description = "Anexos de Orden de Venta"
+    _order = "sequence_number asc" 
+
+    attachment = fields.Binary(string="Archivo", required=True)
+    so_id = fields.Many2one("sale.order", string="Orden de Venta", ondelete='cascade')
+    
+    sequence_number = fields.Integer(string="Secuencia", readonly=True)
+    
+    display_name_custom = fields.Char(string="Referencia de Guía", compute="_compute_display_name_custom")
+
+    @api.depends('so_id', 'sequence_number')
+    def _compute_display_name_custom(self):
+        for record in self:
+            if record.so_id and record.sequence_number:
+                record.display_name_custom = f"{record.so_id.name}/{record.sequence_number}"
+            else:
+                record.display_name_custom = "Nueva Guía"
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('so_id'):
+                # Buscamos cuántos adjuntos tiene ya esta SO para asignar el siguiente número
+                existing_count = self.search_count([('so_id', '=', vals['so_id'])])
+                vals['sequence_number'] = existing_count + 1
+        return super(SOAttachment, self).create(vals_list)
+
+
 class SOWMDS(models.Model):
     _inherit = 'sale.order'
 
     wmds_log = fields.One2many('wmds.log', 'sale', string='WMDS Log')
+    attachments = fields.One2many("sale.order.attachment", "so_id")
 
     @api.model
     def create(self, vals):
         res = super(SOWMDS, self).create(vals)
         if vals.get('carrier_selection_relational'):
+            # Se asume que carrier_selection_relational es un Many2one a un modelo con campo 'name'
             carrier_name = res.carrier_selection_relational.name
             self.env['wmds.log'].sudo().create({
                 'sale': res.id,
@@ -23,10 +55,8 @@ class SOWMDS(models.Model):
         return res
 
     def write(self, vals):
-
         if 'state' in vals:
             new_state = vals['state']
-            
             state_map = {
                 'draft': 'Cotización (Borrador)',
                 'sent': 'Cotización Enviada',
@@ -34,7 +64,6 @@ class SOWMDS(models.Model):
                 'done': 'Bloqueado / Realizado',
                 'cancel': 'Cancelado'
             }
-            
             msg_state = state_map.get(new_state, f"Estado cambiado a: {new_state}")
 
             for record in self:
@@ -45,7 +74,6 @@ class SOWMDS(models.Model):
                         'user': self.env.user.id,
                         'date': fields.Datetime.now(),
                     })
-
 
         res = super(SOWMDS, self).write(vals)
 
@@ -74,18 +102,15 @@ class IrAttachment(models.Model):
     def create(self, vals_list):
         attachments = super(IrAttachment, self).create(vals_list)
         for attachment in attachments:
-            if attachment.res_model == 'stock.picking':
-                self._hook_attachment_pick(attachment)
+            if attachment.res_model == 'sale.order.attachment':
+                self._hook_attachment_so_custom(attachment)
         return attachments
 
-    def _hook_attachment_pick(self, attachment):
-        picking = self.env['stock.picking'].sudo().browse(attachment.res_id)
+    def _hook_attachment_so_custom(self, attachment):
+        so_attach_record = self.env['sale.order.attachment'].sudo().browse(attachment.res_id)
         
-        is_pick = False
-        if picking.picking_type_id.name == 'Pick':
-            is_pick = True
-
-        if is_pick:
+        if so_attach_record and so_attach_record.so_id:
+            so = so_attach_record.so_id
             mimetype = attachment.mimetype
             es_valido = False
             tipo_str = "Formato Inválido"
@@ -93,23 +118,18 @@ class IrAttachment(models.Model):
             if mimetype == 'application/pdf':
                 tipo_str = "PDF"
                 es_valido = True
-            elif mimetype == 'text/plain':
+            elif mimetype == 'text/plain' or (attachment.name and ('.zpl' in attachment.name.lower())):
                 tipo_str = "TXT/ZPL"
                 es_valido = True
 
-            so = picking.sale_id
-            if not so and picking.origin:
-                 so = self.env['sale.order'].sudo().search([("name", "=", picking.origin)], limit=1)
+            msg = f"Se ha adjuntado un archivo de tipo {tipo_str} en la sección de anexos"
+            
+            if not es_valido:
+                msg += f" (Archivo: {attachment.name} no reconocido como formato de guía)"
 
-            if so:
-                msg = f"Se ha adjuntado una guía de tipo {tipo_str} en el Pick {picking.name}"
-                
-                if not es_valido:
-                    msg += f" (Archivo: {attachment.name} no valido como guía)"
-
-                self.env['wmds.log'].sudo().create({
-                    'sale': so.id,
-                    'log': msg,
-                    'user': self.env.user.id,
-                    'date': fields.Datetime.now(),
-                })
+            self.env['wmds.log'].sudo().create({
+                'sale': so.id,
+                'log': msg,
+                'user': self.env.user.id,
+                'date': fields.Datetime.now(),
+            })
