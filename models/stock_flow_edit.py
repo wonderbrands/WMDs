@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 from odoo import models, fields, api
-from datetime import datetime
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -11,7 +10,6 @@ class WMDSStockStatus(models.Model):
 
     name = fields.Char('Name', required=True)
     value = fields.Char('Value', required=True)
-
 
 class StockWMDS(models.Model):
     _inherit = 'stock.picking'
@@ -32,30 +30,22 @@ class StockWMDS(models.Model):
     def _get_stock_barcode_data(self):
         res = super()._get_stock_barcode_data()
         
-        if not res.get('records'):
-            res['records'] = {}
-        if 'stock.picking' not in res['records']:
-            res['records']['stock.picking'] = []
-
-        # Asegurar que los campos existan en records
-        for field in ['operator', 'picking_type_id_name']:
-            if field not in res['records']['stock.picking']:
-                res['records']['stock.picking'].append(field)
-
-        # Procesar los modelos
-        models_data = res.get('models', {})
-        picking_models = models_data.get('stock.picking', [])
+        # En Odoo, esto es una lista de diccionarios con los datos del registro
+        picking_records = res.get('records', {}).get('stock.picking', [])
         
-        for picking_data in picking_models:
-            if picking_data.get('id'):
-                picking_real = self.browse(picking_data['id'])
-                if picking_real.exists():
-                    picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
-                    if picking_real.operator:
-                        picking_data['operator'] = [picking_real.operator.id, picking_real.operator.name]
+        for picking_data in picking_records:
+            picking_id = picking_data.get('id')
+            if picking_id:
+                picking_real = self.env['stock.picking'].browse(picking_id)
+                # Inyectamos nuestros valores custom directamente al diccionario
+                picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
+                if picking_real.operator:
+                    # Formateamos el Many2one como [ID, "Nombre"] para que OWL lo entienda
+                    picking_data['operator'] = [picking_real.operator.id, picking_real.operator.name]
+                else:
+                    picking_data['operator'] = False
         
         return res
-
 
 class BatchWMDS(models.Model):
     _inherit = 'stock.picking.batch'
@@ -66,21 +56,16 @@ class BatchWMDS(models.Model):
     def _get_stock_barcode_data(self):
         res = super()._get_stock_barcode_data()
         
-        records_data = res.get('records', {})
-        if 'stock.picking' in records_data:
-            for field in ['operator', 'picking_type_id_name']:
-                if field not in records_data['stock.picking']:
-                    records_data['stock.picking'].append(field)
+        picking_records = res.get('records', {}).get('stock.picking', [])
         
-        models_data = res.get('models', {})
-        picking_models = models_data.get('stock.picking', [])
-        
-        for picking_data in picking_models:
-            if picking_data.get('id'):
-                picking_real = self.env['stock.picking'].browse(picking_data['id'])
-                if picking_real.exists():
-                    picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
-                    if picking_real.operator:
-                        picking_data['operator'] = [picking_real.operator.id, picking_real.operator.name]
-                
+        for picking_data in picking_records:
+            picking_id = picking_data.get('id')
+            if picking_id:
+                picking_real = self.env['stock.picking'].browse(picking_id)
+                picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
+                if picking_real.operator:
+                    picking_data['operator'] = [picking_real.operator.id, picking_real.operator.name]
+                else:
+                    picking_data['operator'] = False
+                    
         return res

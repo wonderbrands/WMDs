@@ -1,40 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <templates xml:space="preserve">
     <t t-inherit="stock_barcode.MainComponent" t-inherit-mode="extension">
-        
-        <xpath expr="//header[contains(@class, 'o_barcode_navbar')] | //nav | //div[contains(@class, 'navbar')]" position="inside">
-            <div class="alert alert-warning" style="font-size: 11px; font-family: monospace; z-index: 9999; border: 2px solid orange; margin: 5px; padding: 5px; overflow-wrap: break-word;">
-                <div style="font-weight: bold; border-bottom: 1px solid #ccc; margin-bottom: 3px;">WMDS DEBUG PANEL V2</div>
-                
-                <div><b>1. Buscando en 'env.model.record':</b> 
-                    <t t-if="env and env.model and env.model.record">
-                        ENCONTRADO (ID: <t t-esc="env.model.record.id"/>)
-                    </t>
-                    <t t-else="">NO DEFINIDO</t>
-                </div>
-
-                <div><b>2. Buscando en 'props':</b> 
-                    <t t-if="props and props.record">
-                        ENCONTRADO (ID: <t t-esc="props.record.id"/>)
-                    </t>
-                    <t t-else="">NO DEFINIDO</t>
-                </div>
-
-                <div style="margin-top: 5px; border-top: 1px dotted #ccc; padding-top: 5px;">
-                    <b>Valores desde env.model.record:</b><br/>
-                    Operator: <t t-esc="env.model.record and env.model.record.operator ? JSON.stringify(env.model.record.operator) : 'N/A'"/><br/>
-                    Type Name: <t t-esc="env.model.record and env.model.record.picking_type_id_name ? env.model.record.picking_type_id_name : 'N/A'"/>
-                </div>
-                
-                <div style="margin-top: 5px; color: blue;">
-                    <b>Condición de Renderizado:</b> 
-                    <t t-if="env.model.record and env.model.record.picking_type_id_name and env.model.record.picking_type_id_name.includes('PACK')">
-                        TRUE
-                    </t>
-                    <t t-else="">FALSE</t>
-                </div>
-            </div>
-        </xpath>
 
         <xpath expr="//div[contains(@class, 'o_barcode_partner')]" position="replace">
             <div t-if="env.model.record and env.model.record.operator and env.model.record.operator.length > 1" 
@@ -49,7 +15,7 @@
             </div>
             <div t-else="" class="o_barcode_partner text-muted">
                 <i class="fa fa-user me-1"/>
-                Sin operador/asignar
+                Sin operador
             </div>
         </xpath>
 
