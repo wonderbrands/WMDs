@@ -35,8 +35,15 @@ class StockWMDS(models.Model):
 
     def _get_stock_barcode_data(self):
         res = super()._get_stock_barcode_data()
-        if 'operator' not in res['records']['stock.picking']:
-            res['records']['stock.picking'].append('operator')
+        
+        for field in ['operator', 'picking_type_id_name']:
+            if field not in res['records']['stock.picking']:
+                res['records']['stock.picking'].append(field)
+
+        for picking_data in res['models']['stock.picking']:
+            picking_real = self.browse(picking_data.get('id'))
+            picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
+            
         return res
 
 
@@ -48,9 +55,14 @@ class BatchWMDS(models.Model):
 
     def _get_stock_barcode_data(self):
         res = super()._get_stock_barcode_data()
-        if 'stock.picking' in res['records'] and 'operator' not in res['records']['stock.picking']:
-            res['records']['stock.picking'].append('operator')
-            
-        res['records']['stock.picking.batch'].append('operator')
+        if 'stock.picking' in res['records']:
+            for field in ['operator', 'picking_type_id_name']:
+                if field not in res['records']['stock.picking']:
+                    res['records']['stock.picking'].append(field)
         
+        if 'stock.picking' in res['models']:
+            for picking_data in res['models']['stock.picking']:
+                picking_real = self.env['stock.picking'].browse(picking_data.get('id'))
+                picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
+                
         return res
