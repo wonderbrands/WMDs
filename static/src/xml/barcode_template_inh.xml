@@ -7,7 +7,7 @@
                 <i class="fa fa-user-circle-o me-1"/>
                 <t t-esc="state.record.operator_id[1]"/>
             </div>
-            <div t-else-if="state.record and state.record.partner_id" class="o_barcode_partner text-muted">
+            <div t-elif="state.record and state.record.partner_id" class="o_barcode_partner text-muted">
                 <i class="fa fa-user me-1"/>
                 <t t-esc="state.record.partner_id[1]"/>
             </div>
@@ -23,7 +23,7 @@
                 </button>
                 
                 <button class="btn btn-secondary w-50" t-on-click="() => this.onCustomAction('action_print_tag')">
-                    <i class="fa fa-cube me-1"/> Imprimir Etiqueta
+                    <i class="fa fa-tag me-1"/> Imprimir Etiqueta
                 </button>
             </div>
         </xpath>
