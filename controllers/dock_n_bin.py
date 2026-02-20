@@ -84,7 +84,6 @@ class DockNBin(http.Controller):
                             "sale": so_attach.so_id.id,
                             "log": log_msg,
                             "user": operator_orm.id if operator_orm else False,
-                            "date": fields.Datetime.now()
                         })
             
             return {"ok": True}
