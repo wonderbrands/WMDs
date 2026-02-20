@@ -33,9 +33,24 @@ class StockWMDS(models.Model):
                 res.wmds_status = not_assigned.id
         return res
 
+    def _get_stock_barcode_data(self):
+        res = super()._get_stock_barcode_data()
+        if 'operator' not in res['records']['stock.picking']:
+            res['records']['stock.picking'].append('operator')
+        return res
+
 
 class BatchWMDS(models.Model):
     _inherit = 'stock.picking.batch'
 
     operator = fields.Many2one('res.users', 'Operator')
     wmds_log = fields.One2many('wmds.log', 'batch_pick', string='WMDS Log')
+
+    def _get_stock_barcode_data(self):
+        res = super()._get_stock_barcode_data()
+        if 'stock.picking' in res['records'] and 'operator' not in res['records']['stock.picking']:
+            res['records']['stock.picking'].append('operator')
+            
+        res['records']['stock.picking.batch'].append('operator')
+        
+        return res
