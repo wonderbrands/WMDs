@@ -28,7 +28,8 @@
         return {
             store: useGeneralStore(),
             camera_init: false,
-            error: null
+            error: null,
+            is_scanning: false 
         }
     },
     props: {
@@ -47,12 +48,13 @@
     methods: {
         initCamera() {
             this.camera_init = true;
+            this.is_scanning = true;
             
             window.Quagga.init({
                 inputStream: {
                     name: "Live",
                     type: "LiveStream",
-                    target: this.$refs.barcodeScanner, // Inject into our div
+                    target: this.$refs.barcodeScanner,
                     constraints: {
                         facingMode: "environment",
                         aspectRatio: { min: 1, max: 2 }
@@ -64,12 +66,10 @@
                 locate: true
             }, (err) => {
                 if (err) {
-                    console.error("Quagga Init Error:", err);
                     this.error = "Camera access failed";
                     this.camera_init = false;
                     return;
                 }
-                console.log("Quagga initialization finished. Ready to start");
                 window.Quagga.start();
                 this.setupDetection();
             });
@@ -77,18 +77,36 @@
 
         setupDetection() {
             window.Quagga.onDetected((result) => {
+                if (!this.is_scanning) return; // Ignore if locked
+
                 if (result && result.codeResult && result.codeResult.code) {
                     const code = result.codeResult.code;
-                    console.log("Barcode detected:", code);
                     
+                    // Lock immediately
+                    this.is_scanning = false;
+                    
+                    // Optional: Stop the engine to freeze the frame and save CPU
+                    window.Quagga.stop();
+
                     if (this.onScan) {
                         this.onScan(code);
                     }
+
+                    // Re-arm after 2 seconds (optional, remove if you want it to stay stopped)
+                    /*
+                    setTimeout(() => {
+                        if (this.camera_init) {
+                            window.Quagga.start();
+                            this.is_scanning = true;
+                        }
+                    }, 2000);
+                    */
                 }
             });
         },
 
         closeScanner() {
+            this.is_scanning = false;
             if (window.Quagga) {
                 window.Quagga.stop();
                 window.Quagga.offDetected();

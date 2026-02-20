@@ -79,22 +79,19 @@ export default {
         async serachAndValidateSO(data) {
             console.log("Raw data received:", data);
             try {
-                let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-                let nameToValidate = parsedData.name;
-                console.log("Parsed name:", nameToValidate);
-
-                if (this.so.includes(nameToValidate)) {
+                
+                if (this.so.includes(data)) {
                     console.log("Order already in list");
                     return;
                 }
 
                 let response = await this.store.odoo_middleware.getFromOdoo("validate_attachment_guide", "", {
-                    attachment_id: nameToValidate,
+                    attachment_id: data,
                 });
                 console.log("Odoo response:", response);
 
                 if (response.valid) {
-                    this.so.push(nameToValidate);
+                    this.so.push(data);
                     console.log("Current SO list:", this.so);
                 }
             } catch (e) {
@@ -107,9 +104,12 @@ export default {
                 console.log("No orders to move");
                 return;
             }
+            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+            let nameToValidate = parsedData.name;
+            console.log("Parsed name:", nameToValidate);
 
             let response = await this.store.odoo_middleware.getFromOdoo("move_to_bin", "", {
-                bin: data,
+                bin: nameToValidate,
                 operator: this.store.role.email,
                 orders: this.so
             });
