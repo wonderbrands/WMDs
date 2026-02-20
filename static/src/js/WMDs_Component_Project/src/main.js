@@ -12,7 +12,7 @@ import './style.css'
 QrScanner.WORKER_PATH = null
 
 window.QrScanner = QrScanner
-Window.Quagga = Quagga
+window.Quagga = Quagga
 
 const WMDSAuraLight = definePreset(Aura, {
     semantic: {
