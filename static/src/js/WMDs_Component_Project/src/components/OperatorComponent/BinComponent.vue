@@ -4,13 +4,11 @@
         <div class="scanner-section" style="display: flex; gap: 10px; height: 40%; min-height: 250px;">
             <div v-if="ready && !scan_bin" style="flex: 1; overflow: hidden; position: relative;">
                 <BarcodeScannerComponent 
+                    :key="scannerKey"
                     context="scan_so"
                     instructions="Escanea la etiqueta de orden SO"
                     :onScan="(data) => serachAndValidateSO(data)"
                 />
-                <Button v-if="so.length > 0"
-                    @click="scan_bin = true"
-                    class="p-button-success p-button-sm" label="Trasladar a BIN" />
             </div>
             <div v-else-if="ready && scan_bin" style="flex: 1; overflow: hidden; position: relative;">
                 <QRScannerComponent 
@@ -18,6 +16,10 @@
                     instructions="Escanea la ubicación BIN"
                     :onScan="(data) => validateBin(data)"
                 />
+            </div>
+            <div v-if="so.length > 0 && !scan_bin" style="display:flex; align-items:center;">
+                 <Button @click="scan_bin = true"
+                    class="p-button-success p-button-sm" label="Trasladar a BIN" />
             </div>
         </div>
 
@@ -64,62 +66,63 @@ export default {
             store: useGeneralStore(),
             scan_bin: false,
             so: [],
-            ready: false
+            ready: false,
+            scannerKey: 0
         }
     },
     mounted() {
-        console.log("Component mounted");
         localStorage.removeItem("mandatory_uncompleted");
         setTimeout(() => {
             this.ready = true;
-            console.log("Scanner ready");
         }, 500);
     },
     methods: {
         async serachAndValidateSO(data) {
-            console.log("Raw data received:", data);
             try {
-                
                 if (this.so.includes(data)) {
-                    console.log("Order already in list");
+                    this.restartScanner();
                     return;
                 }
 
                 let response = await this.store.odoo_middleware.getFromOdoo("validate_attachment_guide", "", {
                     attachment_id: data,
                 });
-                console.log("Odoo response:", response);
 
                 if (response.valid) {
                     this.so.push(data);
-                    console.log("Current SO list:", this.so);
                 }
+                
+                this.restartScanner();
+
             } catch (e) {
-                console.log("Error parsing JSON or validating:", e);
+                console.log("Error:", e);
+                this.restartScanner();
             }
         },
+        restartScanner() {
+            this.scannerKey++;
+        },
         async validateBin(data) {
-            console.log("Bin scan received:", data);
-            if (this.so.length === 0) {
-                console.log("No orders to move");
-                return;
-            }
-            let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-            let nameToValidate = parsedData.name;
-            console.log("Parsed name:", nameToValidate);
+            if (this.so.length === 0) return;
+            
+            try {
+                let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+                let nameToValidate = parsedData.name;
 
-            let response = await this.store.odoo_middleware.getFromOdoo("move_to_bin", "", {
-                bin: nameToValidate,
-                operator: this.store.role.email,
-                orders: this.so
-            });
-            console.log("Move to bin response:", response);
+                let response = await this.store.odoo_middleware.getFromOdoo("move_to_bin", "", {
+                    bin: nameToValidate,
+                    operator: this.store.role.email,
+                    orders: this.so
+                });
 
-            if (response.ok) {
-                console.log("Operation successful");
-                this.store.mandatory_uncompleted.doneMandatory();
-                this.so = [];
-                this.scan_bin = false;
+                if (response.ok) {
+                    this.store.mandatory_uncompleted.doneMandatory();
+                    this.so = [];
+                    this.scan_bin = false;
+                    this.scannerKey++; // Reset for next cycle
+                }
+            } catch (e) {
+                console.error("Bin validation error", e);
             }
         }
     }
