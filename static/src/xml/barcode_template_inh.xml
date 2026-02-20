@@ -2,69 +2,50 @@
 <templates xml:space="preserve">
     <t t-inherit="stock_barcode.MainComponent" t-inherit-mode="extension">
         
-        <!-- Debug panel con todas las validaciones necesarias -->
         <xpath expr="//header[contains(@class, 'o_barcode_navbar')] | //nav | //div[contains(@class, 'navbar')]" position="inside">
-            <div t-if="state" class="alert alert-warning" style="font-size: 11px; font-family: monospace; z-index: 9999; border: 2px solid orange; margin: 5px; padding: 5px;">
-                <div style="font-weight: bold; border-bottom: 1px solid #ccc; margin-bottom: 3px;">WMDS DEBUG PANEL</div>
+            <div class="alert alert-warning" style="font-size: 11px; font-family: monospace; z-index: 9999; border: 2px solid orange; margin: 5px; padding: 5px; overflow-wrap: break-word;">
+                <div style="font-weight: bold; border-bottom: 1px solid #ccc; margin-bottom: 3px;">WMDS DEBUG PANEL V2</div>
                 
-                <!-- Verificaciones seguras para cada campo -->
-                <div><b>Estado de state.record:</b> 
-                    <t t-if="state.record">Definido</t>
+                <div><b>1. Buscando en 'env.model.record':</b> 
+                    <t t-if="env and env.model and env.model.record">
+                        ENCONTRADO (ID: <t t-esc="env.model.record.id"/>)
+                    </t>
                     <t t-else="">NO DEFINIDO</t>
                 </div>
-                
-                <div><b>Operator:</b> 
-                    <t t-if="state.record and state.record.operator">
-                        ID: <t t-esc="state.record.operator[0] or ''"/> - 
-                        Name: <t t-esc="state.record.operator[1] or ''"/>
+
+                <div><b>2. Buscando en 'props':</b> 
+                    <t t-if="props and props.record">
+                        ENCONTRADO (ID: <t t-esc="props.record.id"/>)
                     </t>
-                    <t t-else="">No operator</t>
+                    <t t-else="">NO DEFINIDO</t>
+                </div>
+
+                <div style="margin-top: 5px; border-top: 1px dotted #ccc; padding-top: 5px;">
+                    <b>Valores desde env.model.record:</b><br/>
+                    Operator: <t t-esc="env.model.record and env.model.record.operator ? JSON.stringify(env.model.record.operator) : 'N/A'"/><br/>
+                    Type Name: <t t-esc="env.model.record and env.model.record.picking_type_id_name ? env.model.record.picking_type_id_name : 'N/A'"/>
                 </div>
                 
-                <div><b>Type Name Raw:</b> 
-                    <t t-if="state.record and state.record.picking_type_id_name">
-                        [<t t-esc="state.record.picking_type_id_name"/>]
+                <div style="margin-top: 5px; color: blue;">
+                    <b>Condición de Renderizado:</b> 
+                    <t t-if="env.model.record and env.model.record.picking_type_id_name and env.model.record.picking_type_id_name.includes('PACK')">
+                        TRUE
                     </t>
-                    <t t-else="">[No type]</t>
+                    <t t-else="">FALSE</t>
                 </div>
-                
-                <div><b>Partner:</b> 
-                    <t t-if="state.record and state.record.partner_id">
-                        <t t-esc="state.record.partner_id[1] or ''"/>
-                    </t>
-                    <t t-else="">No partner</t>
-                </div>
-                
-                <div><b>Picking ID:</b> 
-                    <t t-if="state.record and state.record.id">
-                        <t t-esc="state.record.id"/>
-                    </t>
-                    <t t-else="">No ID</t>
-                </div>
-                
-                <div><b>Result Condition:</b> 
-                    <t t-if="state.record and state.record.picking_type_id_name and state.record.picking_type_id_name.includes('PACK')">
-                        TRUE (Debería renderizar)
-                    </t>
-                    <t t-else="">FALSE (No cumple condición)</t>
-                </div>
-            </div>
-            <div t-else="" class="alert alert-danger" style="font-size: 11px; margin: 5px; padding: 5px;">
-                <b>ERROR:</b> state no está definido
             </div>
         </xpath>
 
-        <!-- Reemplazo del partner con validaciones mejoradas -->
         <xpath expr="//div[contains(@class, 'o_barcode_partner')]" position="replace">
-            <div t-if="state and state.record and state.record.operator and state.record.operator.length > 1" 
+            <div t-if="env.model.record and env.model.record.operator and env.model.record.operator.length > 1" 
                  class="o_barcode_partner text-muted">
                 <i class="fa fa-user-circle-o me-1"/>
-                <t t-esc="state.record.operator[1]"/>
+                <t t-esc="env.model.record.operator[1]"/>
             </div>
-            <div t-elif="state and state.record and state.record.partner_id and state.record.partner_id.length > 1" 
+            <div t-elif="env.model.record and env.model.record.partner_id and env.model.record.partner_id.length > 1" 
                  class="o_barcode_partner text-muted">
                 <i class="fa fa-user me-1"/>
-                <t t-esc="state.record.partner_id[1]"/>
+                <t t-esc="env.model.record.partner_id[1]"/>
             </div>
             <div t-else="" class="o_barcode_partner text-muted">
                 <i class="fa fa-user me-1"/>
@@ -72,10 +53,8 @@
             </div>
         </xpath>
 
-        <!-- Botones personalizados con validaciones -->
         <xpath expr="//div[contains(@class, 'o_barcode_lines_list')] | //div[contains(@class, 'o_barcode_lines')]" position="after">
-            <div t-if="state and state.record and state.record.picking_type_id_name and 
-                      state.record.picking_type_id_name.includes('PACK')" 
+            <div t-if="env.model.record and env.model.record.picking_type_id_name and env.model.record.picking_type_id_name.includes('PACK')" 
                  class="o_barcode_custom_buttons d-flex gap-2 p-2 w-100" 
                  style="background-color: #f8f9fa; border-top: 1px solid #dee2e6; margin-bottom: 10px;">
                 
