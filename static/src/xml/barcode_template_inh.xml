@@ -2,7 +2,8 @@
 <templates xml:space="preserve">
     <t t-inherit="stock_barcode.MainComponent" t-inherit-mode="extension">
         
-        <xpath expr="//div[contains(@class, 'o_barcode_header')]" position="inside">
+        <!-- Buscar cualquier header o navbar en lugar de un div específico -->
+        <xpath expr="//header[contains(@class, 'o_barcode_navbar')] | //nav | //div[contains(@class, 'navbar')]" position="inside">
             <div class="alert alert-warning" style="font-size: 11px; font-family: monospace; z-index: 9999; border: 2px solid orange; margin: 5px; padding: 5px;">
                 <div style="font-weight: bold; border-bottom: 1px solid #ccc; margin-bottom: 3px;">WMDS DEBUG PANEL</div>
                 <div><b>Operator Raw:</b> <t t-esc="JSON.stringify(state.record.operator)"/></div>
