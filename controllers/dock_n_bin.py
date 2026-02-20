@@ -73,7 +73,7 @@ class DockNBin(http.Controller):
             
             for so in orders:
                 so_orm =  request.env["sale.order.attachment"].sudo().search([
-                    ('display_name_custom', '=', attachment_id),
+                    ('display_name_custom', '=', so),
                 ], limit =1)
                 so_orm.on_bin = True
                 request.env["log.line"].sudo().create(
