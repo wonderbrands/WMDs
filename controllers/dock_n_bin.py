@@ -1,6 +1,10 @@
 from odoo import http
 from odoo.http import request
 import traceback
+import logging
+
+_logger = logging.getLogger(__name__)
+
 
 class DockNBin(http.Controller):
 
@@ -16,6 +20,7 @@ class DockNBin(http.Controller):
 
             attachment = request.env["sale.order.attachment"].sudo().search([
                     ('display_name_custom', '=', attachment_id),
+                    ("on_bin", "=", False)
                 ], limit =1)
 
             if attachment:
@@ -64,7 +69,6 @@ class DockNBin(http.Controller):
                 
                 if so_attach:
                     so_attach.on_bin = True
-                    # Creamos el log
                     request.env["log.line"].sudo().create({
                         "operator_id": operator_orm.id,
                         "qty": 1,
@@ -75,7 +79,6 @@ class DockNBin(http.Controller):
             return {"ok": True}
 
         except Exception as e:
-            # ¡IMPORTANTE! Limpiamos la transacción fallida en la base de datos
             request.env.cr.rollback()
             _logger.error(f"Error en move_to_bin: {str(e)}")
             return {
