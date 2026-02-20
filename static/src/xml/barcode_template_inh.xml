@@ -2,12 +2,15 @@
 <templates xml:space="preserve">
     <t t-inherit="stock_barcode.MainComponent" t-inherit-mode="extension">
         
-        <!-- Buscar cualquier header o navbar en lugar de un div específico -->
+        <!-- Debug panel - corregido sin JSON.stringify -->
         <xpath expr="//header[contains(@class, 'o_barcode_navbar')] | //nav | //div[contains(@class, 'navbar')]" position="inside">
             <div class="alert alert-warning" style="font-size: 11px; font-family: monospace; z-index: 9999; border: 2px solid orange; margin: 5px; padding: 5px;">
                 <div style="font-weight: bold; border-bottom: 1px solid #ccc; margin-bottom: 3px;">WMDS DEBUG PANEL</div>
-                <div><b>Operator Raw:</b> <t t-esc="JSON.stringify(state.record.operator)"/></div>
-                <div><b>Type Name Raw:</b> [<t t-esc="state.record.picking_type_id_name"/>]</div>
+                <div><b>Operator ID:</b> <t t-esc="state.record.operator and state.record.operator[0] or 'None'"/></div>
+                <div><b>Operator Name:</b> <t t-esc="state.record.operator and state.record.operator[1] or 'None'"/></div>
+                <div><b>Type Name Raw:</b> [<t t-esc="state.record.picking_type_id_name or ''"/>]</div>
+                <div><b>Partner:</b> <t t-esc="state.record.partner_id and state.record.partner_id[1] or 'None'"/></div>
+                <div><b>Picking ID:</b> <t t-esc="state.record.id or 'None'"/></div>
                 <div><b>Result Condition:</b> 
                     <t t-if="state.record.picking_type_id_name and state.record.picking_type_id_name.includes('PACK')">TRUE (Debería renderizar)</t>
                     <t t-else="">FALSE (No cumple condición)</t>
