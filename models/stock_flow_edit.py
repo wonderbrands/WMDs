@@ -37,18 +37,23 @@ class StockWMDS(models.Model):
         if 'stock.picking' not in res['records']:
             res['records']['stock.picking'] = []
 
+        # Asegurar que los campos existan en records
         for field in ['operator', 'picking_type_id_name']:
             if field not in res['records']['stock.picking']:
                 res['records']['stock.picking'].append(field)
 
+        # Procesar los modelos
         models_data = res.get('models', {})
         picking_models = models_data.get('stock.picking', [])
         
         for picking_data in picking_models:
-            picking_real = self.browse(picking_data.get('id'))
-            if picking_real.exists():
-                picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
-            
+            if picking_data.get('id'):
+                picking_real = self.browse(picking_data['id'])
+                if picking_real.exists():
+                    picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
+                    if picking_real.operator:
+                        picking_data['operator'] = [picking_real.operator.id, picking_real.operator.name]
+        
         return res
 
 
@@ -71,8 +76,11 @@ class BatchWMDS(models.Model):
         picking_models = models_data.get('stock.picking', [])
         
         for picking_data in picking_models:
-            picking_real = self.env['stock.picking'].browse(picking_data.get('id'))
-            if picking_real.exists():
-                picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
+            if picking_data.get('id'):
+                picking_real = self.env['stock.picking'].browse(picking_data['id'])
+                if picking_real.exists():
+                    picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
+                    if picking_real.operator:
+                        picking_data['operator'] = [picking_real.operator.id, picking_real.operator.name]
                 
         return res

@@ -2,35 +2,80 @@
 <templates xml:space="preserve">
     <t t-inherit="stock_barcode.MainComponent" t-inherit-mode="extension">
         
-        <!-- Debug panel - corregido sin JSON.stringify -->
+        <!-- Debug panel con todas las validaciones necesarias -->
         <xpath expr="//header[contains(@class, 'o_barcode_navbar')] | //nav | //div[contains(@class, 'navbar')]" position="inside">
-            <div class="alert alert-warning" style="font-size: 11px; font-family: monospace; z-index: 9999; border: 2px solid orange; margin: 5px; padding: 5px;">
+            <div t-if="state" class="alert alert-warning" style="font-size: 11px; font-family: monospace; z-index: 9999; border: 2px solid orange; margin: 5px; padding: 5px;">
                 <div style="font-weight: bold; border-bottom: 1px solid #ccc; margin-bottom: 3px;">WMDS DEBUG PANEL</div>
-                <div><b>Operator ID:</b> <t t-esc="state.record.operator and state.record.operator[0] or 'None'"/></div>
-                <div><b>Operator Name:</b> <t t-esc="state.record.operator and state.record.operator[1] or 'None'"/></div>
-                <div><b>Type Name Raw:</b> [<t t-esc="state.record.picking_type_id_name or ''"/>]</div>
-                <div><b>Partner:</b> <t t-esc="state.record.partner_id and state.record.partner_id[1] or 'None'"/></div>
-                <div><b>Picking ID:</b> <t t-esc="state.record.id or 'None'"/></div>
+                
+                <!-- Verificaciones seguras para cada campo -->
+                <div><b>Estado de state.record:</b> 
+                    <t t-if="state.record">Definido</t>
+                    <t t-else="">NO DEFINIDO</t>
+                </div>
+                
+                <div><b>Operator:</b> 
+                    <t t-if="state.record and state.record.operator">
+                        ID: <t t-esc="state.record.operator[0] or ''"/> - 
+                        Name: <t t-esc="state.record.operator[1] or ''"/>
+                    </t>
+                    <t t-else="">No operator</t>
+                </div>
+                
+                <div><b>Type Name Raw:</b> 
+                    <t t-if="state.record and state.record.picking_type_id_name">
+                        [<t t-esc="state.record.picking_type_id_name"/>]
+                    </t>
+                    <t t-else="">[No type]</t>
+                </div>
+                
+                <div><b>Partner:</b> 
+                    <t t-if="state.record and state.record.partner_id">
+                        <t t-esc="state.record.partner_id[1] or ''"/>
+                    </t>
+                    <t t-else="">No partner</t>
+                </div>
+                
+                <div><b>Picking ID:</b> 
+                    <t t-if="state.record and state.record.id">
+                        <t t-esc="state.record.id"/>
+                    </t>
+                    <t t-else="">No ID</t>
+                </div>
+                
                 <div><b>Result Condition:</b> 
-                    <t t-if="state.record.picking_type_id_name and state.record.picking_type_id_name.includes('PACK')">TRUE (Debería renderizar)</t>
+                    <t t-if="state.record and state.record.picking_type_id_name and state.record.picking_type_id_name.includes('PACK')">
+                        TRUE (Debería renderizar)
+                    </t>
                     <t t-else="">FALSE (No cumple condición)</t>
                 </div>
             </div>
+            <div t-else="" class="alert alert-danger" style="font-size: 11px; margin: 5px; padding: 5px;">
+                <b>ERROR:</b> state no está definido
+            </div>
         </xpath>
 
+        <!-- Reemplazo del partner con validaciones mejoradas -->
         <xpath expr="//div[contains(@class, 'o_barcode_partner')]" position="replace">
-            <div t-if="state and state.record and state.record.operator" class="o_barcode_partner text-muted">
+            <div t-if="state and state.record and state.record.operator and state.record.operator.length > 1" 
+                 class="o_barcode_partner text-muted">
                 <i class="fa fa-user-circle-o me-1"/>
                 <t t-esc="state.record.operator[1]"/>
             </div>
-            <div t-elif="state and state.record and state.record.partner_id" class="o_barcode_partner text-muted">
+            <div t-elif="state and state.record and state.record.partner_id and state.record.partner_id.length > 1" 
+                 class="o_barcode_partner text-muted">
                 <i class="fa fa-user me-1"/>
                 <t t-esc="state.record.partner_id[1]"/>
             </div>
+            <div t-else="" class="o_barcode_partner text-muted">
+                <i class="fa fa-user me-1"/>
+                Sin operador/asignar
+            </div>
         </xpath>
 
+        <!-- Botones personalizados con validaciones -->
         <xpath expr="//div[contains(@class, 'o_barcode_lines_list')] | //div[contains(@class, 'o_barcode_lines')]" position="after">
-            <div t-if="state and state.record and state.record.picking_type_id_name and state.record.picking_type_id_name.includes('PACK')" 
+            <div t-if="state and state.record and state.record.picking_type_id_name and 
+                      state.record.picking_type_id_name.includes('PACK')" 
                  class="o_barcode_custom_buttons d-flex gap-2 p-2 w-100" 
                  style="background-color: #f8f9fa; border-top: 1px solid #dee2e6; margin-bottom: 10px;">
                 
