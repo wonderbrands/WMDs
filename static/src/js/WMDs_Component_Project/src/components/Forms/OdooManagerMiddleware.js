@@ -218,6 +218,19 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                 return {
                     ok: true
                 }
+            case "validate_bin":
+                return {
+                    valid: true,
+                    bin: params.bin,
+                    packages: ["GUIA-TEST-01", "GUIA-TEST-02"],
+                    total_packages: 2
+                }
+
+            case "move_bin_to_dock":
+                return {
+                    ok: true,
+                    moved_packages: 2
+                }
             
             default:
                 break;
@@ -276,6 +289,12 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
 
             case "move_to_bin":
                 return await this.moveToBin(params)
+
+            case "validate_bin":
+                return await this.validateBin(params)
+                
+            case "move_bin_to_dock":
+                return await this.moveBinToDock(params)
                     
             default:
                 break;
@@ -617,6 +636,60 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
     async moveToBin(params){
         try {
             const response = await fetch('/wmds/v2/engine/post/move_to_bin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    async validateBin(params){
+        try {
+            const response = await fetch('/wmds/v2/engine/post/validate_bin', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            })   
+            const result = await response.json()
+            console.log(result)
+            if (result.error) {
+                console.log(result.error)
+                return []
+            }
+            return result.result
+        } catch (error) {
+            return {
+                'error': 'Error while doing request',
+                'message': error
+            }
+        }
+    }
+
+    async moveBinToDock(params){
+        try {
+            const response = await fetch('/wmds/v2/engine/post/move_bin_to_dock', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

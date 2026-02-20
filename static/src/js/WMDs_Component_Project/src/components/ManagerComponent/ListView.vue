@@ -118,8 +118,12 @@ export default {
 
   methods: {
     cycleCountCreate(event, modal){
-      event.data = {}
+      const payload = {
+          form_type: "new"
+      };
+
       event.data.cycle_count = modal.cycle_count
+      event.data = {...event.data, ...payload}
       this.store.openModal(modal.value, event)
     },
     onRowClick(event, modal) {
