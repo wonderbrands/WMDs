@@ -56,12 +56,19 @@
                     type: "LiveStream",
                     target: this.$refs.barcodeScanner,
                     constraints: {
+                        width: { min: 640 },
+                        height: { min: 480 },
                         facingMode: "environment",
                         aspectRatio: { min: 1, max: 2 }
                     },
                 },
+                locator: {
+                    patchSize: "medium",
+                    halfSample: true
+                },
                 decoder: {
-                    readers: ["code_128_reader", "ean_reader", "ean_8_reader", "code_39_reader"]
+                    // Optimized to only read the most common industrial formats
+                    readers: ["code_128_reader", "ean_reader", "code_39_reader"]
                 },
                 locate: true
             }, (err) => {
@@ -77,30 +84,18 @@
 
         setupDetection() {
             window.Quagga.onDetected((result) => {
-                if (!this.is_scanning) return; // Ignore if locked
+                if (!this.is_scanning) return;
 
                 if (result && result.codeResult && result.codeResult.code) {
                     const code = result.codeResult.code;
                     
-                    // Lock immediately
+                    // Immediately lock and stop to prevent multiple scans
                     this.is_scanning = false;
-                    
-                    // Optional: Stop the engine to freeze the frame and save CPU
                     window.Quagga.stop();
 
                     if (this.onScan) {
                         this.onScan(code);
                     }
-
-                    // Re-arm after 2 seconds (optional, remove if you want it to stay stopped)
-                    /*
-                    setTimeout(() => {
-                        if (this.camera_init) {
-                            window.Quagga.start();
-                            this.is_scanning = true;
-                        }
-                    }, 2000);
-                    */
                 }
             });
         },
