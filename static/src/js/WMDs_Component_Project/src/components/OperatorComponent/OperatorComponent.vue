@@ -55,7 +55,9 @@ export default {
                 { id: "traslados", title: "Traslados", description: "Traslado interno entre ubicaciones.", fetch: false, label: "Asignados a mi" },
                 { id: "batch_pick", title: "Plan de pickeo", description: "Preparación para empaque.", fetch: true, label: "Asignados a mi" },
                 { id: "conteo_ciclico", title: "Conteo cíclico", description: "Conteo de unidades.", fetch: false, label: "Pendientes" },
-                {id: "bin", title:"Ingresar productos a bin", description:"Ingresar productos a bin", fetch: false, label: "Registrar", view: "BinComponent" }
+                { id: "bin", title:"Ingresar pedidos a BIN", description:"Ingresar pedidos a BIN", fetch: false, label: "Registrar", view: "BinComponent" },
+                { id: "dock", title:"Trasladar a DOCK", description:"Trasladar a DOCK", fetch: false, label: "Registrar", view: "DockComponent" },
+
             ],
             tasks: []
         };

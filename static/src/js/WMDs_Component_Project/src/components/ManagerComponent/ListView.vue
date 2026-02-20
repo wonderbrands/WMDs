@@ -122,7 +122,6 @@ export default {
       event.data.cycle_count = modal.cycle_count
       this.store.openModal(modal.value, event)
     },
-    /* -------------------- ROW -------------------- */
     onRowClick(event, modal) {
       console.log("event")
       console.log(event)

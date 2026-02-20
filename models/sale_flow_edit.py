@@ -15,6 +15,9 @@ class SOAttachment(models.Model):
     sequence_number = fields.Integer(string="Secuencia", readonly=True)
     display_name_custom = fields.Char(string="Referencia de Guía", compute="_compute_display_name_custom", store=True)
     on_bin = fields.Boolean(string="En bin", default=False)
+    bin_id = fields.Many2one("bin.storage", string="BIN Actual", tracking=True)
+    on_dock = fields.Boolean(string="Está en DOCK", default=False, tracking=True)
+    dock_id = fields.Many2one("dock.storage", string="DOCK Actual", tracking=True)
 
     @api.depends('so_id', 'sequence_number')
     def _compute_display_name_custom(self):
