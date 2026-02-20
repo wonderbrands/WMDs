@@ -14,6 +14,13 @@
         </xpath>
 
         <xpath expr="//div[contains(@class, 'o_barcode_lines_list')] | //div[contains(@class, 'o_barcode_lines')]" position="after">
+            <div class="alert alert-warning" style="font-size: 10px; font-family: monospace;">
+                <div>RECORD ID: <t t-esc="state.record.id"/></div>
+                <div>TYPE ID RAW: <t t-esc="JSON.stringify(state.record.picking_type_id)"/></div>
+                <div t-if="state.record.picking_type_id">
+                    NAME TO CHECK: [<t t-esc="state.record.picking_type_id[1]"/>]
+                </div>
+            </div>
             <div t-if="state.record and state.record.picking_type_id and state.record.picking_type_id[1].includes('PACK')" 
                  class="o_barcode_custom_buttons d-flex gap-2 p-2 w-100" 
                  style="background-color: #f8f9fa; border-top: 1px solid #dee2e6; margin-bottom: 10px;">
