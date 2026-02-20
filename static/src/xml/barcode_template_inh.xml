@@ -3,35 +3,35 @@
     <t t-inherit="stock_barcode.MainComponent" t-inherit-mode="extension">
 
         <xpath expr="//div[contains(@class, 'o_barcode_partner')]" position="replace">
-            <div t-if="env.model.record and env.model.record.operator and env.model.record.operator.length > 1" 
-                 class="o_barcode_partner text-muted">
+            <div class="o_barcode_partner text-muted d-flex align-items-center">
                 <i class="fa fa-user-circle-o me-1"/>
-                <t t-esc="env.model.record.operator[1]"/>
-            </div>
-            <div t-elif="env.model.record and env.model.record.partner_id and env.model.record.partner_id.length > 1" 
-                 class="o_barcode_partner text-muted">
-                <i class="fa fa-user me-1"/>
-                <t t-esc="env.model.record.partner_id[1]"/>
-            </div>
-            <div t-else="" class="o_barcode_partner text-muted">
-                <i class="fa fa-user me-1"/>
-                Sin operador
+                <span t-if="env.model.record and env.model.record.operator and env.model.record.operator.length > 1">
+                    <t t-esc="env.model.record.operator[1]"/>
+                </span>
+                <span t-elif="env.model.record and env.model.record.partner_id and env.model.record.partner_id.length > 1">
+                    <t t-esc="env.model.record.partner_id[1]"/>
+                </span>
+                <span t-else="">
+                    Sin operador
+                </span>
             </div>
         </xpath>
 
         <xpath expr="//div[contains(@class, 'o_barcode_lines_list')] | //div[contains(@class, 'o_barcode_lines')]" position="after">
-            <div t-if="env.model.record and env.model.record.picking_type_id_name and env.model.record.picking_type_id_name.includes('PACK')" 
+            
+            <div t-if="env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
                  class="o_barcode_custom_buttons d-flex gap-2 p-2 w-100" 
-                 style="background-color: #f8f9fa; border-top: 1px solid #dee2e6; margin-bottom: 10px;">
+                 style="background-color: #f8f9fa; border-top: 1px solid #dee2e6; margin-top: auto;">
                 
-                <button class="btn btn-primary w-50" t-on-click="() => this.onCustomAction('action_imprimir_guia')">
+                <button class="btn btn-primary flex-fill" t-on-click="() => this.onCustomAction('action_imprimir_guia')">
                     <i class="fa fa-print me-1"/> Imprimir Guía
                 </button>
                 
-                <button class="btn btn-secondary w-50" t-on-click="() => this.onCustomAction('action_print_tag')">
+                <button class="btn btn-secondary flex-fill" t-on-click="() => this.onCustomAction('action_print_tag')">
                     <i class="fa fa-tag me-1"/> Imprimir Etiqueta
                 </button>
             </div>
+            
         </xpath>
 
     </t>
