@@ -83,11 +83,11 @@
 
         <div v-else>
             <div class="flex justify-content-between align-items-center mb-4">
-                <h2 class="text-xl font-bold">Gestionar Conteo: {{ modalData.name || modalData.id }}</h2>
+                <h2 class="text-xl font-bold">Gestionar Conteo: {{ modalData?.name || modalData?.id || 'Desconocido' }}</h2>
                 <Button label="Cerrar Conteo Definitivamente" icon="pi pi-lock" severity="danger" class="p-button-sm" @click="closeEntireCount" :loading="store.loading" />
             </div>
 
-            <DataTable :value="waves" class="p-datatable-sm mb-4" emptyMessage="Cargando olas...">
+            <DataTable :value="waves" class="p-datatable-sm mb-4" emptyMessage="Cargando olas o sin olas activas...">
                 <template #header>
                     <div class="font-bold">Olas Activas/Terminadas</div>
                 </template>
@@ -133,38 +133,51 @@ import Dropdown from "primevue/dropdown";
 export default {
     name: "CycleCountModal",
     components: { InputText, Button, DataTable, Column, Dropdown },
-    props: {
-        modalData: {
-            type: Object,
-            required: true
-        }
-    },
+    
+    // 1. ELIMINAMOS LOS PROPS POR COMPLETO
+    // props: { modalData: { type: Object, required: true } },
+
     data() {
         return {
             store: useGeneralStore(),
             operators: [],
             
+            // Estado para Creación
             filters: { aisle_from: "", aisle_to: "", level_from: "", level_to: "", front_from: "", front_to: "" },
             searchResults: [], 
             selectedLocations: [], 
             newCount: { ref: "", operator_id: null },
 
+            // Estado para Edición
             waves: [],
             newWave: { name: "", operator_id: null }
         };
     },
+    
+    // 2. AGREGAMOS COMPUTADAS PARA LEER DEL STORE
     computed: {
+        modalData() {
+            // IMPORTANTE: Asegúrate de que 'modal_data' coincida con cómo guardas la data en tu store.
+            // A veces es this.store.modalData, this.store.currentModalData, o this.store.modal_data.data
+            // Usamos || {} para asegurar que nunca sea undefined y rompa el template.
+            let dataFromStore = this.store.modal_data?.data || this.store.modalData || this.store.currentModalData;
+            return dataFromStore || {};
+        },
         isCreating() {
-            return !!this.modalData?.cycle_count || this.modalData?.form_type === 'new';
+            // Determinamos si es creación leyendo la propiedad segura modalData
+            return !!this.modalData.cycle_count || this.modalData.form_type === 'new';
         }
     },
+
     async mounted() {
         await this.fetchOperators();
         
-        if (!this.isCreating) {
+        // Solo llamamos a las olas si NO es creación y si existe un ID válido
+        if (!this.isCreating && this.modalData.id) {
             await this.fetchWavesForCount();
         }
     },
+
     methods: {
         async fetchOperators() {
             try {
@@ -173,6 +186,7 @@ export default {
             } catch (error) { console.error("Error cargando operadores", error); }
         },
 
+        /* --- METODOS DE CREACIÓN (PANELES DOBLES) --- */
         async fetchLocations() {
             this.store.loading = true;
             try {
@@ -198,7 +212,7 @@ export default {
 
         removeLocation(location) {
             this.selectedLocations = this.selectedLocations.filter(loc => loc.id !== location.id);
-            this.searchResults.unshift(location); // La regresamos arriba en los resultados
+            this.searchResults.unshift(location); 
         },
 
         removeAll() {
@@ -222,7 +236,10 @@ export default {
             finally { this.store.loading = false; }
         },
 
+        /* --- METODOS DE EDICIÓN --- */
         async fetchWavesForCount() {
+            if (!this.modalData.id) return; // Validación de seguridad
+
             this.store.loading = true;
             try {
                 let response = await this.store.odoo_middleware.getFromOdoo("get_waves_for_count", "", { count_id: this.modalData.id });
