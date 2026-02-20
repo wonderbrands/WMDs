@@ -1,5 +1,5 @@
 <template>
-    <div  class="task-container" style="margin-bottom:6em">
+    <div  class="task-container">
         <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
         
         <Card v-for="task in activeTasks" :key="task.id" class="task-card">

@@ -1,5 +1,7 @@
 <template>
-    <Button @click="logout()" rounded aria-label="Cerrar sesión" class="p-button-icon-only">
+    <Button @click="logout()" rounded aria-label="Cerrar sesión" 
+    class="p-button-icon-only"
+    style="border-radius: 0%; padding: 2em;">
         
         <svg 
             width="20" 
