@@ -10,6 +10,7 @@ class SOAttachment(models.Model):
     _order = "sequence_number asc" 
 
     attachment = fields.Binary(string="Archivo", required=True)
+    file_name = fields.Char(string="Nombre del Archivo")
     so_id = fields.Many2one("sale.order", string="Orden de Venta", ondelete='cascade')
     sequence_number = fields.Integer(string="Secuencia", readonly=True)
     display_name_custom = fields.Char(string="Referencia de Guía", compute="_compute_display_name_custom", store=True)
