@@ -2,7 +2,7 @@
 <templates xml:space="preserve">
     <t t-inherit="stock_barcode.MainComponent" t-inherit-mode="extension">
         
-        <xpath expr="//div[contains(@class, 'o_barcode_partner')]" position="replace">
+        <xpath expr="//div[contains(@class, 'o_barcode_header')]//div[contains(@class, 'o_barcode_partner')]" position="replace">
             <div t-if="state.record &amp;&amp; state.record.operator_id" class="o_barcode_partner text-muted">
                 <i class="fa fa-user-circle-o me-1"/>
                 <t t-esc="state.record.operator_id[1]"/>
@@ -13,17 +13,17 @@
             </div>
         </xpath>
 
-        <xpath expr="//div[contains(@class, 'o_barcode_control_buttons')]" position="before">
+        <xpath expr="//div[contains(@class, 'o_barcode_control_buttons')] | //footer[contains(@class, 'o_barcode_footer')]" position="before">
             <div t-if="state.record &amp;&amp; state.record.picking_type_id &amp;&amp; state.record.picking_type_id[1].includes('PACK')" 
                  class="o_barcode_custom_buttons d-flex gap-2 p-2 w-100" 
                  style="background-color: #f8f9fa; border-top: 1px solid #dee2e6;">
                 
-                <button class="btn btn-primary w-50" t-on-click="() => this.onCustomAction('action_imprimir_guia')">
-                    <i class="fa fa-print me-1"/> Imprimir Guía
+                <button class="btn btn-primary w-50" t-on-click="() => this.onCustomAction('action_guide')">
+                    <i class="fa fa-print me-1"/> Imprimir Guías
                 </button>
                 
-                <button class="btn btn-secondary w-50" t-on-click="() => this.onCustomAction('action_ver_bin')">
-                    <i class="fa fa-cube me-1"/> Ver BIN
+                <button class="btn btn-secondary w-50" t-on-click="() => this.onCustomAction('action_tag')">
+                    <i class="fa fa-cube me-1"/> Imprimir etiquetas
                 </button>
             </div>
         </xpath>
