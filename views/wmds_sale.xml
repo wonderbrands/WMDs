@@ -13,7 +13,9 @@
                         <field name="attachments">
                             <list create="True" edit="True" editable="bottom">
                                 <field name="display_name_custom"/>
-                                <field name="attachment"/>
+                                <field name="on_bin" readonly="True"/>
+                                <field name="attachment" filename="document_fname" widget="binary"/>
+                                <field name="document_fname" invisible="1"/>
                             </list>
                         </field>
                     </page>

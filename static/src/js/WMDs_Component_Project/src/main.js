@@ -5,12 +5,14 @@ import { definePreset } from '@primeuix/themes'
 import Aura from '@primeuix/themes/aura'
 import App from './App.vue'
 import QrScanner from 'qr-scanner'
+import Quagga from 'quagga';
 
 import './style.css'
 
 QrScanner.WORKER_PATH = null
 
 window.QrScanner = QrScanner
+Window.Quagga = Quagga
 
 const WMDSAuraLight = definePreset(Aura, {
     semantic: {

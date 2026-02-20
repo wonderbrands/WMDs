@@ -11,10 +11,9 @@ class SOAttachment(models.Model):
 
     attachment = fields.Binary(string="Archivo", required=True)
     so_id = fields.Many2one("sale.order", string="Orden de Venta", ondelete='cascade')
-    
     sequence_number = fields.Integer(string="Secuencia", readonly=True)
-    
-    display_name_custom = fields.Char(string="Referencia de Guía", compute="_compute_display_name_custom")
+    display_name_custom = fields.Char(string="Referencia de Guía", compute="_compute_display_name_custom", store=True)
+    on_bin = fields.Boolean(string="En bin", default=False)
 
     @api.depends('so_id', 'sequence_number')
     def _compute_display_name_custom(self):
@@ -28,10 +27,39 @@ class SOAttachment(models.Model):
     def create(self, vals_list):
         for vals in vals_list:
             if vals.get('so_id'):
-                # Buscamos cuántos adjuntos tiene ya esta SO para asignar el siguiente número
                 existing_count = self.search_count([('so_id', '=', vals['so_id'])])
                 vals['sequence_number'] = existing_count + 1
         return super(SOAttachment, self).create(vals_list)
+
+    def unlink(self):
+        logs_to_create = []
+        affected_so_ids = set()
+
+        for record in self:
+            if record.so_id:
+                affected_so_ids.add(record.so_id.id)
+                logs_to_create.append({
+                    'sale': record.so_id.id,
+                    'log': f"Se ha eliminado el anexo: {record.display_name_custom}",
+                    'user': self.env.user.id,
+                    'date': fields.Datetime.now(),
+                })
+
+        res = super(SOAttachment, self).unlink()
+
+        if logs_to_create:
+            self.env['wmds.log'].sudo().create(logs_to_create)
+
+        for so_id in affected_so_ids:
+            remaining_attachments = self.search([
+                ('so_id', '=', so_id)
+            ], order='sequence_number asc')
+            
+            for index, attach in enumerate(remaining_attachments, start=1):
+                if attach.sequence_number != index:
+                    attach.write({'sequence_number': index})
+                
+        return res
 
 
 class SOWMDS(models.Model):
@@ -44,7 +72,6 @@ class SOWMDS(models.Model):
     def create(self, vals):
         res = super(SOWMDS, self).create(vals)
         if vals.get('carrier_selection_relational'):
-            # Se asume que carrier_selection_relational es un Many2one a un modelo con campo 'name'
             carrier_name = res.carrier_selection_relational.name
             self.env['wmds.log'].sudo().create({
                 'sale': res.id,
