@@ -219,11 +219,14 @@ body{
         .field{
             width: 50%; height: 10vh; min-width: 40px; display: flex; flex-direction: column;
             align-items: center; justify-content: center; margin-top: 2rem;
-            .p-floatlabel{
-                width: 100%; height: 100%; display: flex; flex-direction: column;
-                align-items: center; justify-content: center;
-                .p-inputtext{ width: 90%; }
-                .p-select{ width: 90%; }
+            .p-floatlabel {
+                width: 90%; 
+                position: relative; 
+                display: block;
+                
+                .p-inputtext, .p-select {
+                    width: 100%;
+                }
             }
         }
     }

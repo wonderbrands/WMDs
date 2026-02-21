@@ -2,39 +2,34 @@
     <div class="pick_component" v-if="form_data">
         <div class="title_section">
             <h1>{{ store.main_manager_screen.form_title }} {{ form_data.name }}</h1>
-            <h2>{{}}</h2>
         </div>
+        
         <div class="form_items">
             <div v-for="field in Object.keys(form_data)" :key="field" class="field">
-                <FloatLabel v-if="!map_cols.filter(col => col.non_blocked_field ).map(col => col.field).includes(field)">
+                
+                <FloatLabel v-if="!map_cols.filter(col => col.non_blocked_field).map(col => col.field).includes(field)">
                     <InputText disabled :id="field" v-model="form_data[field]" :placeholder="map_cols[field]" />
                     <label :for="field">{{ map_cols.filter(col => col.field === field)[0].name }}</label>
                 </FloatLabel>
+                
                 <FloatLabel v-else>
                     <Select v-model="form_data[field]" 
                         :id="field"
                         :options="options_non_blocked[field]" 
                         filter
                         :showClear="true"
-                        placeholder="Selecciona un usuario para asignar" 
+                        placeholder="Selecciona una opción" 
                         :invalid="!form_data[field]"
                         class="w-full" 
                         optionLabel="name"
                         optionValue="id">
-                        
-                        <template #filter="{ filterModel }">
-                            <InputText 
-                                v-model="filterModel.value" 
-                                @input="setOptions(filterModel.value, field)"
-                                placeholder="Buscar..."
-                                class="w-full"
-                            />
-                        </template>
-                    </Select>
+                        </Select>
                     <label :for="field">{{ map_cols.filter(col => col.field === field)[0].name }}</label>
                 </FloatLabel>
+                
             </div>
-            <div v-if="extra_data">
+            
+            <div v-if="extra_data" class="w-full mt-4">
                 <h5>{{ extra_data.title }}</h5>
                 <DataTable v-if="extra_data.data"
                     stripedRows 
@@ -49,9 +44,11 @@
                 </DataTable>
             </div>
         </div>
+        
         <Button severity="success" label="Guardar" @click="saveForm()" />
     </div>
 </template>
+
 <script>
     import InputText from 'primevue/inputtext';
     import FloatLabel from 'primevue/floatlabel';
@@ -61,6 +58,7 @@
     import Column from 'primevue/column';
 
     import { useGeneralStore } from "../../store/index"
+
     export default {
         name: "GenericFormView", 
         data: function() {
@@ -78,21 +76,25 @@
         methods: {
             setOptions: async function(data, field) {
                 const field_config = this.map_cols.find(c => c.field === field);
+                // Ensure the dynamic source exists in your map_cols config
                 if (field_config && field_config.source) {
-                    this.options_non_blocked[field] = await this.store.callOdoo(field_config.source, data || "")
+                    // Fixed: passing "*" instead of "" for the initial load
+                    this.options_non_blocked[field] = await this.store.callOdoo(field_config.source, data || "*");
                 }
             },
             async saveForm(){
                 const formConfig = this.store.main_manager_screen.form_config;
-                let data = this.form_data;
+                let data = { ...this.form_data };
 
                 // Re-assign data for non-blocked fields
-                let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
+                let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field);
                 non_blocked_fields.forEach(field => {
-                    data[field] = this.options_non_blocked[field].find(opt => opt.id === data[field])
-                })
+                    if (this.options_non_blocked[field]) {
+                        data[field] = this.options_non_blocked[field].find(opt => opt.id === data[field]);
+                    }
+                });
 
-                let saved = await this.store.callOdoo(formConfig.save_context, "", data)
+                let saved = await this.store.callOdoo(formConfig.save_context, "", data);
                 
                 if (saved.saved){
                     for (const action of formConfig.on_save_actions) {
@@ -110,30 +112,33 @@
                         }
                         await this.store.callOdoo(action.context, "", params);
                     }
-                    this.store.closeModal()
+                    this.store.closeModal();
                 }
             }
         },
         async mounted() {
             const formConfig = this.store.main_manager_screen.form_config;
 
-            this.map_cols = this.store.form_context.data.map_cols
-            this.form_data = this.store.form_context.data
-            delete this.form_data.map_cols
+            this.map_cols = this.store.form_context.data.map_cols;
+            this.form_data = { ...this.store.form_context.data }; // Clone to avoid mutating store directly
+            delete this.form_data.map_cols;
             
+            // 1. Fetch options for dropdowns exactly once on mount
             for (const field of this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)){
-                await this.setOptions("", field)
+                await this.setOptions("*", field);
             }
             
-            let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
+            // 2. Set initial values for dropdowns
+            let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field);
             non_blocked_fields.forEach(field => {
                 if (this.form_data[field] && typeof this.form_data[field] === 'object' && this.form_data[field].id) {
-                    this.form_data[field] = this.form_data[field].id
+                    this.form_data[field] = this.form_data[field].id;
                 }
-            })
+            });
             
+            // 3. Fetch extra data for DataTable if configured
             if (formConfig.related_data_endpoint) {
-                this.extra_data = await this.store.callOdoo(formConfig.related_data_endpoint, "", { id: this.form_data.id })
+                this.extra_data = await this.store.callOdoo(formConfig.related_data_endpoint, "", { id: this.form_data.id });
             }
         },
         components: {
@@ -146,3 +151,4 @@
         }
     }
 </script>
+
