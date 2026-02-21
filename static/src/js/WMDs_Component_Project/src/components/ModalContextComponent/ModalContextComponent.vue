@@ -34,7 +34,7 @@
                 </ul>
                 <Button label="asignar" @click="store.trasladarProducts(store.modal_context_products)" rounded/>
                 </div>-->
-                <PickComponent v-else-if="store.modal_context === 'pick'"/>
+                <GenericFormView v-else-if="store.modal_context === 'pick'"/>
             </div>
            
         </section>
@@ -43,7 +43,7 @@
 <script>
     import Button from 'primevue/button';
     import IngresoComponent from "../Forms/IngresoComponent.vue";
-    import PickComponent from '../Forms/PickComponent.vue';
+    import GenericFormView from '../Forms/GenericFormView.vue';
     import AggregateCreation from '../Forms/AggregateCreation.vue';
     import CycleCount from '../Forms/CycleCount.vue';
     import { useGeneralStore } from "../../store/index";
@@ -57,7 +57,7 @@
         components: {
             Button,
             IngresoComponent, 
-            PickComponent,
+            GenericFormView,
             AggregateCreation,
             CycleCount
         }

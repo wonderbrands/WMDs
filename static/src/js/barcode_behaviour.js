@@ -157,7 +157,27 @@ patch(BarcodeModel.prototype, {
 patch(MainComponent.prototype, {
     
     async onCustomAction(actionName) {
-            console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-            console.log(actionName)
+        const recordId = this.env.model.record.id;
+        
+        if (!recordId) {
+            console.warn("No record selected");
+            return;
+        }
+
+        try {
+            const action = await this.env.services.orm.call(
+                'stock.picking', 
+                actionName, 
+                [[recordId]]
+            );
+            
+            if (action) {
+                await this.env.services.action.doAction(action);
+            }
+        } catch (error) {
+            console.error("Error executing custom action:", error);
+
+        }
     }
+    
 });

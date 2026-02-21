@@ -47,6 +47,32 @@ class StockWMDS(models.Model):
         
         return res
 
+
+    def action_imprimir_guia(self):
+        self.ensure_one()
+        sale_order = self.sale_id        
+        if not sale_order:
+            raise UserError("No se encontró un Pedido de Venta asociado a esta transferencia.")
+
+        report = self.env.ref('wb_printer_IoT.action_report_print_attachment_4x6', raise_if_not_found=False)
+        if not report:
+            raise UserError("No se encontró el reporte wb_printer_IoT.action_report_print_attachment_4x6.")
+            
+        return report.report_action(sale_order)
+
+    def action_print_tag(self):
+        self.ensure_one()
+        
+        sale_order = self.sale_id
+        if not sale_order:
+            raise UserError("No se encontró un Pedido de Venta asociado a esta transferencia.")
+
+        report = self.env.ref('wb_printer_IoT.action_report_custom_2x1', raise_if_not_found=False)
+        if not report:
+            raise UserError("No se encontró el reporte wb_printer_IoT.action_report_custom_2x1.")
+            
+        return report.report_action(sale_order)
+
 class BatchWMDS(models.Model):
     _inherit = 'stock.picking.batch'
 

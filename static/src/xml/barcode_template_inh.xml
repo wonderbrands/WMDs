@@ -17,11 +17,11 @@
             </div>
         </xpath>
 
-        <xpath expr="//div[contains(@class, 'o_barcode_lines_list')] | //div[contains(@class, 'o_barcode_lines')]" position="after">
+        <xpath expr="//div[contains(@class, 'o_barcode_control')]" position="before">
             
             <div t-if="env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
                  class="o_barcode_custom_buttons d-flex gap-2 p-2 w-100" 
-                 style="background-color: #f8f9fa; border-top: 1px solid #dee2e6; margin-top: auto;">
+                 style="background-color: #f8f9fa; border-top: 1px solid #dee2e6;">
                 
                 <button class="btn btn-primary flex-fill" t-on-click="() => this.onCustomAction('action_imprimir_guia')">
                     <i class="fa fa-print me-1"/> Imprimir Guía

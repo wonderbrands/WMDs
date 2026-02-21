@@ -47,12 +47,21 @@
             const video = this.$refs.qrScanner;
             if (!video) return false;
 
+            let processing = false;
+
             try {
                 this.scanner = new window.QrScanner(
                     video,
-                    result => {
+                    async result => {
+                        if (processing) return;
+                        processing = true;
+
+                        this.scanner.pause(true);
+
                         const data = result.data || result;
-                        if (this.onScan) this.onScan(data);
+                        if (this.onScan) {
+                            await this.onScan(data);
+                        }
                     },
                     { preferredCamera: "environment", highlightScanRegion: true }
                 );

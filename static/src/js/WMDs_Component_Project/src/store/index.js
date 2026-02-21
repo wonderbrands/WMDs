@@ -50,10 +50,40 @@ export const useGeneralStore = defineStore('general_store', {
                         {name: "id", label: "ID"},
                         {name: "sale_order", label: "Pedido"},
                         {name: "name", label: "Nombre"},
-                        {name: "responsible", label: "Responsable"},
+                        {name: "responsible", label: "Responsable", non_blocked_field: true, source: "operadores"},
                         {name: "date", label: "Fecha"},
                         {name: "status", label: "Estado"}
-                    ]
+                    ],
+                    form_config: {
+                        save_context: "assign_pick",
+                        related_data_endpoint: "pick_products",
+                        on_save_actions: [
+                            {
+                                context: "log_record",
+                                params: {
+                                    pick_id: "{id}",
+                                    operator_mail: "{user_email}",
+                                    message: "Traslado {name} asignado a {responsible.name}"
+                                }
+                            },
+                            {
+                                context: "log_record",
+                                params: {
+                                    pick_id: "{id}",
+                                    type: "external",
+                                    operator_mail: "{user_email}",
+                                    message: ""
+                                }
+                            },
+                            {
+                                context: "change_status",
+                                params: {
+                                    pick_id: "{id}",
+                                    status: "not_started"
+                                }
+                            }
+                        ]
+                    }
                 },
                 {
                     title: "Planes de pickeo", 
