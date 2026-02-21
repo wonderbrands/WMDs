@@ -7,6 +7,20 @@ import requests
 
 _logger = logging.getLogger(__name__)
 
+
+class WMDSLog(models.Model):
+    _name = 'wmds.log'
+    _description = 'Log compartido WMDS'
+
+    pick = fields.Many2one('stock.picking', 'Pick')
+    purchase = fields.Many2one('purchase.order', 'Purchase Order')
+    sale = fields.Many2one('sale.order', "Sale order")
+    batch_pick = fields.Many2one('stock.picking.batch', 'Lote de picks')
+
+    log = fields.Text('Log')
+    date = fields.Datetime('Date', default=fields.Datetime.now) # Default automático
+    user = fields.Many2one('res.users', 'User')
+
     @api.model
     def create(self, vals):
         # Using create override to make it transparent
@@ -52,5 +66,3 @@ _logger = logging.getLogger(__name__)
                 self.with_context(wmds_log_duplicating=True).create(new_vals_picking)
 
         return log
-
-
