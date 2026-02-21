@@ -1,5 +1,5 @@
 <template>
-    <div class="generic-form-view" v-if="form_data">
+    <div class="pick_component" v-if="form_data">
         <div class="title_section">
             <h1>{{ store.main_manager_screen.form_title }} {{ form_data.name }}</h1>
             <h2>{{}}</h2>
