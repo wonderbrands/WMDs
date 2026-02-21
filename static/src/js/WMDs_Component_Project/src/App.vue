@@ -1,4 +1,5 @@
 <template>
+  <Toast />
   <LoadingComponent v-if="store.loading" />
 
   <component 
@@ -12,7 +13,7 @@
     context="user_initial_scanner" 
     instructions="Escanea tu QR para iniciar sesión"
     :can_close="false"
-    :onScan="(data) => store.role.getUserFromServer(data)" 
+    :onScan="handleUserScan" 
   />
 
   <component 
@@ -23,6 +24,7 @@
 
 <script>
 import { nextTick } from "vue"
+import Toast from 'primevue/toast';
 import LoadingComponent from "./components/LoadingComponent/LoadingComponent.vue"
 import RolePicker from "./components/RolePicker/RolePicker.vue"
 import ManagerComponent from "./components/ManagerComponent/ManagerComponent.vue"
@@ -37,6 +39,7 @@ import { useGeneralStore } from "./store/index"
 export default {
   name: 'App',
   components: {
+    Toast,
     LoadingComponent,
     RolePicker,
     ManagerComponent,
@@ -51,6 +54,19 @@ export default {
       store: useGeneralStore()
     }
   },
+  methods: {
+    async handleUserScan(data) {
+        try {
+            this.store.loading = true;
+            await this.store.role.getUserFromServer(data)
+        } catch (e) {
+            this.$toast.add({ severity: 'error', summary: 'Error de Autenticación', detail: e.message, life: 3000 });
+        } finally {
+            this.store.loading = false;
+        }
+    }
+  },
+
   computed: {
     role() {
       return this.store.role
@@ -71,6 +87,7 @@ export default {
         const json_persisted = JSON.parse(persisted);
         Object.assign(this.role, json_persisted);
       } catch (e) {
+        this.$toast.add({ severity: 'error', summary: 'Error de Sesión', detail: 'No se pudo restaurar la sesión anterior.', life: 3000 });
         console.error("Error al restaurar sesión:", e);
       }
     }

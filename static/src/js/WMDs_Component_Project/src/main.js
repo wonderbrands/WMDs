@@ -7,6 +7,8 @@ import App from './App.vue'
 import QrScanner from 'qr-scanner'
 import Quagga from 'quagga';
 
+import ToastService from 'primevue/toastservice';
+
 import './style.css'
 
 QrScanner.WORKER_PATH = null
@@ -40,7 +42,14 @@ const WMDSAuraLight = definePreset(Aura, {
   
 
 const app = createApp(App)
-app.use(createPinia())
+const pinia = createPinia()
+
+app.use(ToastService)
+pinia.use(({ store }) => {
+  store.toast = app.config.globalProperties.$toast
+})
+app.use(pinia)
+
 
 app.use(PrimeVue, {
     theme: {

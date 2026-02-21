@@ -99,6 +99,32 @@ export const useGeneralStore = defineStore('general_store', {
   getters: {
   },
   actions: {
+    async callOdoo(context, term, params) {
+        this.loading = true;
+        try {
+            const result = await this.odoo_middleware.getFromOdoo(context, term, params);
+
+            if (result && result.error) {
+                const errorMessage = result.error.data?.message || result.error.message || 'Ocurrió un error no especificado.';
+                this.toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 4000 });
+                return result; 
+            }
+            
+            const endpointConfig = this.odoo_middleware.endpointMap[context];
+            if (endpointConfig && endpointConfig.url.includes('/post/')) {
+                this.toast.add({ severity: 'success', summary: 'Éxito', detail: 'Operación completada.', life: 3000 });
+            }
+
+            return result;
+        } catch (e) {
+            this.toast.add({ severity: 'error', summary: 'Error de Conexión', detail: 'No se pudo contactar al servidor.', life: 4000 });
+            console.error("Error en callOdoo:", e);
+            return { error: { message: 'Error de Conexión: No se pudo contactar al servidor.' } };
+        }
+        finally {
+            this.loading = false;
+        }
+    },
     setCurrentScreen(newScreen) {
         this.loading = true
         this.current_screen = newScreen
@@ -123,14 +149,12 @@ export const useGeneralStore = defineStore('general_store', {
                if(this.available_main_manager_screens[screen].children){
                    this.available_main_manager_screens[screen].children.forEach(child => {
                        if(child.screen == newScreen){
-                            console.log(child)
                            this.main_manager_screen = child
                        }
                    })
                }
            })
         }else{
-            console.log(this.available_main_manager_screens[newScreen])
             this.main_manager_screen = this.available_main_manager_screens[newScreen]
         }
         
@@ -138,7 +162,9 @@ export const useGeneralStore = defineStore('general_store', {
     executeActionByContext(context, data, extra) {
         const actionsMap = {
             'assign_pack_for_operator': async (qr, extra) => {
-                await this.odoo_middleware.assignPick(
+                await this.callOdoo(
+                    'assign_pick',
+                    null,
                     {
                         id: extra.pick_id,
                         operation_type: extra.operation_type,

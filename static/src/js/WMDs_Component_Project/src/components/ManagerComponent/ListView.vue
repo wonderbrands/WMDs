@@ -214,8 +214,6 @@ export default {
 
     /* -------------------- FETCH -------------------- */
     async fetchFilteredData() {
-      this.store.loading = true;
-
       const params = {
         ...this.filters,
         page: this.pagination.page,
@@ -223,14 +221,11 @@ export default {
       };
 
       console.log(params)
-      this.server_data = await this.store.odoo_middleware.getFromOdoo(
+      this.server_data = await this.store.callOdoo(
         this.store.main_manager_screen.value,
         "",
         params
       );
-
-
-      this.store.loading = false;
     },
 
     /* -------------------- INIT -------------------- */
@@ -242,7 +237,7 @@ export default {
       };
       console.log(params)
 
-      this.server_data = await this.store.odoo_middleware.getFromOdoo(
+      this.server_data = await this.store.callOdoo(
         context,
         "",
         params

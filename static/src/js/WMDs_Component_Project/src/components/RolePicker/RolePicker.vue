@@ -18,13 +18,18 @@
             }
         },
         mounted: async function() {
-            this.store.loading = true
-            await this.store.role.getRole()
-            await this.store.role.getPermissions()
-            this.store.current_role = this.store.role.role
-            this.store.loading = false
-            if (this.store.current_role != "manager") {
-                this.store.setCurrentScreen("operator_screen")
+            this.store.loading = true;
+            try {
+                await this.store.role.getRole();
+                await this.store.role.getPermissions();
+                this.store.current_role = this.store.role.role;
+                if (this.store.current_role !== "manager") {
+                    this.store.setCurrentScreen("operator_screen");
+                }
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error de Permisos', detail: e.message, life: 3000 });
+            } finally {
+                this.store.loading = false;
             }
         },
         components: {

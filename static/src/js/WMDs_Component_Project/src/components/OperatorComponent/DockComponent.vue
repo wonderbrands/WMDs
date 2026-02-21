@@ -98,9 +98,7 @@ export default {
                 let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
                 let binName = parsedData.name;
                 
-                this.store.loading = true;
-
-                let response = await this.store.odoo_middleware.getFromOdoo("validate_bin", "", {
+                let response = await this.store.callOdoo("validate_bin", "", {
                     bin: binName
                 });
 
@@ -108,16 +106,14 @@ export default {
                     this.scannedBin = binName;
                     this.packageCount = response.total_packages || 0;
                 } else {
-                    alert(`Error: ${response.error}`);
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
                     this.scannerKey++;
                 }
                 
             } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error de Conexión', detail: 'No se pudo contactar al servidor.', life: 3000 });
                 console.error(e);
-                alert("Error de conexión con el servidor.");
                 this.scannerKey++; 
-            } finally {
-                this.store.loading = false;
             }
         },
 
@@ -128,28 +124,24 @@ export default {
                 let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
                 let dockName = parsedData.name;
 
-                this.store.loading = true; 
-
-                let response = await this.store.odoo_middleware.getFromOdoo("move_bin_to_dock", "", {
+                let response = await this.store.callOdoo("move_bin_to_dock", "", {
                     bin: this.scannedBin,
                     dock: dockName,
                     operator: this.store.role.email
                 });
 
                 if (response.ok) {
-                    alert(`Éxito: Se movieron ${response.moved_packages} paquetes al DOCK ${dockName}`);
+                    this.$toast.add({ severity: 'success', summary: 'Éxito', detail: `Se movieron ${response.moved_packages} paquetes al DOCK ${dockName}`, life: 3000 });
                     this.resetScan();
                 } else {
-                    alert(`Error: ${response.error}`);
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
                     this.scannerKey++;
                 }
 
             } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error de Conexión', detail: 'No se pudo contactar al servidor.', life: 3000 });
                 console.error(e);
-                alert("Error de conexión con el servidor.");
                 this.scannerKey++;
-            } finally {
-                this.store.loading = false;
             }
         },
 

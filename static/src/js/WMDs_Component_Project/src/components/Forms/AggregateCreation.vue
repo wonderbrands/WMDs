@@ -182,10 +182,8 @@
                 const fields = this.creation.create_by_aggregate.extra_fields || [];
                 for (const field of fields) {
                     if (field.type === 'selectable' && field.source) {
-                        this.store.loading = true;
-                        const results = await this.store.odoo_middleware.getFromOdoo(field.source, "");
+                        const results = await this.store.callOdoo(field.source, "");
                         this.optionsCache[field.source] = results || [];
-                        this.store.loading = false;
                     }
                 }
             },
@@ -203,7 +201,6 @@
                 this.isValidated = false; 
             },
             async validateData() {
-                this.store.loading = true;
                 this.isValidated = true;
                 
                 for (const item of this.aggregates) {
@@ -213,7 +210,7 @@
                          continue;
                     }
 
-                    const serverValidation = await this.store.odoo_middleware.getFromOdoo(
+                    const serverValidation = await this.store.callOdoo(
                         this.creation.create_by_aggregate.validate_item_endpoint,
                         item.value,
                         null
@@ -227,7 +224,6 @@
                         item.validated = true; // Marcamos como listo
                     }                     
                 }
-                this.store.loading = false;
             },
             // MÉTODO DE GUARDADO: Ejecución manual
             async saveValidRecords() {
@@ -240,8 +236,7 @@
                 const validItems = this.aggregates.filter(item => item.validated && !item.error);
                 if (validItems.length === 0) return;
 
-                this.store.loading = true;
-                const response = await this.store.odoo_middleware.getFromOdoo(
+                const response = await this.store.callOdoo(
                     this.creation.create_by_aggregate.save_aggregate_endpoint,
                     "", 
                     {
@@ -260,7 +255,6 @@
                         this.store.closeModal();
                     }
                 }
-                this.store.loading = false;
                 this.isValidated = false;
             },
             onInputChange(item) {

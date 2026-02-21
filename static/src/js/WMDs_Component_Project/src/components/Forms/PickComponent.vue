@@ -79,7 +79,7 @@
             setOptions: async function(data, field) {
                 console.log("input:", data)
                 if (field === "operator"){
-                    this.options_non_blocked[field] = await this.store.odoo_middleware.getFromOdoo("operadores", data || "*")
+                    this.options_non_blocked[field] = await this.store.callOdoo("operadores", data || "*")
 
                 }
                 console.log("users loaded:", this.options_non_blocked)
@@ -93,16 +93,16 @@
                     console.log(data[field])
                 })
                 console.log(data)
-                let saved = await this.store.odoo_middleware.getFromOdoo(context, "", data)
+                let saved = await this.store.callOdoo(context, "", data)
                 if (saved.saved){
-                    await this.store.odoo_middleware.getFromOdoo("log_record", "",
+                    await this.store.callOdoo("log_record", "",
                         {
                             pick_id: data.id,
                             operator_mail: this.store.role.email,
                             message: `Traslado ${data.name} asignado a ${data.operator.name}`,
                         }
                     )
-                    await this.store.odoo_middleware.getFromOdoo("log_record", "",
+                    await this.store.callOdoo("log_record", "",
                         {
                             pick_id: data.id,
                             type: "external",
@@ -111,7 +111,7 @@
                         }
                     )
                     
-                    await this.store.odoo_middleware.getFromOdoo("change_status", "",
+                    await this.store.callOdoo("change_status", "",
                         {
                             pick_id: data.id,
                             status: "not_started"       
@@ -119,23 +119,7 @@
                     )
                     this.store.closeModal()
                 }
-                /*
-                let required_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)
-                if (required_fields.some(field => !data[field])){
-                    return 0;
-                }
-                console.log("========================")
-                console.log(data)
-                let saved = await this.store.odoo_middleware.getFromOdoo(context, "", data)
-                Object.keys(data).forEach(key => {
-                    if (data[key].name){
-                        this.form_data[key] = data[key].name
-                    }
-                })
-                console.log(saved)
-                if (saved.saved){
-                    this.store.closeModal()
-                }*/
+                
             }
         },
         async mounted() {
@@ -154,7 +138,7 @@
                 }
             })
             
-            this.extra_data = await this.store.odoo_middleware.getFromOdoo("pick_products", this.form_data.id)
+            this.extra_data = await this.store.callOdoo("pick_products", this.form_data.id)
             
             console.log("--------mounted-------")
             console.log("form_data:", this.form_data)

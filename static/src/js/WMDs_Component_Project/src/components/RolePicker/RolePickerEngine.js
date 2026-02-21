@@ -84,7 +84,8 @@ class RolePickerProd extends RolePickerEngineDefinition {
             
             
         } catch (error) {
-            console.error(error)
+            console.error(error);
+            throw new Error("No se pudo validar el usuario.");
         }
         /*
         const local_storage_info = localStorage.getItem("web.lastConnectedUser")
@@ -133,10 +134,8 @@ class RolePickerProd extends RolePickerEngineDefinition {
             console.log(result)
             this.role = result.result.role
         } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
+            console.error(error);
+            throw new Error("No se pudo obtener el rol del usuario.");
         }
     }
 
@@ -158,10 +157,8 @@ class RolePickerProd extends RolePickerEngineDefinition {
             console.log(result)
             this.permissions = result.result.permissions
         } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
+            console.error(error);
+            throw new Error("No se pudieron obtener los permisos del usuario.");
         }
     }
 

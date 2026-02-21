@@ -241,477 +241,100 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
 class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
     constructor() {
         super()
+        this.endpointMap = {
+            ingreso: {url: '/wmds/engine/picks', method: 'POST'},
+            operadores: {url: '/wmds/engine/available_operators', method: 'POST'},
+            assign_pick: {url: '/wmds/v2/engine/post/pick_assign_operator', method: 'POST'},
+            pick_products: {url: '/wmds/v2/engine/get/pick_products', method: 'POST'},
+            pick: {url: '/wmds/v2/engine/get/picks', method: 'POST'},
+            pending_tasks: {url: '/wmds/v2/engine/get/pending_tasks', method: 'POST'},
+            get_barcode_url: {url: '/wmds/v2/engine/get/barcode_url', method: 'POST'},
+            log_record: {url: '/wmds/v2/engine/post/log_stock_record', method: 'POST'},
+            change_status: {url: '/wmds/v2/engine/post/change_wmds_status', method: 'POST'},
+            validate_pick_for_batch: {url: '/wmds/v2/engine/post/validate_pick_for_batch', method: 'POST'},
+            save_picks_in_batch: {url: '/wmds/v2/engine/post/save_batch', method: 'POST'},
+            validate_attachment_guide: {url: '/wmds/v2/engine/post/validate_attachment_guide', method: 'POST'},
+            move_to_bin: {url: '/wmds/v2/engine/post/move_to_bin', method: 'POST'},
+            validate_bin: {url: '/wmds/v2/engine/post/validate_bin', method: 'POST'},
+            move_bin_to_dock: {url: '/wmds/v2/engine/post/move_bin_to_dock', method: 'POST'},
+        };
     }
 
     setRole(role){
         super.setRole(role)
     }
 
+    async _fetch(endpoint, params, method) {
+        try {
+            const response = await fetch(endpoint, {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    jsonrpc: "2.0",
+                    params: params
+                  })
+            });
+            const result = await response.json();
+            console.log(result);
+            return result;
+        } catch (error) {
+            console.error("Fetch/JSON Parse Error:", error);
+            return {
+                error: {
+                    message: 'Error de red o al procesar la respuesta del servidor.',
+                    data: { debug: error.toString() }
+                }
+            };
+        }
+    }
+
     async getFromOdoo(context, term, params={}) {
-        var regex = null;
+        const endpointConfig = this.endpointMap[context];
+        if (!endpointConfig) {
+            return { error: { message: `Endpoint no configurado para: ${context}` } };
+        }
+
+        let fetchParams;
         term = String(term).toLowerCase();
+
         switch (String(context)){
             case "ingreso":
-                return await this.getIngresos(term)
-
+                fetchParams = { type: "ingreso", name: term };
+                break;
             case "operadores":
-                return await this.getOperadores(term)
-
-            case "assign_pick":
-                return await this.assignPick(params)
-
-            case "pick_products":
-                return await this.getPickProducts(params)
-            
-            case "pick":
-                return await this.getPicks(params)
-            
+                fetchParams = { name: term };
+                break;
             case "pending_tasks":
-                return await this.getPendingTasks(term, params)
-
-            case "get_barcode_url":
-                return await this.getBarcodeUrl(params)
-
-            case "log_record":
-                return await this.logRecord(term, params)
-            
-            case "change_status":
-                return await this.changeStatus(term, params)
-            
+                fetchParams = {task: term, ...params};
+                break;
             case "validate_pick_for_batch":
-                return await this.validatePickForBatch(term)
-                   
-            case "save_picks_in_batch":
-                return await this.savePicksInBatch(params)
-            
-            case "validate_attachment_guide":
-                return await this.validateAttachmentGuide(params)
-
-            case "move_to_bin":
-                return await this.moveToBin(params)
-
-            case "validate_bin":
-                return await this.validateBin(params)
-                
-            case "move_bin_to_dock":
-                return await this.moveBinToDock(params)
-                    
+                fetchParams = { pick: term };
+                break;
             default:
+                fetchParams = params;
                 break;
         }
-    }
+        
+        const result = await this._fetch(endpointConfig.url, fetchParams, endpointConfig.method);
 
-    async getOperadores(term) {
-        try {
-            const response = await fetch('/wmds/engine/available_operators', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: {
-                        name: term
-                    }
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.result.error) {
-                console.log(result.result.error)
-                return []
-            }
-            return result.result.results
-            
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
+        if (result.error) {
+             return result;
         }
-    }
 
-    async getIngresos(term) {
-        try {
-            const response = await fetch('/wmds/engine/picks', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: {
-                        type: "ingreso",
-                        name: term
-                    }
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.result.error) {
-                console.log(result.result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
+        if (Object.prototype.hasOwnProperty.call(result, 'result')) {
+            switch(context){
+                case 'get_barcode_url':
+                    return result.result?.url;
+                case 'operadores':
+                    return result.result?.results;
+                default:
+                    return result.result;
             }
         }
-    }
-
-    async getPicks(params){
-        try {
-            const response = await fetch('/wmds/v2/engine/get/picks', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-
-    async getPickProducts(params){
-        try {
-            const response = await fetch('/wmds/v2/engine/get/pick_products', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-
-
-    async assignPick(params){
-        try {
-            const response = await fetch('/wmds/v2/engine/post/pick_assign_operator', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-    async getPendingTasks(term, params){
-        try {
-            const response = await fetch('/wmds/v2/engine/get/pending_tasks', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: {task: term, ...params}
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-
-    async getBarcodeUrl(params){
-        try {
-            const response = await fetch('/wmds/v2/engine/get/barcode_url', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result.url
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-
-    async logRecord(term, params){
-        try {
-            const response = await fetch('/wmds/v2/engine/post/log_stock_record', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-
-    async changeStatus(term, params){
-        try {
-            const response = await fetch('/wmds/v2/engine/post/change_wmds_status', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-
-    async validatePickForBatch(term){
-        try {
-            const response = await fetch('/wmds/v2/engine/post/validate_pick_for_batch', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                 },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params:{
-                        pick: term
-                    }
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-                   
-    async savePicksInBatch(params){
-        try {
-            const response = await fetch('/wmds/v2/engine/post/save_batch', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-
-    async validateAttachmentGuide(params){
-        try {
-            const response = await fetch('/wmds/v2/engine/post/validate_attachment_guide', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-
-    async moveToBin(params){
-        try {
-            const response = await fetch('/wmds/v2/engine/post/move_to_bin', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-
-    async validateBin(params){
-        try {
-            const response = await fetch('/wmds/v2/engine/post/validate_bin', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
-    }
-
-    async moveBinToDock(params){
-        try {
-            const response = await fetch('/wmds/v2/engine/post/move_bin_to_dock', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: params
-                  })
-            })   
-            const result = await response.json()
-            console.log(result)
-            if (result.error) {
-                console.log(result.error)
-                return []
-            }
-            return result.result
-        } catch (error) {
-            return {
-                'error': 'Error while doing request',
-                'message': error
-            }
-        }
+        
+        return { error: { message: "Respuesta inválida del servidor (sin result ni error)." } };
     }
 }
 

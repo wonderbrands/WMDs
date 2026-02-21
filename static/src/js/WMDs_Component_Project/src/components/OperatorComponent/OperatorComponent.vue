@@ -70,8 +70,6 @@ export default {
     },
 
     async mounted() {
-        this.store.loading = true;
-        
         this.tasks = this.taskDefinitions.map(t => ({
             ...t,
             assigned: [{
@@ -86,7 +84,7 @@ export default {
             const fetchPromises = this.tasks
                 .filter(t => t.fetch)
                 .map(async (task) => {
-                    const data = await this.store.odoo_middleware.getFromOdoo(
+                    const data = await this.store.callOdoo(
                         "pending_tasks",
                         task.id,
                         { email: this.store.role.email }
@@ -102,9 +100,8 @@ export default {
 
             await Promise.all(fetchPromises);
         } catch (error) {
+            this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar las tareas pendientes.', life: 3000 });
             console.error("Error cargando tareas:", error);
-        } finally {
-            this.store.loading = false;
         }
     },
 
@@ -114,9 +111,7 @@ export default {
         },
 
         async openTask({ data: pick }) {
-            const { odoo_middleware, role } = this.store;
-            
-            const urlPromise = odoo_middleware.getFromOdoo("get_barcode_url", "", { pick_name: pick });
+            const urlPromise = this.store.callOdoo("get_barcode_url", "", { pick_name: pick });
             window.location.href = await urlPromise;
         },
         createView(task){

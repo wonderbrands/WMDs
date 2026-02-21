@@ -36,11 +36,11 @@
         methods: {
             setOptionsIngreso: async function() {
                 console.log(this.ingreso)
-                this.ingresos_pendientes = await this.store.odoo_middleware.getFromOdoo("ingreso",this.ingreso)
+                this.ingresos_pendientes = await this.store.callOdoo("ingreso",this.ingreso)
             },
             setOptionsUser: async function() {
                 console.log(this.user)
-                this.users = await this.store.odoo_middleware.getFromOdoo("operadores",this.user)
+                this.users = await this.store.callOdoo("operadores",this.user)
             }
         },
         components: {

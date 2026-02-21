@@ -150,5 +150,10 @@ patch(BarcodeModel.prototype, {
         } catch (error) {
             console.error("[Custom] >> Error en la petición de URL", error);
         }
+    },
+
+    onCustomAction(print){
+        console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+        console.log(print)
     }
 });

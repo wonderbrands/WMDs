@@ -102,7 +102,7 @@ export default {
                     return;
                 }
 
-                let response = await this.store.odoo_middleware.getFromOdoo("validate_attachment_guide", "", {
+                let response = await this.store.callOdoo("validate_attachment_guide", "", {
                     attachment_id: data,
                 });
 
@@ -137,7 +137,7 @@ export default {
                 let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
                 let nameToValidate = parsedData.name;
 
-                let response = await this.store.odoo_middleware.getFromOdoo("move_to_bin", "", {
+                let response = await this.store.callOdoo("move_to_bin", "", {
                     bin: nameToValidate,
                     operator: this.store.role.email,
                     orders: this.so
@@ -150,6 +150,7 @@ export default {
                     this.scannerKey++; 
                 }
             } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error de Validación', detail: 'No se pudo validar el bin.', life: 3000 });
                 console.error("Bin validation error", e);
             }
         }

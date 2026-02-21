@@ -157,11 +157,8 @@ export default {
     // 2. AGREGAMOS COMPUTADAS PARA LEER DEL STORE
     computed: {
         modalData() {
-            // IMPORTANTE: Asegúrate de que 'modal_data' coincida con cómo guardas la data en tu store.
-            // A veces es this.store.modalData, this.store.currentModalData, o this.store.modal_data.data
-            // Usamos || {} para asegurar que nunca sea undefined y rompa el template.
-            let dataFromStore = this.store.modal_data?.data || this.store.modalData || this.store.currentModalData;
-            return dataFromStore || {};
+            // Data for the modal is passed via the 'form_context' property in the store
+            return this.store.form_context?.data || {};
         },
         isCreating() {
             // Determinamos si es creación leyendo la propiedad segura modalData
@@ -181,23 +178,25 @@ export default {
     methods: {
         async fetchOperators() {
             try {
-                let response = await this.store.odoo_middleware.getFromOdoo("get_operators", "");
+                let response = await this.store.callOdoo("get_operators", "");
                 if (response && response.data) this.operators = response.data;
-            } catch (error) { console.error("Error cargando operadores", error); }
+            } catch (error) { this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los operadores.', life: 3000 });
+                console.error("Error cargando operadores", error); }
         },
 
         /* --- METODOS DE CREACIÓN (PANELES DOBLES) --- */
         async fetchLocations() {
-            this.store.loading = true;
             try {
-                let response = await this.store.odoo_middleware.getFromOdoo("get_locations_by_range", "", this.filters);
+                let response = await this.store.callOdoo("get_locations_by_range", "", this.filters);
                 if (response && response.locations) {
                     this.searchResults = response.locations.filter(
                         resLoc => !this.selectedLocations.some(selLoc => selLoc.id === resLoc.id)
                     );
                 }
-            } catch (e) { alert("Error buscando ubicaciones"); } 
-            finally { this.store.loading = false; }
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Error buscando ubicaciones.', life: 3000 });
+                console.error("Error buscando ubicaciones:", e);
+            } 
         },
 
         addLocation(location) {
@@ -221,71 +220,84 @@ export default {
         },
 
         async submitNewCount() {
-            this.store.loading = true;
             try {
                 const payload = {
                     count_ref: this.newCount.ref,
                     operator_id: this.newCount.operator_id,
                     location_ids: this.selectedLocations.map(loc => loc.id)
                 };
-                let response = await this.store.odoo_middleware.getFromOdoo("create_initial_cycle_count", "", payload);
+                let response = await this.store.callOdoo("create_initial_cycle_count", "", payload);
                 if (response.ok) {
                     this.store.closeModal(); 
-                } else { alert(response.error); }
-            } catch (e) { console.error(e); } 
-            finally { this.store.loading = false; }
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
+                }
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo crear el conteo cíclico.', life: 3000 });
+                console.error(e);
+            } 
         },
 
         /* --- METODOS DE EDICIÓN --- */
         async fetchWavesForCount() {
             if (!this.modalData.id) return; // Validación de seguridad
 
-            this.store.loading = true;
             try {
-                let response = await this.store.odoo_middleware.getFromOdoo("get_waves_for_count", "", { count_id: this.modalData.id });
+                let response = await this.store.callOdoo("get_waves_for_count", "", { count_id: this.modalData.id });
                 if (response && response.waves) {
                     this.waves = response.waves;
                 }
-            } catch (e) { console.error("Error obteniendo olas", e); }
-            finally { this.store.loading = false; }
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron obtener las olas del conteo.', life: 3000 });
+                console.error("Error obteniendo olas", e);
+            }
         },
         async addNewWave() {
-            this.store.loading = true;
             try {
                 const payload = {
                     cycle_count_id: this.modalData.id,
                     wave_name: this.newWave.name,
                     operator_id: this.newWave.operator_id
                 };
-                let response = await this.store.odoo_middleware.getFromOdoo("add_wave_to_count", "", payload);
+                let response = await this.store.callOdoo("add_wave_to_count", "", payload);
                 if (response.ok) {
                     this.newWave.name = "";
                     this.newWave.operator_id = null;
                     await this.fetchWavesForCount(); 
-                } else { alert(response.error); }
-            } catch (e) { console.error(e); }
-            finally { this.store.loading = false; }
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
+                }
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo agregar la nueva ola.', life: 3000 });
+                console.error(e);
+            }
         },
         async finishWave(waveId) {
             if (!confirm("¿Terminar esta ola?")) return;
-            this.store.loading = true;
             try {
-                let response = await this.store.odoo_middleware.getFromOdoo("finish_cycle_count_wave", "", { wave_id: waveId });
+                let response = await this.store.callOdoo("finish_cycle_count_wave", "", { wave_id: waveId });
                 if (response.ok) await this.fetchWavesForCount();
-                else alert(response.error);
-            } catch (e) { console.error(e); }
-            finally { this.store.loading = false; }
+                else {
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
+                }
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo finalizar la ola.', life: 3000 });
+                console.error(e);
+            }
         },
         async closeEntireCount() {
             if (!confirm("Al cerrar el conteo, ninguna ola podrá ser modificada. ¿Estás seguro?")) return;
-            this.store.loading = true;
             try {
-                let response = await this.store.odoo_middleware.getFromOdoo("close_cycle_count", "", { count_id: this.modalData.id });
+                let response = await this.store.callOdoo("close_cycle_count", "", { count_id: this.modalData.id });
                 if (response.ok) {
                     this.store.closeModal();
-                } else { alert(response.error); }
-            } catch (e) { console.error(e); }
-            finally { this.store.loading = false; }
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
+                }
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo cerrar el conteo.', life: 3000 });
+                console.error(e);
+            }
         }
     }
 };
