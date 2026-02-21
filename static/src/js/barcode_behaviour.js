@@ -1,6 +1,7 @@
 /** @odoo-module **/
 
 import BarcodeModel from "@stock_barcode/models/barcode_model";
+import  MainComponent  from "@stock_barcode/components/main";
 import { patch } from "@web/core/utils/patch";
 
 patch(BarcodeModel.prototype, {
@@ -151,9 +152,12 @@ patch(BarcodeModel.prototype, {
             console.error("[Custom] >> Error en la petición de URL", error);
         }
     },
+});
 
-    onCustomAction(print){
-        console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-        console.log(print)
+patch(MainComponent.prototype, {
+    
+    async onCustomAction(actionName) {
+            console.log("AAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+            console.log(actionName)
     }
 });
