@@ -34,7 +34,7 @@
                 </ul>
                 <Button label="asignar" @click="store.trasladarProducts(store.modal_context_products)" rounded/>
                 </div>-->
-                <GenericFormView v-else-if="store.modal_context === 'pick'"/>
+                <GenericFormView v-else-if="['pick','pack'].includes(store.modal_context)"/>
             </div>
            
         </section>

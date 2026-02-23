@@ -5,21 +5,20 @@
         </div>
         
         <div class="form_items">
-            <div v-for="field in Object.keys(form_data)" :key="field" class="field">
+            <div v-for="col in merged_cols" :key="col.field" class="field">
                 
-                <FloatLabel v-if="!isNonBlocked(field)">
-                    <InputText disabled :id="field" v-model="form_data[field]" :placeholder="getFieldLabel(field)" />
-                    <label :for="field">{{ getFieldLabel(field) }}</label>
+                <FloatLabel v-if="!col.non_blocked_field">
+                    <InputText disabled :id="col.field" v-model="form_data[col.field]" :placeholder="col.label" />
+                    <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
                 
                 <FloatLabel v-else>
-                    <Select v-model="form_data[field]" 
-                        :id="field"
-                        :options="options_non_blocked[field]" 
+                    <Select v-model="form_data[col.field]" 
+                        :id="col.field"
+                        :options="optionsCache[col.source]" 
                         filter
                         :showClear="true"
-                        placeholder="Selecciona una opción" 
-                        :invalid="!form_data[field]"
+                        :placeholder="'Selecciona ' + col.label" 
                         class="w-full" 
                         optionLabel="name"
                         optionValue="id">
@@ -27,13 +26,13 @@
                         <template #filter="{ filterModel }">
                             <InputText 
                                 v-model="filterModel.value" 
-                                @input="setOptions(filterModel.value, field)"
+                                @input="onSearchInput(filterModel.value, col.source)"
                                 placeholder="Buscar..."
                                 class="w-full"
                             />
                         </template>
                     </Select>
-                    <label :for="field">{{ getFieldLabel(field) }}</label>
+                    <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
                 
             </div>
@@ -74,7 +73,8 @@
             return {
                 store: useGeneralStore(),
                 form_data: null,
-                options_non_blocked: {},
+                merged_cols: [],
+                optionsCache: {},
                 extra_data: null,
                 filters: {
                     global: { value: null, matchMode: "contains" }
@@ -83,92 +83,117 @@
             }
         },
         methods: {
-            getColumnConfig(field) {
-                const frontendCols = this.store.main_manager_screen.map_columns;
-                if (frontendCols) {
-                    const found = frontendCols.find(col => col.name === field);
-                    if (found) return found;
+            async loadOptions(term, source) {
+                console.log("loadOptions initiated with term:", term, "and source:", source);
+                if (!source) {
+                    console.log("No source detected, aborting loadOptions");
+                    return;
                 }
-                
-                const backendCols = this.store.form_context.data.map_cols;
-                if (backendCols) {
-                    const found = backendCols.find(col => col.field === field);
-                    if (found) {
-                        return { ...found, label: found.name };
-                    }
-                }
-                return null;
+                const results = await this.store.callOdoo(source, term || "*");
+                console.log("Odoo response for options:", results);
+                this.optionsCache[source] = results || [];
+                console.log("optionsCache updated state:", this.optionsCache);
             },
-            isNonBlocked(field) {
-                const config = this.getColumnConfig(field);
-                return config ? !!config.non_blocked_field : false;
-            },
-            getFieldLabel(field) {
-                const config = this.getColumnConfig(field);
-                return config ? (config.label || config.name) : field;
-            },
-            setOptions: function(data, field) {
+            onSearchInput(term, source) {
+                console.log("onSearchInput triggered with term:", term);
                 clearTimeout(this.debounceTimeout);
-                
-                this.debounceTimeout = setTimeout(async () => {
-                    const config = this.getColumnConfig(field);
-                    if (config && config.source) {
-                        this.options_non_blocked[field] = await this.store.callOdoo(config.source, data || "*");
-                    }
+                this.debounceTimeout = setTimeout(() => {
+                    console.log("Executing debounce timeout");
+                    this.loadOptions(term, source);
                 }, 500);
             },
-            async saveForm(){
+            async saveForm() {
+                console.log("saveForm initiated");
                 const formConfig = this.store.main_manager_screen.form_config;
                 let data = { ...this.form_data };
+                console.log("Cloned form data:", data);
 
-                let non_blocked_fields = Object.keys(data).filter(f => this.isNonBlocked(f));
-                non_blocked_fields.forEach(field => {
-                    if (this.options_non_blocked[field]) {
-                        data[field] = this.options_non_blocked[field].find(opt => opt.id === data[field]);
+                const nonBlockedCols = this.merged_cols.filter(col => col.non_blocked_field);
+                console.log("Non blocked columns retrieved for mapping:", nonBlockedCols);
+
+                nonBlockedCols.forEach(col => {
+                    console.log("Evaluating col before save:", col.field);
+                    if (this.optionsCache[col.source]) {
+                        data[col.field] = this.optionsCache[col.source].find(opt => opt.id === data[col.field]);
+                        console.log("Field reassigned with full object:", data[col.field]);
                     }
                 });
 
+                console.log("Calling Odoo save endpoint:", formConfig.save_context, data);
                 let saved = await this.store.callOdoo(formConfig.save_context, "", data);
+                console.log("Save operation result:", saved);
                 
-                if (saved.saved && formConfig.on_save_actions){
+                if (saved.saved && formConfig.on_save_actions) {
+                    console.log("Iterating on_save_actions");
                     for (const action of formConfig.on_save_actions) {
+                        console.log("Preparing action context:", action.context);
                         let params = { ...action.params };
                         for (const key in params) {
                             if (typeof params[key] === 'string') {
                                 params[key] = params[key].replace(/{id}/g, data.id);
                                 params[key] = params[key].replace(/{name}/g, data.name);
                                 params[key] = params[key].replace(/{user_email}/g, this.store.role.email);
-                                if (data.responsible) {
+                                if (data.responsible && data.responsible.name) {
                                     params[key] = params[key].replace(/{responsible.name}/g, data.responsible.name);
                                 }
+                                console.log(`Replaced placeholder in param [${key}]:`, params[key]);
                             }
                         }
+                        console.log("Executing specific action to Odoo:", action.context, params);
                         await this.store.callOdoo(action.context, "", params);
                     }
+                    console.log("Actions completed, closing modal");
                     this.store.closeModal();
                 }
             }
         },
         async mounted() {
+            console.log("Component mounted");
             const formConfig = this.store.main_manager_screen.form_config;
-
+            const frontendCols = this.store.main_manager_screen.map_columns || [];
+            console.log("Loaded frontend columns configuration:", frontendCols);
+            
             this.form_data = { ...this.store.form_context.data };
+            console.log("Loaded initial backend form_data:", this.form_data);
             delete this.form_data.map_cols;
             
-            let non_blocked_fields = Object.keys(this.form_data).filter(f => this.isNonBlocked(f));
+            this.merged_cols = frontendCols.map(col => {
+                let generatedCol = {
+                    field: col.name,
+                    label: col.label,
+                    non_blocked_field: col.non_blocked_field || false,
+                    source: col.source || null
+                };
+                console.log("Generated merged column definition:", generatedCol);
+                return generatedCol;
+            });
+
+            for (const col of this.merged_cols) {
+                if (col.source && !this.optionsCache[col.source]) {
+                    this.optionsCache[col.source] = [];
+                    console.log("Initialized empty options array for source:", col.source);
+                }
+            }
+
+            const nonBlockedCols = this.merged_cols.filter(col => col.non_blocked_field);
+            console.log("Columns identified as non-blocked:", nonBlockedCols);
             
-            for (const field of non_blocked_fields){
-                await this.setOptions("*", field);
+            for (const col of nonBlockedCols) {
+                console.log("Triggering initial loadOptions for:", col.source);
+                await this.loadOptions("*", col.source);
             }
             
-            non_blocked_fields.forEach(field => {
-                if (this.form_data[field] && typeof this.form_data[field] === 'object' && this.form_data[field].id) {
-                    this.form_data[field] = this.form_data[field].id;
+            nonBlockedCols.forEach(col => {
+                if (this.form_data[col.field] && typeof this.form_data[col.field] === 'object' && this.form_data[col.field].id) {
+                    this.form_data[col.field] = this.form_data[col.field].id;
+                    console.log("Overwrote object representation with ID for field:", col.field, this.form_data[col.field]);
                 }
             });
             
             if (formConfig && formConfig.related_data_endpoint) {
+                console.log("Fetching related extra data. Endpoint:", formConfig.related_data_endpoint);
                 this.extra_data = await this.store.callOdoo(formConfig.related_data_endpoint, "", { id: this.form_data.id });
+                console.log("Received extra data:", this.extra_data);
             }
         },
         components: {
