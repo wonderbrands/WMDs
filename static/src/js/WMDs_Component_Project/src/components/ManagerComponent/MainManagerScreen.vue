@@ -1,6 +1,6 @@
 <template>
   <article class="main_manager_screen">
-    <ListView v-if="['ingreso', 'disponibilizar', 'traslado', 'pick', 'devolucion', 'resurtido', 'batch_pick', 'cycle_count'].includes(store.main_manager_screen.value)"/>
+    <ListView v-if="['ingreso', 'disponibilizar', 'traslado', 'pick', 'pack', 'devolucion', 'resurtido', 'batch_pick', 'cycle_count'].includes(store.main_manager_screen.value)"/>
   </article>
 </template>
 

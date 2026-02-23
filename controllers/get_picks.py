@@ -262,7 +262,7 @@ class GetPicks(http.Controller):
         methods=['POST'],
         csrf=True
     )
-    def get_picks(self, **kw):
+    def get_pack(self, **kw):
         try:
             
             logger.debug("=========================")
