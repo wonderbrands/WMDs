@@ -227,6 +227,14 @@ class GetPicks(http.Controller):
             operation_type = kw.get('operation_type')
             operator = kw.get('operator')
             operator_mail = kw.get('operator_mail')
+            responsible = kw.get('responsible')
+            
+            if responsible:
+                picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
+                picking.operator = responsible["id"]
+                return{
+                    "saved": True
+                }
 
             if not operation_type:
                 picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
