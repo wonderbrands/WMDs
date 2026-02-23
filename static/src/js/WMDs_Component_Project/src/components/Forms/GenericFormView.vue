@@ -7,9 +7,9 @@
         <div class="form_items">
             <div v-for="field in Object.keys(form_data)" :key="field" class="field">
                 
-                <FloatLabel v-if="!map_cols.filter(col => col.non_blocked_field).map(col => col.field).includes(field)">
-                    <InputText disabled :id="field" v-model="form_data[field]" :placeholder="map_cols[field]" />
-                    <label :for="field">{{ map_cols.filter(col => col.field === field)[0].name }}</label>
+                <FloatLabel v-if="!map_cols.filter(col => col.non_blocked_field).map(col => col.name).includes(field)">
+                    <InputText disabled :id="field" v-model="form_data[field]" :placeholder="map_cols.find(col => col.name === field)?.label" />
+                    <label :for="field">{{ map_cols.find(col => col.name === field)?.label }}</label>
                 </FloatLabel>
                 
                 <FloatLabel v-else>
@@ -23,8 +23,18 @@
                         class="w-full" 
                         optionLabel="name"
                         optionValue="id">
-                        </Select>
-                    <label :for="field">{{ map_cols.filter(col => col.field === field)[0].name }}</label>
+                        
+                        <template #filter="{ filterModel }">
+                            <InputText 
+                                v-model="filterModel.value" 
+                                @input="setOptions(filterModel.value, field)"
+                                placeholder="Buscar..."
+                                class="w-full"
+                            />
+                        </template>
+                        
+                    </Select>
+                    <label :for="field">{{ map_cols.find(col => col.name === field)?.label }}</label>
                 </FloatLabel>
                 
             </div>
@@ -71,23 +81,25 @@
                 filters: {
                     global: { value: null, matchMode: "contains" }
                 },
+                debounceTimeout: null
             }
         },
         methods: {
-            setOptions: async function(data, field) {
-                const field_config = this.map_cols.find(c => c.field === field);
-                // Ensure the dynamic source exists in your map_cols config
-                if (field_config && field_config.source) {
-                    // Fixed: passing "*" instead of "" for the initial load
-                    this.options_non_blocked[field] = await this.store.callOdoo(field_config.source, data || "*");
-                }
+            setOptions: function(data, field) {
+                clearTimeout(this.debounceTimeout);
+                
+                this.debounceTimeout = setTimeout(async () => {
+                    const field_config = this.map_cols.find(c => c.name === field);
+                    if (field_config && field_config.source) {
+                        this.options_non_blocked[field] = await this.store.callOdoo(field_config.source, data || "*");
+                    }
+                }, 500);
             },
             async saveForm(){
                 const formConfig = this.store.main_manager_screen.form_config;
                 let data = { ...this.form_data };
 
-                // Re-assign data for non-blocked fields
-                let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field);
+                let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.name);
                 non_blocked_fields.forEach(field => {
                     if (this.options_non_blocked[field]) {
                         data[field] = this.options_non_blocked[field].find(opt => opt.id === data[field]);
@@ -99,7 +111,6 @@
                 if (saved.saved){
                     for (const action of formConfig.on_save_actions) {
                         let params = { ...action.params };
-                        // Replace placeholders
                         for (const key in params) {
                             if (typeof params[key] === 'string') {
                                 params[key] = params[key].replace(/{id}/g, data.id);
@@ -120,23 +131,21 @@
             const formConfig = this.store.main_manager_screen.form_config;
 
             this.map_cols = this.store.form_context.data.map_cols;
-            this.form_data = { ...this.store.form_context.data }; // Clone to avoid mutating store directly
+            this.form_data = { ...this.store.form_context.data };
             delete this.form_data.map_cols;
             
-            // 1. Fetch options for dropdowns exactly once on mount
-            for (const field of this.map_cols.filter(col => col.non_blocked_field).map(col => col.field)){
+            let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.name);
+            
+            for (const field of non_blocked_fields){
                 await this.setOptions("*", field);
             }
             
-            // 2. Set initial values for dropdowns
-            let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.field);
             non_blocked_fields.forEach(field => {
                 if (this.form_data[field] && typeof this.form_data[field] === 'object' && this.form_data[field].id) {
                     this.form_data[field] = this.form_data[field].id;
                 }
             });
             
-            // 3. Fetch extra data for DataTable if configured
             if (formConfig.related_data_endpoint) {
                 this.extra_data = await this.store.callOdoo(formConfig.related_data_endpoint, "", { id: this.form_data.id });
             }
@@ -151,4 +160,3 @@
         }
     }
 </script>
-

@@ -22,7 +22,8 @@ class PendingTasks(http.Controller):
             map_task = {
                 "picks": "Pick",
                 "ingresos": "Recepciones",
-                "acomodo": "Storage"
+                "acomodo": "Storage",
+                "pack": "Pack"
             }
 
             if task=="batch_pick":

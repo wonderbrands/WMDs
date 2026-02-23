@@ -110,6 +110,50 @@ export const useGeneralStore = defineStore('general_store', {
                 }
             ]
         },
+        pack: {
+            title: "Packs",
+            description: "Pack",
+            value: "pack",
+            form_title: "Asignación de Pack:",
+            map_columns:[
+                {name: "id", label: "ID"},
+                {name: "sale_order", label: "Pedido"},
+                {name: "name", label: "Nombre"},
+                {name: "responsible", label: "Responsable", non_blocked_field: true, source: "operadores"},
+                {name: "date", label: "Fecha"},
+                {name: "status", label: "Estado"}
+            ],
+            form_config: {
+                save_context: "assign_pack",
+                related_data_endpoint: "pick_products",
+                on_save_actions: [
+                    {
+                        context: "log_record",
+                        params: {
+                            pick_id: "{id}",
+                            operator_mail: "{user_email}",
+                            message: "Traslado {name} asignado a {responsible.name}"
+                        }
+                    },
+                    {
+                        context: "log_record",
+                        params: {
+                            pick_id: "{id}",
+                            type: "external",
+                            operator_mail: "{user_email}",
+                            message: ""
+                        }
+                    },
+                    {
+                        context: "change_status",
+                        params: {
+                            pick_id: "{id}",
+                            status: "not_started"
+                        }
+                    }
+                ]
+            }
+        },
         cycle_count: {
             title: "Conteo cíclico",
             description: "Creación y asignación de rutinas de conteo cíclico de inventario",
@@ -197,7 +241,7 @@ export const useGeneralStore = defineStore('general_store', {
                     null,
                     {
                         id: extra.pick_id,
-                        operation_type: extra.operation_type,
+                        operation_type: "Pack",
                         operator_mail: JSON.parse(qr).email
                     }
                 )

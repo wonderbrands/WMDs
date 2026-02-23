@@ -254,3 +254,143 @@ class GetPicks(http.Controller):
             return {
                 "error": f"{str(e)}\n{traceback.format_exc()}"
             }
+
+    @http.route(
+        '/wmds/v2/engine/get/pack',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def get_picks(self, **kw):
+        try:
+            
+            logger.debug("=========================")
+            logger.debug(kw)
+            logger.debug("=========================")
+            parsed_params = {
+                "cur_page": kw.get('page'),
+                "per_page": kw.get('per_page'),
+                "sort_by": None if not kw.get('sort_by') else kw.get('sort_by'),
+                "sort_order": None if not kw.get('sort_order') else kw.get('sort_order'),
+            }
+
+            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order']:
+                if popped_param in kw.keys():
+                    kw.pop(popped_param)
+
+            col_domain = [("picking_type_id.name", "=", "Pack")]
+            if len(list(kw.keys()))>0:
+                for key, value in kw.items():
+                    col_domain.append(
+                        (key, "ilike", value)
+                    )
+
+            
+            logger.debug("=========================")
+            logger.debug(col_domain)
+
+            picks = request.env['stock.picking'].sudo().search(
+                col_domain,
+                limit=parsed_params.get('per_page'),
+                offset=(parsed_params.get('cur_page') - 1) * parsed_params.get('per_page'),
+                order= parsed_params.get('sort_by') + ' ' + parsed_params.get('sort_order') if parsed_params.get('sort_by') and parsed_params.get('sort_order') else 'id desc'
+            )
+            total = request.env['stock.picking'].sudo().search_count(col_domain)
+
+            map_cols = [
+                {
+                    "name": "ID",
+                    "field": "id",
+                },
+                {
+                    "name": "Nombre",
+                    "field": "name",
+                },
+                {
+                    "name": "SO",
+                    "field": "origin"
+                },
+                {
+                    "name": "Operador",
+                    "field": "operator",
+                    "type": "one2many",
+                    "non_blocked_field": True
+                },
+                {
+                    "name": "Fecha",
+                    "field": "scheduled_date"
+                },
+                {
+                    "name": "Estado",
+                    "field": "state",
+                    "type": "selectable",
+                    "options": [
+                        {
+                            "value": "draft",
+                            "label": "Borrador"
+                        },
+                        {
+                            "value": "waiting",
+                            "label": "En espera de otra operación"
+                        },
+                        {
+                            "value": "assigned",
+                            "label": "Disponible",
+                            "default": True
+                        },
+                        {
+                            "value": "confirmed",
+                            "label": "En espera"
+                        },
+                        {
+                            "value": "done",
+                            "label": "Hecho"
+                        },
+                        {
+                            "value": "cancel",
+                            "label": "Cancelado"
+                        },
+                    ]
+                },
+                {
+                    "name": "Estado en WMDS",
+                    "field": "wmds_status",
+                    "type": "selectable",
+                    "options": [
+                        { "label": "No asignado", "value": "not_assigned", "default": True }, 
+                        { "label": "No iniciado", "value": "not_started" },
+                        { "label": "En progreso", "value": "in_progress" },
+                        { "label": "Completado", "value": "completed" },
+                    ]
+                }
+
+            ]
+
+            
+
+            return {
+                    "map_cols": map_cols,
+                    "data": [
+                        {
+                            "id": pick.id,
+                            "name": pick.name,
+                            "origin": pick.origin,
+                            "operator": None if not pick.operator else {
+                                "name": pick.operator.name,
+                                "id": pick.operator.id,
+                                "email": pick.operator.login
+                            },
+                            "scheduled_date": pick.scheduled_date,
+                            "state": convert_value_in_label(map_cols, pick.state, "state"),
+                            "wmds_status": convert_value_in_label(map_cols, pick.wmds_status, "wmds_status")
+                        } for pick in picks
+                    ],
+                    "total_count": len(request.env['stock.picking'].sudo().search(col_domain))
+                }
+            
+
+        except Exception as e:
+            return {
+                "error": f"{str(e)}\n{traceback.format_exc()}"
+            }
