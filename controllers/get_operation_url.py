@@ -30,9 +30,8 @@ class GetURLOfPick(http.Controller):
                     "message": "Missing required field: pick_name"
                 }
 
-            
             if pick_name.startswith("BATCH"):
-                action = request.env.ref('stock_barcode.stock_barcode_batch_picking_client_action', raise_if_not_found=False)
+                action = request.env.ref('stock_barcode_picking_batch.stock_barcode_picking_batch_client_action', raise_if_not_found=False)
                 record = request.env['stock.picking.batch'].sudo().search([('name', '=', pick_name)], limit=1)
                 
                 if not record:
@@ -56,7 +55,7 @@ class GetURLOfPick(http.Controller):
             return {
                 "error": "Internal Server Error",
                 "message": str(e)
-            }    
+            }   
 
     @http.route(
         '/wmds/v2/engine/get/wmds-url',
