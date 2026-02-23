@@ -7,9 +7,9 @@
         <div class="form_items">
             <div v-for="field in Object.keys(form_data)" :key="field" class="field">
                 
-                <FloatLabel v-if="!map_cols.filter(col => col.non_blocked_field).map(col => col.name).includes(field)">
-                    <InputText disabled :id="field" v-model="form_data[field]" :placeholder="map_cols.find(col => col.name === field)?.label" />
-                    <label :for="field">{{ map_cols.find(col => col.name === field)?.label }}</label>
+                <FloatLabel v-if="!isNonBlocked(field)">
+                    <InputText disabled :id="field" v-model="form_data[field]" :placeholder="getFieldLabel(field)" />
+                    <label :for="field">{{ getFieldLabel(field) }}</label>
                 </FloatLabel>
                 
                 <FloatLabel v-else>
@@ -32,9 +32,8 @@
                                 class="w-full"
                             />
                         </template>
-                        
                     </Select>
-                    <label :for="field">{{ map_cols.find(col => col.name === field)?.label }}</label>
+                    <label :for="field">{{ getFieldLabel(field) }}</label>
                 </FloatLabel>
                 
             </div>
@@ -75,7 +74,6 @@
             return {
                 store: useGeneralStore(),
                 form_data: null,
-                map_cols: null,
                 options_non_blocked: {},
                 extra_data: null,
                 filters: {
@@ -85,13 +83,37 @@
             }
         },
         methods: {
+            getColumnConfig(field) {
+                const frontendCols = this.store.main_manager_screen.map_columns;
+                if (frontendCols) {
+                    const found = frontendCols.find(col => col.name === field);
+                    if (found) return found;
+                }
+                
+                const backendCols = this.store.form_context.data.map_cols;
+                if (backendCols) {
+                    const found = backendCols.find(col => col.field === field);
+                    if (found) {
+                        return { ...found, label: found.name };
+                    }
+                }
+                return null;
+            },
+            isNonBlocked(field) {
+                const config = this.getColumnConfig(field);
+                return config ? !!config.non_blocked_field : false;
+            },
+            getFieldLabel(field) {
+                const config = this.getColumnConfig(field);
+                return config ? (config.label || config.name) : field;
+            },
             setOptions: function(data, field) {
                 clearTimeout(this.debounceTimeout);
                 
                 this.debounceTimeout = setTimeout(async () => {
-                    const field_config = this.map_cols.find(c => c.name === field);
-                    if (field_config && field_config.source) {
-                        this.options_non_blocked[field] = await this.store.callOdoo(field_config.source, data || "*");
+                    const config = this.getColumnConfig(field);
+                    if (config && config.source) {
+                        this.options_non_blocked[field] = await this.store.callOdoo(config.source, data || "*");
                     }
                 }, 500);
             },
@@ -99,7 +121,7 @@
                 const formConfig = this.store.main_manager_screen.form_config;
                 let data = { ...this.form_data };
 
-                let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.name);
+                let non_blocked_fields = Object.keys(data).filter(f => this.isNonBlocked(f));
                 non_blocked_fields.forEach(field => {
                     if (this.options_non_blocked[field]) {
                         data[field] = this.options_non_blocked[field].find(opt => opt.id === data[field]);
@@ -108,7 +130,7 @@
 
                 let saved = await this.store.callOdoo(formConfig.save_context, "", data);
                 
-                if (saved.saved){
+                if (saved.saved && formConfig.on_save_actions){
                     for (const action of formConfig.on_save_actions) {
                         let params = { ...action.params };
                         for (const key in params) {
@@ -130,11 +152,10 @@
         async mounted() {
             const formConfig = this.store.main_manager_screen.form_config;
 
-            this.map_cols = this.store.form_context.data.map_cols;
             this.form_data = { ...this.store.form_context.data };
             delete this.form_data.map_cols;
             
-            let non_blocked_fields = this.map_cols.filter(col => col.non_blocked_field).map(col => col.name);
+            let non_blocked_fields = Object.keys(this.form_data).filter(f => this.isNonBlocked(f));
             
             for (const field of non_blocked_fields){
                 await this.setOptions("*", field);
@@ -146,7 +167,7 @@
                 }
             });
             
-            if (formConfig.related_data_endpoint) {
+            if (formConfig && formConfig.related_data_endpoint) {
                 this.extra_data = await this.store.callOdoo(formConfig.related_data_endpoint, "", { id: this.form_data.id });
             }
         },
