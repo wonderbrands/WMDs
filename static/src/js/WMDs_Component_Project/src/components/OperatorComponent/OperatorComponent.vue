@@ -6,16 +6,17 @@
             <template #title>{{ task.title }}</template> 
             <template #subtitle>{{ task.description }}</template>
 
-            <template #content v-if="task.assigned.children.length > 0 && !task.view">
+            <template #content v-if="task.assigned.length > 0 && !task.view">
                 <span class="pending-badge">
                     {{ task.assigned[0].children.length }} pendientes
                 </span>
             </template>
-            <template #content v-else>
-                <span>
-                    Sin asignaciones
+            <template #content v-else-if="task.assigned.length === 0 && !task.view">
+                <span class="pending-badge">
+                    Sin pendientes
                 </span>
             </template>
+
 
             <template #footer>
                 <Tree

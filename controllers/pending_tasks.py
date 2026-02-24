@@ -44,13 +44,28 @@ class PendingTasks(http.Controller):
                 pending_tasks = request.env['stock.picking'].sudo().search(fields)
 
 
-            return [
-                {
-                    "key": task.id,
-                    "label": task.name,
-                    "data": task.name
-                } for task in pending_tasks
-            ] 
+            result = []
+            for record in pending_tasks:
+                
+                source_doc = getattr(record, 'origin', False)
+                
+                if source_doc:
+                    label = f"{record.name} / {source_doc}"
+                else:
+                    label = record.name
+
+                result.append({
+                    "key": record.id,
+                    "label": label,
+                    "data": record.name
+                })
+
+            return result
+
+        except Exception as e:
+            return {
+                "error": f"{str(e)}\n{traceback.format_exc()}"
+            }
         except Exception as e:
             return {
                 "error": f"{str(e)}\n{traceback.format_exc()}"
