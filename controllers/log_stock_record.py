@@ -29,12 +29,9 @@ class LogStockRecord(http.Controller):
         operator_mail = params.get('operator_mail')
         message = params.get('message')
         type_of_log = params.get('type')
-        decision = params.get('decision') # CREATE o CANCELLED
 
-        # Refactor: Búsqueda de usuario común para todos los casos
         operator_id = request.env['res.users'].sudo().search([('login', '=', operator_mail)], limit=1)
         
-        # Búsqueda del picking principal
         picking = request.env['stock.picking'].sudo()
         if pick_id:
             picking = picking.browse(int(pick_id))
@@ -44,14 +41,12 @@ class LogStockRecord(http.Controller):
         if not picking:
             return {"error": "Picking no encontrado"}
 
-        # --- CASO 1: EXTERNAL (Lógica original intacta) ---
         if type_of_log == "external":
             log_vals = {
                 'user': operator_id.id if operator_id else False,
                 'date': datetime.now(),
             }
             
-            # Determinamos origen segun el tipo
             if picking.picking_type_id.name == "Storage":
                 po = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
                 log_vals.update({'log': f"El acomodo {picking.name} ha sido completado", 'purchase': po.id if po else False})
@@ -68,44 +63,18 @@ class LogStockRecord(http.Controller):
                 request.env["wmds.log"].sudo().create(log_vals)
             return {"saved": True}
 
-        # --- CASO 2: BACKORDER (Nueva Lógica) ---
         elif type_of_log == "backorder":
-            try:
-                if decision == "CREATE":
-                    # Buscamos el pick hijo (el nuevo backorder)
-                    backorder_hijo = request.env['stock.picking'].sudo().search([
-                        ('backorder_id', '=', picking.id)
-                    ], order='id desc', limit=1)
+            if picking.origin:
+                if picking.origin.startswith("P"):
+                    orm_origin = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
+                elif picking.origin.startswith("S"):
+                    orm_origin = request.env["sale.order"].sudo().search([('name', '=', picking.origin)], limit=1)
 
-                    # Log en el VIEJO (Padre)
-                    picking.wmds_log.create({
-                        'log': f"No se validaron todos los productos. Se creó backorder: {backorder_hijo.name if backorder_hijo else 'Pendiente'}",
-                        'user': operator_id.id,
-                        'date': datetime.now(),
-                        'pick': picking.id
-                    })
+                request.env["wmds.log"].sudo().create({
+                    'user': operator_id.id if operator_id else False,
+                    'message': f"No se validaron todos los productos del traslado, se ha creado la backorder {picking.name}"
+                })
 
-                    # Log en el NUEVO (Hijo)
-                    if backorder_hijo:
-                        backorder_hijo.wmds_log.create({
-                            'log': f"Creado desde {picking.name} por validación parcial.",
-                            'user': operator_id.id,
-                            'date': datetime.now(),
-                            'pick': backorder_hijo.id
-                        })
-                
-                else: # Decision CANCELLED
-                    picking.wmds_log.create({
-                        'log': "Validación parcial: El usuario decidió NO crear backorder (cantidades restantes canceladas).",
-                        'user': operator_id.id,
-                        'date': datetime.now(),
-                        'pick': picking.id
-                    })
-                return {"saved": True}
-            except Exception as e:
-                return {"error": str(e)}
-
-        # --- CASO 3: GENERICO (Original) ---
         else:
             try:
                 picking.wmds_log.create({
