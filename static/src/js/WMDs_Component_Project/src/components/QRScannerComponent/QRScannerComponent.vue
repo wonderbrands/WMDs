@@ -60,7 +60,7 @@
 
                         const data = result.data || result;
                         if (this.context){
-                            this.store.executeActionByContext(this.context, data, extra_data)
+                            this.store.executeActionByContext(this.context, data, this.extra_data)
                         }
                         else if (this.onScan) {
                             await this.onScan(data);
