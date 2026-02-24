@@ -48,7 +48,7 @@ Planned replacement for the current WMS
 
      "assets": {
         "web.assets_backend": [
-            "wmds/static/src/WMDs_Component_Project/dist/odoo_vue_app.js",
+            "wmds/static/src/js/WMDs_Component_Project/dist/odoo_vue_app.js",
             "wmds/static/src/js/barcode_behaviour.js",
             "wmds/static/src/css/style.css",
             "wmds/static/src/js/index.js",
