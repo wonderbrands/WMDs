@@ -72,7 +72,7 @@ class LogStockRecord(http.Controller):
 
                 request.env["wmds.log"].sudo().create({
                     'user': operator_id.id if operator_id else False,
-                    'message': f"No se validaron todos los productos del traslado, se ha creado la backorder {picking.name}"
+                    'log': f"No se validaron todos los productos del traslado, se ha creado la backorder {picking.name}"
                 })
 
         else:
