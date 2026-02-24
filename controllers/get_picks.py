@@ -242,15 +242,10 @@ class GetPicks(http.Controller):
 
             else:
                 picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
-                next_op = request.env['stock.picking'].sudo().search([
-                    ('group_id', '=', picking.group_id.id),
-                    ('picking_type_id.name', '=', operation_type),
-                    ('state', 'not in', ['cancel'])
-                ], limit=1)
                 operator = request.env['res.users'].sudo().search([
                     ('login', '=', operator_mail),
                 ], limit=1)
-                next_op.operator = operator.id
+                picking.operator = operator.id
                 if operation_type=="Pack":
                     if picking.origin:
                         if picking.origin.startswith("P"):
@@ -261,12 +256,10 @@ class GetPicks(http.Controller):
                         if orm_origin:
                             orm_origin.write({
                                 'wmds_log': [(0, 0, {
-                                    'user': operator_id.id if operator_id else False,
+                                    'user': operator.id if operator else False,
                                     'log': f"Se ha asignado el Pack {picking.name} a la mesa {operator.name}"
                                 })]
                             })
-                    
-
 
 
             return{
