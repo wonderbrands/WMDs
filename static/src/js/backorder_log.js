@@ -5,7 +5,7 @@ import { patch } from '@web/core/utils/patch';
 import { _t } from "@web/core/l10n/translation";
 import { markup } from "@odoo/owl";
 
-patch(BarcodePickingModel.prototype, 'wmds_stock_barcode_patch', {
+patch(BarcodePickingModel.prototype, {
     
     async _closeValidate(ev) {
         try {
