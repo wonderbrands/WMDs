@@ -6,9 +6,14 @@
             <template #title>{{ task.title }}</template> 
             <template #subtitle>{{ task.description }}</template>
 
-            <template #content v-if="task.assigned.length > 0 && !task.view">
+            <template #content v-if="task.assigned.children.length > 0 && !task.view">
                 <span class="pending-badge">
                     {{ task.assigned[0].children.length }} pendientes
+                </span>
+            </template>
+            <template #content v-else>
+                <span>
+                    Sin asignaciones
                 </span>
             </template>
 
@@ -50,7 +55,7 @@ export default {
             current_task: {},
             mountExtraView: false,
             taskDefinitions: [
-                { id: "ingresos", title: "Recepciones", description: "Validación de productos ingresados.", fetch: true, label: "Asignados a mi" },
+                { id: "ingresos", title: "Recepciones", description: "Validación de productos ingresados.", fetch: true, label: "Abiertas" },
                 { id: "acomodo", title: "Acomodo/Storage", description: "Acomodo de productos.", fetch: true, label: "Abiertos" },
                 { id: "traslados", title: "Traslados", description: "Traslado interno entre ubicaciones.", fetch: false, label: "Asignados a mi" },
                 { id: "batch_pick", title: "Plan de pickeo", description: "Preparación para empaque.", fetch: true, label: "Asignados a mi" },

@@ -12,23 +12,18 @@ class WMDSClientAction extends Component {
     </div>`;
     
     setup() {
-        /*onMounted(() => {
-        })*/
         onMounted(
             () => {   
-                console.log(":D")               
-
+                window.mountWMDSApp()            
         })
     }
 }
 
-// Register for backend (client action)
 registry.category("actions").add(
     "WMDs.wmds_client",
     WMDSClientAction
 );
 
-// Mount for frontend (portal) when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initPortal);
 } else {

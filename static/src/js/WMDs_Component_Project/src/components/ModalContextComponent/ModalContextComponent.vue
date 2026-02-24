@@ -17,23 +17,6 @@
             <div  style="width: 100%; height: 100%;"
             v-else>
                 <IngresoComponent v-if="store.modal_context === 'ingreso'"/>
-                <!--
-                <div v-else-if="store.modal_context === 'disponibilizar'">
-                <ul>
-                    <li v-for="product in [{id: 1, name: 'Cama madera', qty: 2}, {id: 2, name: 'Bolsa', qty: 3}, {id: 3, name: 'Cama metal', qty: 1}]" :key="product.id">
-                        {{ product.name }} - {{ product.qty }}
-                    </li>
-                </ul>
-                <Button label="Asignar" @click="store.disponibilizarProducts(store.modal_context_products)" rounded/>
-                </div>
-                <div v-else-if="store.modal_context === 'traslado'">
-                <ul>
-                    <li v-for="product in store.modal_context_products" :key="product.id">
-                        {{ product.name }} - {{ product.qty }}
-                    </li>
-                </ul>
-                <Button label="asignar" @click="store.trasladarProducts(store.modal_context_products)" rounded/>
-                </div>-->
                 <GenericFormView v-else-if="['pick','pack'].includes(store.modal_context)"/>
             </div>
            

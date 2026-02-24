@@ -38,7 +38,7 @@ class PendingTasks(http.Controller):
                     ('state', '=', 'assigned'),
                 ]
 
-                if task not in ["acomodo"]:
+                if task not in ["acomodo", "ingresos"]:
                     fields.append(('operator.login', '=', email))
 
                 pending_tasks = request.env['stock.picking'].sudo().search(fields)
