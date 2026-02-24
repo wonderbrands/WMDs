@@ -59,7 +59,10 @@
                         this.scanner.pause(true);
 
                         const data = result.data || result;
-                        if (this.onScan) {
+                        if (this.context){
+                            this.store.executeActionByContext(this.context, data, extra_data)
+                        }
+                        else if (this.onScan) {
                             await this.onScan(data);
                         }
                     },

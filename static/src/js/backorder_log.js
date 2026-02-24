@@ -57,5 +57,7 @@ patch(BarcodePickingModel.prototype, {
             console.error("WMDS Error logging backorder:", error);
         }
 
+        return super._closeValidate(ev);
+
     }
 });
