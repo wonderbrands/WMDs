@@ -10,7 +10,6 @@
 
   <QRScannerComponent 
     v-else-if="!role.is_identified"
-    context="user_initial_scanner" 
     instructions="Escanea tu QR para iniciar sesión"
     :can_close="false"
     :onScan="handleUserScan" 
