@@ -70,10 +70,13 @@ class LogStockRecord(http.Controller):
                 elif picking.origin.startswith("S"):
                     orm_origin = request.env["sale.order"].sudo().search([('name', '=', picking.origin)], limit=1)
 
-                request.env["wmds.log"].sudo().create({
-                    'user': operator_id.id if operator_id else False,
-                    'log': f"No se validaron todos los productos del traslado, se ha creado la backorder {picking.name}"
-                })
+                if orm_origin:
+                    orm_origin.write({
+                        'wmds_log': [(0, 0, {
+                            'user': operator_id.id if operator_id else False,
+                            'log': f"No se validaron todos los productos del traslado, se ha creado la backorder {picking.name}"
+                        })]
+                    })
 
         else:
             try:
