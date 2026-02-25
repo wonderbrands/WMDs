@@ -43,20 +43,17 @@ class WMDSLog(models.Model):
             elif picking.purchase_id:
                 new_vals['purchase'] = picking.purchase_id.id
                 self.with_context(wmds_log_duplicating=True).create(new_vals)
-        
-        elif log.sale:
-            order = log.sale
-            for picking in order.picking_ids:
-                new_vals_picking = new_vals.copy()
-                new_vals_picking['pick'] = picking.id
-                self.with_context(wmds_log_duplicating=True).create(new_vals_picking)
-
-        elif log.purchase:
-            order = log.purchase
-            for picking in order.picking_ids:
-                new_vals_picking = new_vals.copy()
-                new_vals_picking['pick'] = picking.id
-                self.with_context(wmds_log_duplicating=True).create(new_vals_picking)
+            elif picking.origin:
+                if picking.origin.startswith('S'):
+                    so = self.env['sale.order'].search([('name', '=', picking.origin)], limit=1)
+                    if so:
+                        new_vals['sale'] = so.id
+                        self.with_context(wmds_log_duplicating=True).create(new_vals)
+                elif picking.origin.startswith('P'):
+                    po = self.env['purchase.order'].search([('name', '=', picking.origin)], limit=1)
+                    if po:
+                        new_vals['purchase'] = po.id
+                        self.with_context(wmds_log_duplicating=True).create(new_vals)
 
         elif log.batch_pick:
             batch = log.batch_pick

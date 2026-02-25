@@ -118,6 +118,8 @@ patch(BarcodeModel.prototype, {
             } catch (e) {}
         }
         
+        const isBatch = this.resModel === 'stock.picking.batch';
+
         localStorage.setItem("mandatory_uncompleted",
             JSON.stringify({
                 screen: null,
@@ -128,6 +130,7 @@ patch(BarcodeModel.prototype, {
                     can_close: true,
                     extra_data: {
                         pick_id: record.id,
+                        is_batch: isBatch,
                         operation_type: "Pack"
                     }
                 },

@@ -241,6 +241,7 @@ export const useGeneralStore = defineStore('general_store', {
                     null,
                     {
                         id: extra.pick_id,
+                        is_batch: extra.is_batch,
                         operation_type: "Pack",
                         operator_mail: JSON.parse(qr).email
                     }

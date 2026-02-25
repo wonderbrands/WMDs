@@ -48,35 +48,24 @@ class LogStockRecord(http.Controller):
             }
             
             if picking.picking_type_id.name == "Storage":
-                po = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
-                log_vals.update({'log': f"El acomodo {picking.name} ha sido completado", 'purchase': po.id if po else False})
+                log_vals.update({'log': f"El acomodo {picking.name} ha sido completado", 'pick': picking.id})
             
             elif picking.picking_type_id.name == "Recepciones":
-                po = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
-                log_vals.update({'log': f"Se ha ejecutado la recepción {picking.name}", 'purchase': po.id if po else False})
+                log_vals.update({'log': f"Se ha ejecutado la recepción {picking.name}", 'pick': picking.id})
             
             elif picking.picking_type_id.name == "Pick":
-                so = request.env["sale.order"].sudo().search([('name', '=', picking.origin)], limit=1)
-                log_vals.update({'log': f"Se ha ejecutado el pick {picking.name}", 'sale': so.id if so else False})
+                log_vals.update({'log': f"Se ha ejecutado el pick {picking.name}", 'pick': picking.id})
 
             if log_vals.get('log'):
                 request.env["wmds.log"].sudo().create(log_vals)
             return {"saved": True}
 
         elif type_of_log == "backorder":
-            if picking.origin:
-                if picking.origin.startswith("P"):
-                    orm_origin = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
-                elif picking.origin.startswith("S"):
-                    orm_origin = request.env["sale.order"].sudo().search([('name', '=', picking.origin)], limit=1)
-
-                if orm_origin:
-                    orm_origin.write({
-                        'wmds_log': [(0, 0, {
-                            'user': operator_id.id if operator_id else False,
-                            'log': f"No se validaron todos los productos del traslado, se ha creado la backorder {picking.name}"
-                        })]
-                    })
+            request.env["wmds.log"].sudo().create({
+                'user': operator_id.id if operator_id else False,
+                'log': f"No se validaron todos los productos del traslado, se ha creado la backorder {picking.name}",
+                'pick': picking.id
+            })
 
         else:
             try:

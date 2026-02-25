@@ -236,31 +236,48 @@ class GetPicks(http.Controller):
                     "saved": True
                 }
 
-            if not operation_type:
-                picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
-                picking.operator = operator["id"]
+            is_batch = kw.get('is_batch')
+            operator_mail = kw.get('operator_mail')
+            operator = kw.get('operator')
+            operation_type = kw.get('operation_type')
 
+            operator_record = None
+            if operator_mail:
+                operator_record = request.env['res.users'].sudo().search([('login', '=', operator_mail)], limit=1)
+            elif operator:
+                operator_record = request.env['res.users'].sudo().search([('id', '=', operator["id"])], limit=1)
+
+            target_pickings = request.env['stock.picking'].sudo()
+
+            if is_batch:
+                batch = request.env['stock.picking.batch'].sudo().search([('id', '=', kw.get('id'))], limit=1)
+                if operation_type == "Pack" and batch:
+                    # Find sales orders from the pickings in this batch
+                    so_ids = batch.picking_ids.mapped('sale_id.id')
+                    target_pickings = request.env['stock.picking'].sudo().search([
+                        ('sale_id', 'in', so_ids),
+                        ('picking_type_id.name', '=', 'Pack'),
+                        ('state', '!=', 'cancel')
+                    ])
             else:
-                picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
-                operator = request.env['res.users'].sudo().search([
-                    ('login', '=', operator_mail),
-                ], limit=1)
-                picking.operator = operator.id
-                if operation_type=="Pack":
-                    if picking.origin:
-                        if picking.origin.startswith("P"):
-                            orm_origin = request.env["purchase.order"].sudo().search([('name', '=', picking.origin)], limit=1)
-                        elif picking.origin.startswith("S"):
-                            orm_origin = request.env["sale.order"].sudo().search([('name', '=', picking.origin)], limit=1)
+                base_pick = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
+                if operation_type == "Pack" and base_pick.sale_id:
+                    target_pickings = request.env['stock.picking'].sudo().search([
+                        ('sale_id', '=', base_pick.sale_id.id),
+                        ('picking_type_id.name', '=', 'Pack'),
+                        ('state', '!=', 'cancel')
+                    ])
+                else:
+                    target_pickings = base_pick
 
-                        if orm_origin:
-                            orm_origin.write({
-                                'wmds_log': [(0, 0, {
-                                    'user': operator.id if operator else False,
-                                    'log': f"Se ha asignado el Pack {picking.name} a la mesa {operator.name}"
-                                })]
-                            })
-
+            for picking in target_pickings:
+                picking.operator = operator_record.id if operator_record else (operator["id"] if operator else False)
+                if operation_type == "Pack" and operator_record:
+                    request.env["wmds.log"].sudo().create({
+                        'user': operator_record.id,
+                        'log': f"Se ha asignado el Pack {picking.name} a la mesa {operator_record.name}",
+                        'pick': picking.id
+                    })
 
             return{
                 "saved": True
