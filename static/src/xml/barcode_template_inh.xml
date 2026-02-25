@@ -17,21 +17,33 @@
             </div>
         </xpath>
 
-        <xpath expr="//footer[contains(@class, 'o_barcode_control')][1]" position="before">
-            
-            <div t-if="state.view === 'barcodeLines' and env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
-                 class="o_barcode_custom_buttons d-flex gap-2 p-2 w-100 mt-auto" 
-                 style="background-color: #f8f9fa; border-top: 1px solid #dee2e6;">
-                
-                <button class="btn btn-primary flex-fill" t-on-click="() => this.onCustomAction('action_imprimir_guia')">
-                    <i class="fa fa-print me-1"/> Imprimir Guía
-                </button>
-                
-                <button class="btn btn-secondary flex-fill" t-on-click="() => this.onCustomAction('action_print_tag')">
-                    <i class="fa fa-tag me-1"/> Imprimir Etiqueta
-                </button>
-            </div>
-            
+        <xpath expr="//button[contains(@class, 'o_add_line')]" position="before">
+            <button t-if="env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
+                    class="btn btn-primary" 
+                    t-on-click="() => this.onCustomAction('action_imprimir_guia')">
+                <i class="fa fa-print me-1"/> Imprimir Guía
+            </button>
+        </xpath>
+
+        <xpath expr="//button[contains(@class, 'o_add_line')]" position="attributes">
+            <attribute name="t-att-style">
+                (env.model.record and env.model.record.name and env.model.record.name.includes('PACK')) ? 'display: none !important;' : ''
+            </attribute>
+        </xpath>
+
+
+        <xpath expr="//button[contains(@class, 'o_put_in_pack')]" position="before">
+            <button t-if="env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
+                    class="btn btn-secondary" 
+                    t-on-click="() => this.onCustomAction('action_print_tag')">
+                <i class="fa fa-tag me-1"/> Imprimir Etiqueta
+            </button>
+        </xpath>
+
+        <xpath expr="//button[contains(@class, 'o_put_in_pack')]" position="attributes">
+            <attribute name="t-att-style">
+                (env.model.record and env.model.record.name and env.model.record.name.includes('PACK')) ? 'display: none !important;' : ''
+            </attribute>
         </xpath>
 
     </t>

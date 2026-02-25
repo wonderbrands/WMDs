@@ -3,35 +3,35 @@
         <div v-if="isCreating">
             <h2 class="mb-4 text-xl font-bold">Crear Nuevo Conteo Cíclico</h2>
             
-            <div class="grid p-fluid align-items-end mb-4 surface-100 p-3 border-round">
-                <div class="col-12 md:col-3">
+            <div class="mb-4 surface-100 p-3 border-round">
+                <div>
                     <label class="font-bold block mb-2">Pasillo (Del - Al)</label>
                     <div class="flex gap-2">
                         <InputText v-model="filters.aisle_from" placeholder="A" />
                         <InputText v-model="filters.aisle_to" placeholder="C" />
                     </div>
                 </div>
-                <div class="col-12 md:col-3">
+                <div>
                     <label class="font-bold block mb-2">Nivel (Del - Al)</label>
                     <div class="flex gap-2">
                         <InputText v-model="filters.level_from" placeholder="1" />
                         <InputText v-model="filters.level_to" placeholder="3" />
                     </div>
                 </div>
-                <div class="col-12 md:col-3">
+                <div>
                     <label class="font-bold block mb-2">Frente (Del - Al)</label>
                     <div class="flex gap-2">
                         <InputText v-model="filters.front_from" placeholder="01" />
                         <InputText v-model="filters.front_to" placeholder="10" />
                     </div>
                 </div>
-                <div class="col-12 md:col-3">
+                <div>
                     <Button label="Buscar Ubicaciones" icon="pi pi-search" @click="fetchLocations" :loading="store.loading" />
                 </div>
             </div>
 
-            <div class="grid mb-4">
-                <div class="col-12 md:col-6">
+            <div class="mb-4">
+                <div>
                     <DataTable :value="searchResults" paginator :rows="5" class="p-datatable-sm border-1 surface-border border-round" emptyMessage="Realiza una búsqueda para ver ubicaciones.">
                         <template #header>
                             <div class="flex justify-content-between align-items-center">
@@ -48,7 +48,7 @@
                     </DataTable>
                 </div>
 
-                <div class="col-12 md:col-6">
+                <div>
                     <DataTable :value="selectedLocations" paginator :rows="5" class="p-datatable-sm border-1 surface-border border-round" emptyMessage="Aún no has seleccionado ubicaciones.">
                         <template #header>
                             <div class="flex justify-content-between align-items-center">
@@ -66,16 +66,16 @@
                 </div>
             </div>
 
-            <div class="grid p-fluid align-items-end" v-if="selectedLocations.length > 0">
-                <div class="col-12 md:col-5">
+            <div v-if="selectedLocations.length > 0">
+                <div>
                     <label class="font-bold block mb-2">Referencia del Conteo</label>
                     <InputText v-model="newCount.ref" placeholder="Ej. Conteo Anual" />
                 </div>
-                <div class="col-12 md:col-5">
+                <div>
                     <label class="font-bold block mb-2">Operador Ola 1</label>
                     <Dropdown v-model="newCount.operator_id" :options="operators" optionLabel="name" optionValue="id" placeholder="Asignar a..." />
                 </div>
-                <div class="col-12 md:col-2">
+                <div>
                     <Button label="Generar" icon="pi pi-check" severity="success" @click="submitNewCount" :loading="store.loading" :disabled="!newCount.ref || !newCount.operator_id" />
                 </div>
             </div>
@@ -104,16 +104,16 @@
 
             <div class="surface-100 p-3 border-round">
                 <h4 class="mb-3 font-bold">Añadir Nueva Ola a este Conteo</h4>
-                <div class="grid p-fluid align-items-end">
-                    <div class="col-12 md:col-5">
+                <div>
+                    <div>
                         <label class="block mb-2">Nombre de la Ola</label>
                         <InputText v-model="newWave.name" placeholder="Ej. Ola 2 - Re-conteo" />
                     </div>
-                    <div class="col-12 md:col-5">
+                    <div>
                         <label class="block mb-2">Asignar Operador</label>
                         <Dropdown v-model="newWave.operator_id" :options="operators" optionLabel="name" optionValue="id" placeholder="Seleccionar" />
                     </div>
-                    <div class="col-12 md:col-2">
+                    <div>
                         <Button label="Añadir Ola" icon="pi pi-plus" @click="addNewWave" :loading="store.loading" :disabled="!newWave.name || !newWave.operator_id" />
                     </div>
                 </div>
@@ -134,9 +134,6 @@ export default {
     name: "CycleCountModal",
     components: { InputText, Button, DataTable, Column, Dropdown },
     
-    // 1. ELIMINAMOS LOS PROPS POR COMPLETO
-    // props: { modalData: { type: Object, required: true } },
-
     data() {
         return {
             store: useGeneralStore(),
@@ -154,22 +151,17 @@ export default {
         };
     },
     
-    // 2. AGREGAMOS COMPUTADAS PARA LEER DEL STORE
     computed: {
         modalData() {
-            // Data for the modal is passed via the 'form_context' property in the store
             return this.store.form_context?.data || {};
         },
         isCreating() {
-            // Determinamos si es creación leyendo la propiedad segura modalData
             return !!this.modalData.cycle_count || this.modalData.form_type === 'new';
         }
     },
 
     async mounted() {
         await this.fetchOperators();
-        
-        // Solo llamamos a las olas si NO es creación y si existe un ID válido
         if (!this.isCreating && this.modalData.id) {
             await this.fetchWavesForCount();
         }
@@ -184,7 +176,7 @@ export default {
                 console.error("Error cargando operadores", error); }
         },
 
-        /* --- METODOS DE CREACIÓN (PANELES DOBLES) --- */
+        /* --- METODOS DE CREACIÓN --- */
         async fetchLocations() {
             try {
                 let response = await this.store.callOdoo("get_locations_by_range", "", this.filters);
@@ -240,8 +232,7 @@ export default {
 
         /* --- METODOS DE EDICIÓN --- */
         async fetchWavesForCount() {
-            if (!this.modalData.id) return; // Validación de seguridad
-
+            if (!this.modalData.id) return;
             try {
                 let response = await this.store.callOdoo("get_waves_for_count", "", { count_id: this.modalData.id });
                 if (response && response.waves) {
