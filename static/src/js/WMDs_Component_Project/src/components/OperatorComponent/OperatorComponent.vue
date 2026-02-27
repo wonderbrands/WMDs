@@ -64,7 +64,8 @@ export default {
                 { id: "conteo_ciclico", title: "Conteo cíclico", description: "Conteo de unidades.", fetch: false, label: "Pendientes" },
                 { id: "bin", title:"Ingresar pedidos a BIN", description:"Ingresar pedidos a BIN", fetch: false, label: "Registrar", view: "BinComponent" },
                 { id: "dock", title:"Trasladar a DOCK", description:"Trasladar a DOCK", fetch: false, label: "Registrar", view: "DockComponent" },
-                
+                { id: "dispatch", title:"Despachar a paquetera", description:"Entregar pedidos a paquetera", fetch: false, label: "Registrar", view: "DispatchComponent" },
+
             ],
             tasks: []
         };

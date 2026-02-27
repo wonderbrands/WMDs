@@ -32,6 +32,7 @@ import QRScannerComponent from "./components/QRScannerComponent/QRScannerCompone
 import LogoutComponent from "./components/RolePicker/LogoutComponent.vue"
 import BinComponent  from "./components/OperatorComponent/BinComponent.vue"
 import DockComponent  from "./components/OperatorComponent/DockComponent.vue"
+import DispatchComponent  from "./components/OperatorComponent/DispatchComponent.vue"
 
 import { useGeneralStore } from "./store/index"
 
@@ -46,7 +47,8 @@ export default {
     QRScannerComponent,
     LogoutComponent,
     BinComponent,
-    DockComponent
+    DockComponent,
+    DispatchComponent
   },
   data() {
     return {
