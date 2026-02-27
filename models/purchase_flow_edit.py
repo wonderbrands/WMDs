@@ -33,28 +33,30 @@ class StockWMDSPurchase(models.Model):
                     )
 
                 if not po.check_commertial:
-                    destiny = picking.location_dest_id.complete_name
+                    for move in picking.move_ids:
+                        for line in move.move_line_ids:
+                            destiny = line.location_dest_id.complete_name
 
-                    if 'Stock/Almacenaje' in destiny:
-                        destiny = destiny.replace('Stock/Almacenaje', 'Cuarentena')
-                    elif 'Stock' in destiny:
-                        destiny = destiny.replace('Stock', 'Cuarentena')
-                    else:
-                        raise UserError(
-                            'No se pudo encontrar el destino de la recepción'
-                        )
+                            if 'Stock/Almacenaje' in destiny:
+                                destiny = destiny.replace('Stock/Almacenaje', 'Cuarentena')
+                            elif 'Stock' in destiny:
+                                destiny = destiny.replace('Stock', 'Cuarentena')
+                            else:
+                                raise UserError(
+                                    'No se pudo encontrar el destino de la recepción'
+                                )
 
-                    location = self.env['stock.location'].search(
-                        [('complete_name', '=', destiny)],
-                        limit=1
-                    )
+                            location = self.env['stock.location'].search(
+                                [('complete_name', '=', destiny)],
+                                limit=1
+                            )
 
-                    if not location:
-                        raise UserError(
-                            'No se encontró la ubicación de cuarentena'
-                        )
+                            if not location:
+                                raise UserError(
+                                    'No se encontró la ubicación de cuarentena'
+                                )
 
-                    picking.location_dest_id = location.id
+                            line.location_dest_id = location.id
 
         return super(StockWMDSPurchase, self).button_validate()
 

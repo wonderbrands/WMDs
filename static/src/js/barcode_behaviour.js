@@ -42,13 +42,13 @@ patch(BarcodeModel.prototype, {
                         );
                     }
                 }
+                await this._metodo_final_post_validacion(this.record, result);
+
             }
 
-            await this._metodo_final_post_validacion(this.record, result);
 
         } catch (error) {
             console.error(error);
-            await this._metodo_final_post_validacion(this.record, result);
         }
 
         return result;
