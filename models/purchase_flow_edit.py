@@ -14,13 +14,6 @@ class StockWMDSPurchase(models.Model):
 
     def button_validate(self):
         for picking in self:
-            _logger.debug("===============================")
-            _logger.debug("Validando picking %s", picking.name)
-            _logger.debug(f"documento origen: {picking.origin}")
-            _logger.debug(f"tipo de operacion: {picking.picking_type_id.name}")
-            _logger.debug(f"origen: {picking.location_id.complete_name}")
-            _logger.debug(f"destino: {picking.location_dest_id.complete_name}")
-
             if picking.picking_type_id.name == 'Storage':
                 po = self.env['purchase.order'].search(
                     [('name', '=', picking.origin)],
@@ -28,9 +21,7 @@ class StockWMDSPurchase(models.Model):
                 )
 
                 if not po:
-                    raise UserError(
-                        'No se pudo encontrar la orden de compra asociada a la recepción'
-                    )
+                    raise UserError('No se pudo encontrar la orden de compra asociada a la recepción')
 
                 if not po.check_commertial:
                     for move in picking.move_ids:
@@ -42,9 +33,7 @@ class StockWMDSPurchase(models.Model):
                             elif 'Stock' in destiny:
                                 destiny = destiny.replace('Stock', 'Cuarentena')
                             else:
-                                raise UserError(
-                                    'No se pudo encontrar el destino de la recepción'
-                                )
+                                raise UserError('No se pudo encontrar el destino de la recepción')
 
                             location = self.env['stock.location'].search(
                                 [('complete_name', '=', destiny)],
@@ -52,14 +41,13 @@ class StockWMDSPurchase(models.Model):
                             )
 
                             if not location:
-                                raise UserError(
-                                    'No se encontró la ubicación de cuarentena'
-                                )
+                                raise UserError('No se encontró la ubicación de cuarentena')
 
                             line.location_dest_id = location.id
+                            
+                        move.location_dest_id = location.id
 
         return super(StockWMDSPurchase, self).button_validate()
-
 
 class PurchaseWMDS(models.Model):
     _inherit = 'purchase.order'

@@ -1,9 +1,8 @@
 /** @odoo-module **/
 
 import BarcodeModel from "@stock_barcode/models/barcode_model";
-import  MainComponent  from "@stock_barcode/components/main";
+import MainComponent from "@stock_barcode/components/main";
 import { patch } from "@web/core/utils/patch";
-
 
 patch(BarcodeModel.prototype, {
 
@@ -42,13 +41,12 @@ patch(BarcodeModel.prototype, {
                         );
                     }
                 }
-                await this._metodo_final_post_validacion(this.record, result);
-
             }
 
+            await this._metodo_final_post_validacion(this.record, result);
 
         } catch (error) {
-            console.error(error);
+            await this._metodo_final_post_validacion(this.record, result);
         }
 
         return result;
@@ -119,24 +117,32 @@ patch(BarcodeModel.prototype, {
         }
         
         const isBatch = this.resModel === 'stock.picking.batch';
+        let isOnlyPick = false;
 
-        localStorage.setItem("mandatory_uncompleted",
-            JSON.stringify({
-                screen: null,
-                component: "QRScannerComponent",
-                component_props: {
-                    context: "assign_pack_for_operator",
-                    instructions: "Escanea la linea de empaque para asignar el Pack",
-                    can_close: true,
-                    extra_data: {
-                        pick_id: record.id,
-                        is_batch: isBatch,
-                        operation_type: "Pack"
-                    }
-                },
-                user: user
-            })
-        );
+        if (isBatch && record.picking_ids && record.picking_ids.length > 0) {
+            const pickings = await this.orm.read('stock.picking', record.picking_ids, ['picking_type_id']);
+            isOnlyPick = pickings.every(p => p.picking_type_id && p.picking_type_id[1].includes('Pick'));
+        }
+
+        if (isBatch && isOnlyPick) {
+            localStorage.setItem("mandatory_uncompleted",
+                JSON.stringify({
+                    screen: null,
+                    component: "QRScannerComponent",
+                    component_props: {
+                        context: "assign_pack_for_operator",
+                        instructions: "Escanea la linea de empaque para asignar el Pack",
+                        can_close: true,
+                        extra_data: {
+                            pick_id: record.id,
+                            is_batch: isBatch,
+                            operation_type: "Pack"
+                        }
+                    },
+                    user: user
+                })
+            );
+        }
 
         try {
             const response = await fetch('/wmds/v2/engine/get/wmds-url', {
@@ -154,9 +160,8 @@ patch(BarcodeModel.prototype, {
                 window.location.href = data.result.url;
             }
         } catch (error) {
-            console.error(error);
         }
-    },
+    }
 });
 
 patch(MainComponent.prototype, {
@@ -175,7 +180,6 @@ patch(MainComponent.prototype, {
                 await this.env.services.action.doAction(action);
             }
         } catch (error) {
-            console.error(error);
         }
     }
 });
