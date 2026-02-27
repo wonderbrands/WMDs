@@ -21,7 +21,7 @@
             <button t-if="env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
                     class="btn btn-primary" 
                     t-on-click="() => this.onCustomAction('action_imprimir_guia')">
-                <i class="fa fa-print me-1"/> Imprimir Guía
+                <i class="fa fa-print me-1"/> Imprimir Guía de Envío
             </button>
         </xpath>
 
@@ -36,7 +36,7 @@
             <button t-if="env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
                     class="btn btn-secondary" 
                     t-on-click="() => this.onCustomAction('action_print_tag')">
-                <i class="fa fa-tag me-1"/> Imprimir Etiqueta
+                <i class="fa fa-tag me-1"/> Imprimir Etiqueta de la Orden
             </button>
         </xpath>
 

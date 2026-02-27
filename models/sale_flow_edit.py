@@ -18,6 +18,7 @@ class SOAttachment(models.Model):
     bin_id = fields.Many2one("bin.storage", string="BIN Actual", tracking=True)
     on_dock = fields.Boolean(string="Está en DOCK", default=False, tracking=True)
     dock_id = fields.Many2one("dock.storage", string="DOCK Actual", tracking=True)
+    dispatched = fields.Boolean(string="Entregado a paquetería", default=False)
 
     @api.depends('so_id', 'sequence_number')
     def _compute_display_name_custom(self):

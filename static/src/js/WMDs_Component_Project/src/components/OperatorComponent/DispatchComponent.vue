@@ -2,33 +2,20 @@
     <div class="test-flow-container" style="display: flex; flex-direction: column; gap: 1rem; height: 100vh; padding: 10px;">
         
         <div class="scanner-section" style="display: flex; gap: 10px; height: 40%; min-height: 250px;">
-            <div v-if="ready && !scan_bin" style="flex: 1; overflow: hidden; position: relative;">
+            <div v-if="ready" style="flex: 1; overflow: hidden; position: relative;">
                 <BarcodeScannerComponent 
                     :key="scannerKey"
-                    context="scan_so"
-                    instructions="Escanea la etiqueta de orden SO"
-                    :onScan="(data) => serachAndValidateSO(data)"
-                />
-            </div>
-            <div v-else-if="ready && scan_bin" style="flex: 1; overflow: hidden; position: relative;">
-                <Button 
-                    icon="pi pi-arrow-left" 
-                    @click="scan_bin = false" 
-                    class="p-button-rounded p-button-secondary" 
-                    style="position: absolute; top: 10px; left: 10px; z-index: 100;" 
-                />
-                <QRScannerComponent 
-                    instructions="Escanea la ubicación BIN"
-                    :onScan="(data) => validateBin(data)"
+                    instructions="Escanea la guía para despacho"
+                    :onScan="(data) => searchAndValidateSO(data)"
                 />
             </div>
 
             <div style="display: flex; flex-direction: column; gap: 10px; justify-content: center;">
-                <Button v-if="so.length > 0 && !scan_bin"
-                    @click="scan_bin = true"
+                <Button v-if="so.length > 0"
+                    @click="dispatchToCarrier"
                     class="p-button-success p-button-sm" 
-                    label="Trasladar a BIN" 
-                    icon="pi pi-send"
+                    label="Entregar a paquetería" 
+                    icon="pi pi-truck"
                 />
                 <Button 
                     @click="exitFlow"
@@ -42,7 +29,7 @@
         <div class="log-section" style="flex: 1; display: flex; flex-direction: column; background: #2c3e50; border-radius: 8px; padding: 15px; color: #ecf0f1; overflow: hidden;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                 <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="font-weight: bold;">Órdenes escaneadas: {{ so.length }}</span>
+                    <span style="font-weight: bold;">Guías listas para entrega: {{ so.length }}</span>
                     <Button icon="pi pi-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="so = []" v-if="so.length > 0"/>
                 </div>
             </div>
@@ -56,8 +43,9 @@
                     </div>
                     <Button icon="pi pi-times" class="p-button-rounded p-button-danger p-button-text" @click="so.splice(index,1)" />
                 </div>
+                
                 <div v-if="so.length === 0" style="text-align: center; color: #7f8c8d; margin-top: 20px;">
-                    <i class="pi pi-search" style="font-size: 2rem; display: block; margin-bottom: 10px;"></i>
+                    <i class="pi pi-box" style="font-size: 2rem; display: block; margin-bottom: 10px;"></i>
                     Esperando escaneo de guía...
                 </div>
             </div>
@@ -66,22 +54,19 @@
 </template>
 
 <script>
-import QRScannerComponent from '../QRScannerComponent/QRScannerComponent.vue';
 import BarcodeScannerComponent from '../QRScannerComponent/BarcodeScannerComponent.vue';
 import Button from 'primevue/button';
 import { useGeneralStore } from "../../store/index";
 
 export default {
-    name: "BinComponent",
+    name: "DispatchComponent",
     components: {
-        QRScannerComponent,
         BarcodeScannerComponent,
         Button
     },
     data() {
         return {
             store: useGeneralStore(),
-            scan_bin: false,
             so: [],
             ready: false,
             scannerKey: 0
@@ -94,7 +79,7 @@ export default {
         }, 500);
     },
     methods: {
-        async serachAndValidateSO(data) {
+        async searchAndValidateSO(data) {
             try {
                 if (this.so.includes(data)) {
                     this.restartScanner();
@@ -107,6 +92,10 @@ export default {
 
                 if (response.valid) {
                     this.so.push(data);
+                } else {
+                    if(this.$toast) {
+                        this.$toast.add({ severity: 'error', summary: 'Guía Inválida', detail: 'La guía no es válida para despacho.', life: 3000 });
+                    }
                 }
                 
                 this.restartScanner();
@@ -118,41 +107,47 @@ export default {
         restartScanner() {
             this.scannerKey++;
         },
-        // Call this to satisfy the mandatory lock and reset the component
-        exitFlow() {
-            if (this.so.length > 0) {
-                if (!confirm("Tienes órdenes pendientes de mover. ¿Estás seguro de que quieres salir?")) {
-                    return;
-                }
-            }
-            this.so = [];
-            this.scan_bin = false;
-            this.store.mandatory_uncompleted.doneMandatory();
-        },
-        async validateBin(data) {
+        async dispatchToCarrier() {
             if (this.so.length === 0) return;
             
             try {
-                let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-                let nameToValidate = parsedData.name;
-
-                let response = await this.store.callOdoo("move_to_bin", "", {
-                    bin: nameToValidate,
+                let response = await this.store.callOdoo("dispatch_orders", "", {
                     operator: this.store.role.email,
                     orders: this.so
                 });
 
                 if (response.ok) {
+                    if(this.$toast) {
+                        this.$toast.add({ severity: 'success', summary: 'Éxito', detail: 'Órdenes entregadas a paquetería.', life: 3000 });
+                    }
                     this.store.mandatory_uncompleted.doneMandatory();
                     this.so = [];
-                    this.scan_bin = false;
-                    this.scannerKey++; 
+                    this.restartScanner(); 
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error de Validación', detail: 'No se pudo validar el bin.', life: 3000 });
-                console.error("Bin validation error", e);
+                if(this.$toast) {
+                    this.$toast.add({ severity: 'error', summary: 'Error de Despacho', detail: 'No se pudo completar la entrega.', life: 3000 });
+                }
+                console.error("Dispatch error", e);
             }
+        },
+        exitFlow() {
+            if (this.so.length > 0) {
+                if (!confirm("Tienes guías escaneadas sin entregar a paquetería. ¿Estás seguro de que quieres salir?")) {
+                    return;
+                }
+            }
+            this.so = [];
+            this.store.mandatory_uncompleted.doneMandatory();
         }
     }
 }
 </script>
+
+<style scoped>
+@keyframes bounce {
+  0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
+  40% {transform: translateY(-15px);}
+  60% {transform: translateY(-7px);}
+}
+</style>

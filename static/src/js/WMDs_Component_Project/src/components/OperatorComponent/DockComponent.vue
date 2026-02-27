@@ -6,7 +6,6 @@
             <div v-if="ready && !scannedBin" style="flex: 1; overflow: hidden; position: relative;">
                 <QRScannerComponent 
                     :key="scannerKey"
-                    context="scan_bin_source"
                     instructions="Escanea el BIN que vas a mover"
                     :onScan="(data) => validateSourceBin(data)"
                 />
@@ -21,7 +20,6 @@
                 />
                 <QRScannerComponent 
                     :key="scannerKey + 1"
-                    context="scan_dock_dest"
                     instructions="Escanea la ubicación DOCK"
                     :onScan="(data) => validateDestDock(data)"
                 />

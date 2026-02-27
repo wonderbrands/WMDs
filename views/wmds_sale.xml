@@ -15,6 +15,7 @@
                                 <field name="display_name_custom"/>
                                 <field name="on_bin" readonly="True"/>
                                 <field name="on_dock" readonly="True"/>
+                                <field name="dispatched" readonly="True"/>
                                 <field name="attachment" filename="file_name" widget="binary"/>
                                 <field name="file_name" invisible="True" column_invisible="True"/>
                             </list>
