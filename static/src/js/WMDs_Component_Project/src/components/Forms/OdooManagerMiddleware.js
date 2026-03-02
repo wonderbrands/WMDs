@@ -259,7 +259,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             move_bin_to_dock: {url: '/wmds/v2/engine/post/move_bin_to_dock', method: 'POST'},
             pack: {url: '/wmds/v2/engine/get/pack', method: 'POST'},
             assign_pack: {url: '/wmds/v2/engine/post/pick_assign_operator', method: 'POST'},
-
+            dispatch_orders: {url: '/wmds/v2/engine/post/dispatch_packet', method: 'POST'},
         };
     }
 

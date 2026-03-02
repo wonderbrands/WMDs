@@ -11,7 +11,7 @@ Planned replacement for the current WMS
     'author': "Wonderbrands",
     'website': "https://www.wonderbrands.co",
 
-
+    'images': ['static/description/icon.png'],
     'category': 'Technical',
     'version': '18.0',
 

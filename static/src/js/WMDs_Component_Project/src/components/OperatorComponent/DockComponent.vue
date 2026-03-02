@@ -131,6 +131,7 @@ export default {
                 if (response.ok) {
                     this.$toast.add({ severity: 'success', summary: 'Éxito', detail: `Se movieron ${response.moved_packages} paquetes al DOCK ${dockName}`, life: 3000 });
                     this.resetScan();
+                    this.store.mandatory_uncompleted.doneMandatory();
                 } else {
                     this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
                     this.scannerKey++;

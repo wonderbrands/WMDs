@@ -112,25 +112,45 @@ export default {
             
             try {
                 let response = await this.store.callOdoo("dispatch_orders", "", {
-                    operator: this.store.role.email,
-                    orders: this.so
+                    operator_login: this.store.role.email,
+                    picks_ids: this.so // Se envía el array de guías escaneadas
                 });
 
-                if (response.ok) {
-                    if(this.$toast) {
-                        this.$toast.add({ severity: 'success', summary: 'Éxito', detail: 'Órdenes entregadas a paquetería.', life: 3000 });
+                if (response.status === "success") {
+                    if (response.warning) {
+                        this.$toast.add({ 
+                            severity: 'warn', 
+                            summary: 'Entrega Parcial', 
+                            detail: response.warning, 
+                            life: 6000 
+                        });
+                    } else {
+                        this.$toast.add({ 
+                            severity: 'success', 
+                            summary: 'Éxito', 
+                            detail: 'Todas las órdenes han sido completadas y cerradas.', 
+                            life: 3000 
+                        });
                     }
+
                     this.store.mandatory_uncompleted.doneMandatory();
                     this.so = [];
                     this.restartScanner(); 
+                } else {
+                    throw new Error(response.message || "Error desconocido");
                 }
             } catch (e) {
                 if(this.$toast) {
-                    this.$toast.add({ severity: 'error', summary: 'Error de Despacho', detail: 'No se pudo completar la entrega.', life: 3000 });
+                    this.$toast.add({ 
+                        severity: 'error', 
+                        summary: 'Error de Despacho', 
+                        detail: e.message || 'No se pudo completar la entrega.', 
+                        life: 4000 
+                    });
                 }
                 console.error("Dispatch error", e);
             }
-        },
+        },       
         exitFlow() {
             if (this.so.length > 0) {
                 if (!confirm("Tienes guías escaneadas sin entregar a paquetería. ¿Estás seguro de que quieres salir?")) {
