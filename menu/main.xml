@@ -4,7 +4,8 @@
     <menuitem
         id="wmds_menu"
         name="WMDs"
-        sequence="20"/>
+        sequence="20"
+        web_icon="wmds,static/description/icon.png"/>
 
     <menuitem
         id="wmds_app"

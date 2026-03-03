@@ -5,6 +5,15 @@
         <record model="res.groups" id="group_wmds_manager">
             <field name="name">WMDs Manager</field>
         </record>
+        
+        <record model="res.groups" id="group_wmds_manager_ro">
+            <field name="name">WMDs Manager Read Only</field>
+        </record>
+
+           
+        <record model="res.groups" id="group_wmds_log_reader">
+            <field name="name">WMDs Logs</field>
+        </record>
 
         <record model="res.groups" id="group_wmds_operator">
             <field name="name">WMDs Operator</field>
@@ -17,6 +26,22 @@
          <record id="role_wmds_picker" model="res.groups">
             <field name="name">WMDs Operator - Picker</field>
         </record>   
+
+        <record id="role_wmds_packer" model="res.groups">
+            <field name="name">WMDs Operator - Packer</field>
+        </record>
+
+        <record id="role_wmds_bin" model="res.groups">
+            <field name="name">WMDs Operator - BIN</field>
+        </record>
+
+        <record id="role_wmds_dock" model="res.groups">
+            <field name="name">WMDs Operator - DOCK</field>
+        </record>
+
+        <record id="role_wmds_dispatch" model="res.groups">
+            <field name="name">WMDs Operator - Dispatch</field>
+        </record>
 
         <record model="res.groups" id="group_wmds_guideline_attacher">
             <field name="name">Adjuntador de Guías (WMDS)</field>
