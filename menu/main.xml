@@ -3,13 +3,13 @@
 
     <menuitem
         id="wmds_menu"
-        name="WMDs"
+        name="WMDS"
         sequence="20"
         web_icon="wmds,static/description/icon.png"/>
 
     <menuitem
         id="wmds_app"
-        name="WMDs App"
+        name="WMDS App"
         action="action_wmds_client"
         parent="wmds_menu"
         sequence="1"/>
