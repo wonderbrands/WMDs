@@ -47,7 +47,7 @@ export default {
         }
     },
 
-    async mounted() {
+    async beforeMount() {
         this.tasks = this.taskDefinitions.map(t => ({
             ...t,
             assigned: [{
