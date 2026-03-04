@@ -21,7 +21,6 @@ class RolePickerEngineDefinition {
             email: "",
         }
     }
-    
 }
 
 class RolePickerDev extends RolePickerEngineDefinition {
@@ -30,21 +29,24 @@ class RolePickerDev extends RolePickerEngineDefinition {
     }
 
     async getRole() {
-        await new Promise(resolve => setTimeout(resolve, (Math.random() * (1.5 - 0.5) + 0.5) * 1000));
-        this.role='manager'
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        this.role = 'manager'
+        this.persistSessionInStorage()
     }
 
     async getPermissions() {
-        await new Promise(resolve => setTimeout(resolve, (Math.random() * (1.5 - 0.5) + 0.5) * 1000));
-        this.permissions=[]
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        this.permissions = []
+        this.persistSessionInStorage()
     }
 
     async getUserFromServer() {
-        await new Promise(resolve => setTimeout(resolve, (Math.random() * (1.5 - 0.5) + 0.5) * 1000));
+        await new Promise(resolve => setTimeout(resolve, 1000));
         this.user = "John Doe"
         this.email = "test@valid.com"
+        this.is_identified = true
+        this.persistSessionInStorage()
     }
-
 }
 
 class RolePickerProd extends RolePickerEngineDefinition {
@@ -58,84 +60,42 @@ class RolePickerProd extends RolePickerEngineDefinition {
         try {
             const response = await fetch('/wmds/v2/engine/get/valid_user', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     "jsonrpc": "2.0",
-                    "params": {
-                        "email": tryEmail
-                    }
+                    "params": { "email": tryEmail }
                 })
             })
             const data = await response.json()
-            console.log(data)
-            if (data.result.error){
-                console.log(data.result.error)
-                return
+            if (data.result.error) {
+                throw new Error(data.result.error)
             } 
-            console.log(data.result)
-            console.log("correctly identified user")
-            this.user= data.result.name
-            this.email= data.result.login
+            this.user = data.result.name
+            this.email = data.result.login
             this.is_identified = true
             this.persistSessionInStorage()
-            
-            
-            
         } catch (error) {
             console.error(error);
             throw new Error("No se pudo validar el usuario.");
         }
-        /*
-        const local_storage_info = localStorage.getItem("web.lastConnectedUser")
-        if (!local_storage_info) {
-            try {
-                const response = await fetch('/wmds/engine/user_validate', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        "jsonrpc": "2.0",
-                    })
-                })
-                const data = await response.json()
-                console.log(data)
-                this.user= data.result.name
-                this.email= data.result.login
-            } catch (error) {
-                console.error(error)
-            }
-        } else {
-            const users = JSON.parse(local_storage_info)        
-            this.user= users[0].name
-            this.email= users[0].login
-        }*/
-        
-        
     }
 
     async getRole() {
         try {
             const response = await fetch('/wmds/engine/user', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     "jsonrpc": "2.0",
-                    "params": {
-                        "email": this.email
-                    }
-                  })
+                    "params": { "email": this.email }
+                })
             })   
             const result = await response.json()
-            console.log(result)
             this.role = result.result.role
+            this.persistSessionInStorage()
         } catch (error) {
             console.error(error);
-            throw new Error("No se pudo obtener el rol del usuario.");
+            throw new Error("No se pudo obtener el rol.");
         }
     }
 
@@ -143,29 +103,25 @@ class RolePickerProd extends RolePickerEngineDefinition {
         try {
             const response = await fetch('/wmds/v2/engine/get/user_role_permissions', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     "jsonrpc": "2.0",
-                    "params": {
-                        "email": this.email
-                    }
-                  })
+                    "params": { "email": this.email }
+                })
             })   
             const result = await response.json()
-            console.log(result)
             this.permissions = result.result.permissions
+            this.persistSessionInStorage()
         } catch (error) {
             console.error(error);
-            throw new Error("No se pudieron obtener los permisos del usuario.");
+            throw new Error("No se pudieron obtener los permisos.");
         }
     }
 
-    persistSessionInStorage(){
+    persistSessionInStorage() {
         window.sessionStorage.setItem("wmds_logged_user", 
             JSON.stringify({
-                "name": this.user,
+                "user": this.user,
                 "email": this.email,
                 "permissions": this.permissions,
                 "role": this.role,
@@ -174,35 +130,27 @@ class RolePickerProd extends RolePickerEngineDefinition {
             }))
     }
 
-
     checkIfPersisted() {
         const KEY = "wmds_logged_user";
         const itemStr = window.sessionStorage.getItem(KEY);
-
-        if (!itemStr) {
-            return false;
-        }
-
+        if (!itemStr) return false;
         try {
             const loggedUser = JSON.parse(itemStr);
             const loggedAt = new Date(loggedUser.logged_at);
             const now = new Date();
-
             const twelveHoursMs = 12 * 60 * 60 * 1000;
-
             if (now.getTime() - loggedAt.getTime() > twelveHoursMs) {
-                window.sessionStorage.removeItem(KEY);
+                this.logout();
                 return false;
             }
             return true;
-
         } catch (error) {
-            window.sessionStorage.removeItem(KEY);
+            this.logout();
             return false;
         }
     }
 
-    logout(){
+    logout() {
         window.sessionStorage.removeItem("wmds_logged_user");
         this.user = null
         this.email = null
@@ -210,13 +158,10 @@ class RolePickerProd extends RolePickerEngineDefinition {
         this.permissions = null
         this.is_identified = false
     }
-
 }
 
 export default function RolePickerEngine() {
-    if(import.meta.env.VITE_ENVIRONMENT === 'DEV') {
-        return new RolePickerDev()
-    } else if (import.meta.env.VITE_ENVIRONMENT === 'PROD') {
-        return new RolePickerProd()
-    }
+    const env = import.meta.env.VITE_ENVIRONMENT
+    if (env === 'DEV') return new RolePickerDev()
+    return new RolePickerProd()
 }
