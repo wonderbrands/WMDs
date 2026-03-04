@@ -1,5 +1,7 @@
 <template>
-    <div  class="task-container">
+    <PickerView v-if="store.role.permissions.includes('WMDs Operator - Packer')" />
+    <div  class="task-container" 
+        v-else>
         <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
         
         <Card v-for="task in activeTasks" :key="task.id" class="task-card">
@@ -43,12 +45,14 @@
 <script>
 import Card from "primevue/card";
 import Tree from "primevue/tree";
+import PickerView from "./PickerView.vue";
 import LogoutComponent from "../RolePicker/LogoutComponent.vue"
 import { useGeneralStore } from "../../store/index";
 
+
 export default {
     name: "OperatorComponent",
-    components: { Card, Tree, LogoutComponent },
+    components: { Card, Tree, LogoutComponent, PickerView },
 
     data() {
         return {

@@ -50,14 +50,17 @@ class PendingTasks(http.Controller):
                 source_doc = getattr(record, 'origin', False)
                 
                 if source_doc:
-                    label = f"{record.name} / {source_doc}"
+                    label = f"{record.name} - {source_doc}"
                 else:
                     label = record.name
 
                 result.append({
                     "key": record.id,
                     "label": label,
-                    "data": record.name
+                    "data": record.name,
+                    "pick": record.name,
+                    "origin": source_doc,
+                    "date": record.scheduled_date
                 })
 
             return result

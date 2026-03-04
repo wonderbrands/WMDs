@@ -42,12 +42,7 @@
         <record id="role_wmds_dispatch" model="res.groups">
             <field name="name">WMDs Operator - Dispatch</field>
         </record>
-
-        <record model="res.groups" id="group_wmds_guideline_attacher">
-            <field name="name">Adjuntador de Guías (WMDS)</field>
-            <field name="category_id" ref="base.module_category_sales_sales"/>
-            <field name="comment">Usuarios con permiso para gestionar adjuntos en las órdenes de venta.</field>
-        </record> 
+        
     </data>
     
 </odoo>
