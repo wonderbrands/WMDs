@@ -48,13 +48,19 @@ class LogStockRecord(http.Controller):
             }
             
             if picking.picking_type_id.name == "Storage":
-                log_vals.update({'log': f"El acomodo {picking.name} ha sido completado", 'pick': picking.id})
+                log_vals.update({'log': f"El rackeo {picking.name} ha sido completado", : picking.id})
             
             elif picking.picking_type_id.name == "Recepciones":
-                log_vals.update({'log': f"Se ha ejecutado la recepción {picking.name}", 'pick': picking.id})
+                log_vals.update({'log': f"Se ha ejecutado la recepción {picking.name}", : picking.id})
             
             elif picking.picking_type_id.name == "Pick":
-                log_vals.update({'log': f"Se ha ejecutado el pick {picking.name}", 'pick': picking.id})
+                log_vals.update({'log': f"Se ha ejecutado el pick {picking.name} hacia la ubicaicón {picking.location_dest_id.name}", : picking.id})
+
+            elif picking.picking_type_id.name == "Pack":
+                log_vals.update({'log': f"Se ha ejecutado el pack {picking.name} hacia la ubicaicón {picking.location_dest_id.name}", : picking.id})
+
+            elif picking.picking_type_id.name == "Órdenes de entrega":
+                log_vals.update({'log': f"Se ha ejecutado el out {picking.name}, se ha despachado el producto completo", : picking.id})
 
             if log_vals.get('log'):
                 request.env["wmds.log"].sudo().create(log_vals)

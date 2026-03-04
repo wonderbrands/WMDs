@@ -1,5 +1,8 @@
 <template>
     <div class="pack-container">
+        <h1>
+            {{ store.role.name }}
+        </h1>
         <div 
             v-for="task in packTasks" 
             :key="task.key"
@@ -22,8 +25,9 @@
         <div v-if="packTasks.length === 0" class="empty-state">
             No hay tareas de empaque asignadas.
         </div>
-        
-        <LogoutComponent style="width: 100%; margin-top: 1rem;"/>
+        <div class="button-logout-container">
+            <LogoutComponent class="logout-button" />
+        </div>
     </div>
 </template>
 
@@ -39,13 +43,11 @@ export default {
     data() {
         return {
             store: useGeneralStore(),
-            // Simplificamos: no necesitamos taskDefinitions complejas si este componente es solo para PACK
             rawPackData: [] 
         };
     },
 
     computed: {
-        // Esta propiedad computada evita el error de "undefined"
         packTasks() {
             return this.rawPackData;
         }
@@ -53,14 +55,12 @@ export default {
 
     async mounted() {
         try {
-            // Llamada directa a Odoo para el ID "pack"
             const data = await this.store.callOdoo(
                 "pending_tasks",
                 "pack",
                 { email: this.store.role.email }
             );
 
-            // Mapeamos los datos directamente a nuestro array local
             if (data && Array.isArray(data)) {
                 this.rawPackData = data.map((p, i) => ({
                     key: `pack-${i}`,
@@ -102,6 +102,8 @@ export default {
     margin-bottom: 1rem;
     cursor: pointer;
     background: white;
+    margin: 1em;
+    width: 25%;
 }
 .task-header {
     display: flex;
@@ -119,5 +121,16 @@ export default {
     justify-content: space-between;
     font-size: 0.85rem;
     color: #495057;
+}
+.button-logout-container {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+    margin-top: 2rem;
+    padding-bottom: 2rem;
+}
+
+.logout-button {
+    width: 60% !important; 
 }
 </style>

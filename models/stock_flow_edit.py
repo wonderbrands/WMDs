@@ -30,17 +30,14 @@ class StockWMDS(models.Model):
     def _get_stock_barcode_data(self):
         res = super()._get_stock_barcode_data()
         
-        # En Odoo, esto es una lista de diccionarios con los datos del registro
         picking_records = res.get('records', {}).get('stock.picking', [])
         
         for picking_data in picking_records:
             picking_id = picking_data.get('id')
             if picking_id:
                 picking_real = self.env['stock.picking'].browse(picking_id)
-                # Inyectamos nuestros valores custom directamente al diccionario
                 picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
                 if picking_real.operator:
-                    # Formateamos el Many2one como [ID, "Nombre"] para que OWL lo entienda
                     picking_data['operator'] = [picking_real.operator.id, picking_real.operator.name]
                 else:
                     picking_data['operator'] = False
