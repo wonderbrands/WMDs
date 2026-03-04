@@ -1,15 +1,5 @@
 from odoo import http
 from odoo.http import request
-import traceback
-import logging
-from datetime import datetime
-
-logger = logging.getLogger(__name__)
-
-
-
-from odoo import http
-from odoo.http import request
 from datetime import datetime
 import traceback
 
@@ -23,7 +13,7 @@ class LogStockRecord(http.Controller):
         csrf=True
     )
     def log_stock_record(self, **kw):
-        params = kw.get('params', kw)  # Soporte para JSON-RPC estándar
+        params = kw.get('params', kw)
         pick_id = params.get('pick_id')
         pick_name = params.get('pick_name')
         operator_mail = params.get('operator_mail')
@@ -41,42 +31,50 @@ class LogStockRecord(http.Controller):
         if not picking:
             return {"error": "Picking no encontrado"}
 
+        product_list = "\n".join([f"- {m.product_id.display_name}: {m.quantity_done or m.product_uom_qty}" for m in picking.move_ids])
+        location_dest = picking.location_dest_id.name
+        
+        detail_header = f"Hacia la ubicación {location_dest}, se han trasladado los siguientes productos:\n{product_list}"
+
         if type_of_log == "external":
             log_vals = {
                 'user': operator_id.id if operator_id else False,
                 'date': datetime.now(),
+                'pick': picking.id
             }
             
-            if picking.picking_type_id.name == "Storage":
-                log_vals.update({'log': f"El rackeo {picking.name} ha sido completado", : picking.id})
+            base_log = ""
+            p_type = picking.picking_type_id.name
             
-            elif picking.picking_type_id.name == "Recepciones":
-                log_vals.update({'log': f"Se ha ejecutado la recepción {picking.name}", : picking.id})
-            
-            elif picking.picking_type_id.name == "Pick":
-                log_vals.update({'log': f"Se ha ejecutado el pick {picking.name} hacia la ubicaicón {picking.location_dest_id.name}", : picking.id})
+            if p_type == "Storage":
+                base_log = f"El rackeo {picking.name} ha sido completado."
+            elif p_type == "Recepciones":
+                base_log = f"Se ha ejecutado la recepción {picking.name}."
+            elif p_type == "Pick":
+                base_log = f"Se ha ejecutado el pick {picking.name}."
+            elif p_type == "Pack":
+                base_log = f"Se ha ejecutado el pack {picking.name}."
+            elif p_type == "Órdenes de entrega":
+                base_log = f"Se ha ejecutado el out {picking.name}, despacho completado."
 
-            elif picking.picking_type_id.name == "Pack":
-                log_vals.update({'log': f"Se ha ejecutado el pack {picking.name} hacia la ubicaicón {picking.location_dest_id.name}", : picking.id})
-
-            elif picking.picking_type_id.name == "Órdenes de entrega":
-                log_vals.update({'log': f"Se ha ejecutado el out {picking.name}, se ha despachado el producto completo", : picking.id})
-
-            if log_vals.get('log'):
-                request.env["wmds.log"].sudo().create(log_vals)
+            log_vals['log'] = f"{base_log}\n\n{detail_header}"
+            request.env["wmds.log"].sudo().create(log_vals)
             return {"saved": True}
 
         elif type_of_log == "backorder":
             request.env["wmds.log"].sudo().create({
                 'user': operator_id.id if operator_id else False,
-                'log': f"No se validaron todos los productos del traslado, se ha creado la backorder {picking.name}",
-                'pick': picking.id
+                'log': f"Backorder creada para {picking.name}.\n\n{detail_header}",
+                'pick': picking.id,
+                'date': datetime.now()
             })
+            return {"saved": True}
 
         else:
             try:
-                picking.wmds_log.create({
-                    'log': message,
+                final_msg = f"{message}\n\n{detail_header}" if message else detail_header
+                request.env["wmds.log"].sudo().create({
+                    'log': final_msg,
                     'user': operator_id.id if operator_id else False,
                     'date': datetime.now(),
                     'pick': picking.id
@@ -93,21 +91,22 @@ class LogStockRecord(http.Controller):
         csrf=True
     )
     def change_wmds_status(self, **kw):
-        pick_id = kw.get('pick_id')
-        pick_name = kw.get('pick_name')
-        status = kw.get('status')
+        params = kw.get('params', kw)
+        pick_id = params.get('pick_id')
+        pick_name = params.get('pick_name')
+        status = params.get('status')
 
         try:
+            picking = request.env['stock.picking'].sudo()
             if pick_id:
-                picking = request.env['stock.picking'].sudo().search([('id', '=', pick_id)], limit=1)
-            if pick_name:
-                picking = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1)
-            picking.wmds_status = request.env['wmds.stock.status'].search([('value', '=', status)], limit=1)
-            return {
-                "saved": True
-            }
+                picking = picking.search([('id', '=', pick_id)], limit=1)
+            elif pick_name:
+                picking = picking.search([('name', '=', pick_name)], limit=1)
+            
+            if picking:
+                status_rec = request.env['wmds.stock.status'].sudo().search([('value', '=', status)], limit=1)
+                picking.wmds_status = status_rec.id
+                return {"saved": True}
+            return {"error": "Picking no encontrado"}
         except Exception as e:
-            return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
-    
+            return {"error": f"{str(e)}\n{traceback.format_exc()}"}
