@@ -59,7 +59,7 @@ export default {
             store: useGeneralStore(),
             current_task: {},
             taskDefinitions: [
-                { id: "ingresos", title: "Recepciones", description: "Validación de ingresos.", fetch: true, label: "Abiertas", permission: "WMDs Operator" },
+                { id: "ingresos", title: "Recepciones", description: "Validación de ingresos.", fetch: true, label: "Abiertas", permission: "WMDs Operator - Reception" },
                 { id: "acomodo", title: "Rackeo", description: "Acomodo de productos.", fetch: true, label: "Abiertos", permission: "WMDs Operator - Forklift operator" },
                 { id: "traslados", title: "Traslados", description: "Traslado interno.", fetch: false, label: "Asignados", permission: "WMDs Operator - Forklift operator" },
                 { id: "batch_pick", title: "Plan de pickeo", description: "Preparación empaque.", fetch: true, label: "Asignados", permission: "WMDs Operator - Picker" },
