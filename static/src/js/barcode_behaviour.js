@@ -8,20 +8,18 @@ patch(BarcodeModel.prototype, {
 
     async _validate() {
         const isBatch = this.resModel === 'stock.picking.batch';
-        const originalPickingIds = isBatch ? (this.record.picking_ids || []) : [];
+        const recordData = Object.assign({}, this.record);
+        const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
 
         const result = await super._validate(...arguments);
 
         try {
             if (!isBatch) {
-                await this._enviar_log(this.record, "external", `Validación simple: ${this.record.name}`);
+                await this._enviar_log(recordData, "external", `Validación simple: ${recordData.name}`);
             } 
             else {
                 for (const pickId of originalPickingIds) {
-                    const pickInfo = this.cache.getRecord('stock.picking', pickId);
-                    if (pickInfo) {
-                        await this._enviar_log(pickInfo, "external", `Validación vía Batch: ${this.record.name}`);
-                    }
+                    await this._enviar_log({ id: pickId }, "external", `Validación vía Batch: ${recordData.name}`);
                 }
 
                 const newBackorders = await this.orm.searchRead(
@@ -32,23 +30,15 @@ patch(BarcodeModel.prototype, {
 
                 if (newBackorders && newBackorders.length > 0) {
                     for (const bo of newBackorders) {
-                        await this._enviar_log(
-                            { id: bo.id }, 
-                            "backorder", 
-                            `Backorder generado desde Batch ${this.record.name}`, 
-                            [bo.id, null], 
-                            "CREATE"
-                        );
+                        await this._enviar_log({ id: bo.id }, "backorder", `Backorder generado desde Batch ${recordData.name}`);
                     }
                 }
             }
-
-            await this._metodo_final_post_validacion(this.record, result);
-
         } catch (error) {
-            await this._metodo_final_post_validacion(this.record, result);
+            console.error(error);
         }
 
+        await this._metodo_final_post_validacion(recordData, result);
         return result;
     },
 
@@ -56,29 +46,23 @@ patch(BarcodeModel.prototype, {
         if (action.res_model === 'stock.backorder.confirmation') {
             const method = action.method; 
             const oldPickIds = action.context.default_pick_ids || [];
-            
             const result = await super._executeAction(...arguments);
-
             const decision = (method === 'process') ? "CREATE" : "CANCELLED";
 
             for (const oldId of oldPickIds) {
-                const msg = `Se detectó decisión de Backorder: ${decision} para el pick ${oldId}`;
-                await this._enviar_log({ id: oldId }, "backorder", msg, [oldId, null], decision);
+                await this._enviar_log({ id: oldId }, "backorder", `Decisión de Backorder: ${decision}`);
             }
-
             return result;
         }
-
         return await super._executeAction(...arguments);
     },
 
-    async _enviar_log(pick_info, type = "external", message = "", backorder_list = [], decision = null) {
+    async _enviar_log(pick_info, type = "external", message = "") {
         const session_wmds = window.sessionStorage.getItem("wmds_logged_user");
         let user = "";
         if (session_wmds) {
             try {
-                const json_session = JSON.parse(session_wmds);
-                user = json_session.email;
+                user = JSON.parse(session_wmds).email;
             } catch (e) {}
         }
 
@@ -92,17 +76,14 @@ patch(BarcodeModel.prototype, {
                         pick_id: pick_info.id,
                         type: type, 
                         operator_mail: user,
-                        message: message,
-                        backorder_list: backorder_list, 
-                        decision: decision 
+                        message: message
                     }
                 })
             });
-
             const res = await response.json();
             return res.result;
         } catch (error) {
-            return { 'error': 'Error de red', 'message': error };
+            return { 'error': 'network_error' };
         }
     },
 
@@ -111,8 +92,7 @@ patch(BarcodeModel.prototype, {
         let user = "";
         if (session_wmds) {
             try {
-                const json_session = JSON.parse(session_wmds);
-                user = json_session.email;
+                user = JSON.parse(session_wmds).email;
             } catch (e) {}
         }
         
@@ -148,19 +128,13 @@ patch(BarcodeModel.prototype, {
             const response = await fetch('/wmds/v2/engine/get/wmds-url', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    jsonrpc: "2.0",
-                    params: {}
-                })
+                body: JSON.stringify({ jsonrpc: "2.0", params: {} })
             });
-
             const data = await response.json();
-            
             if (data.result && data.result.url) {
                 window.location.href = data.result.url;
             }
-        } catch (error) {
-        }
+        } catch (error) {}
     }
 });
 
@@ -168,18 +142,11 @@ patch(MainComponent.prototype, {
     async onCustomAction(actionName) {
         const recordId = this.env.model.record.id;
         if (!recordId) return;
-
         try {
-            const action = await this.env.services.orm.call(
-                'stock.picking', 
-                actionName, 
-                [[recordId]]
-            );
-            
+            const action = await this.env.services.orm.call('stock.picking', actionName, [[recordId]]);
             if (action) {
                 await this.env.services.action.doAction(action);
             }
-        } catch (error) {
-        }
+        } catch (error) {}
     }
 });

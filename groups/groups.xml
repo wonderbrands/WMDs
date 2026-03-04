@@ -19,6 +19,10 @@
             <field name="name">WMDs Operator</field>
         </record>
 
+        <record id="role_wmds_reception_operator" model="res.groups">
+            <field name="name">WMDs Operator - Reception</field>
+        </record>
+
         <record id="role_wmds_forklift_operator" model="res.groups">
             <field name="name">WMDs Operator - Forklift operator</field>
         </record>    
