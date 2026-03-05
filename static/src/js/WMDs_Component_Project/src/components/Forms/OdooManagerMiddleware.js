@@ -231,6 +231,11 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                     ok: true,
                     moved_packages: 2
                 }
+            case "skip_log_if_manager":
+                return {
+                    "is_manager": true,
+                    "json_user": "{}"
+                }
             
             default:
                 break;
@@ -242,6 +247,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
     constructor() {
         super()
         this.endpointMap = {
+            skip_log_if_manager: {url: '/wmds/v2/engine/post/skip_log_if_manager', method: 'POST'},
             ingreso: {url: '/wmds/engine/picks', method: 'POST'},
             operadores: {url: '/wmds/engine/available_operators', method: 'POST'},
             assign_pick: {url: '/wmds/v2/engine/post/pick_assign_operator', method: 'POST'},

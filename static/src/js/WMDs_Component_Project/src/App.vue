@@ -65,6 +65,27 @@ export default {
         } finally {
             this.store.loading = false;
         }
+    },
+    restorePersistedUser(){
+      const persisted = window.sessionStorage.getItem("wmds_logged_user");
+      if (persisted) {
+        try {
+          const json_persisted = JSON.parse(persisted);
+          Object.assign(this.role, json_persisted);
+        } catch (e) {
+          this.$toast.add({ severity: 'error', summary: 'Error de Sesión', detail: 'No se pudo restaurar la sesión anterior.', life: 3000 });
+          console.error("Error al restaurar sesión:", e);
+        }
+      }
+    },
+    async skipLogIfManager(){
+      let response = await this.store.callOdoo("skip_log_if_manager", "", "");
+      let is_manager = response.is_manager
+      let json_user = response.json_user
+
+      if (is_manager){
+        await this.handleUserScan(json_user);
+      }
     }
   },
 
@@ -81,20 +102,10 @@ export default {
       return screens[this.store.current_screen]
     }
   },
-  beforeMount() {
-    const persisted = window.sessionStorage.getItem("wmds_logged_user");
-    if (persisted) {
-      try {
-        const json_persisted = JSON.parse(persisted);
-        Object.assign(this.role, json_persisted);
-      } catch (e) {
-        this.$toast.add({ severity: 'error', summary: 'Error de Sesión', detail: 'No se pudo restaurar la sesión anterior.', life: 3000 });
-        console.error("Error al restaurar sesión:", e);
-      }
-    }
-
+  async beforeMount() {
+    this.restorePersistedUser()
+    await this.skipLogIfManager()
     this.store.mandatory_uncompleted.loadFromStorage(this.role);
-    console.log(this.store.mandatory_uncompleted)
 
     if (this.store.mandatory_uncompleted.screen) {
       this.store.setCurrentScreen(this.store.mandatory_uncompleted.screen);

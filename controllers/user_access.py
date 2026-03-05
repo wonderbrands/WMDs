@@ -1,3 +1,4 @@
+import json
 from odoo import http
 from odoo.http import request, Response
 
@@ -80,4 +81,19 @@ class UserAccess(http.Controller):
             "name": user.name,
             "login": user.login,
             "permissions": groups
+        }
+
+    @http.route('/wmds/v2/engine/post/skip_log_if_manager', type='json', auth='user', methods=['POST'], csrf=True)
+    def skip_log_if_manager(self, **kw):
+        user = request.env.user
+        if user.has_group('WMDs Manager'):
+            return {
+                "is_manager": True 
+                "json_user":  json.dumps({
+                    "email": user.login
+                })
+            }
+
+        return {
+            "is_manager": False 
         }
