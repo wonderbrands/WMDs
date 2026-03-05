@@ -88,12 +88,13 @@ class UserAccess(http.Controller):
         user = request.env.user
         if user.has_group('WMDs Manager'):
             return {
-                "is_manager": True 
+                "is_manager": True,
                 "json_user":  json.dumps({
                     "email": user.login
                 })
             }
 
         return {
-            "is_manager": False 
+            "is_manager": False,
+            "json_user": None
         }
