@@ -1,6 +1,11 @@
 import json
+import logging
 from odoo import http
 from odoo.http import request, Response
+
+
+logger = logging.getLogger(__name__)
+
 
 class UserAccess(http.Controller):
     @http.route('/wmds/engine/user', type='json', auth='user', methods=['POST'], csrf=True)
@@ -86,6 +91,10 @@ class UserAccess(http.Controller):
     @http.route('/wmds/v2/engine/post/skip_log_if_manager', type='json', auth='user', methods=['POST'], csrf=True)
     def skip_log_if_manager(self, **kw):
         user = request.env.user
+        logger.info("==========================================")
+        logger.info(user)
+        logger.info(user.login)
+        logger.info(user.has_group('WMDs Manager'))
         if user.has_group('WMDs Manager'):
             return {
                 "is_manager": True,
