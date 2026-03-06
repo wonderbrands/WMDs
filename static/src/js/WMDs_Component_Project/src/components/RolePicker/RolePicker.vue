@@ -1,6 +1,6 @@
 <template>
     <div v-if="store.role.role === 'manager'" class="role_picker">
-        <h1>¡Hola {{ store.role.user }}!</h1>
+        <h1>¡Hola, {{ store.role.user }}!</h1>
         <h3>Elige el rol con el que usarás esta sesión</h3>
         <Button label="Manager" @click="store.setCurrentScreen('manager_screen')"/>
         <Button label="Operador" @click="store.setCurrentScreen('operator_screen')" />

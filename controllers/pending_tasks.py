@@ -1,9 +1,5 @@
-from odoo import http
+from odoo import http, fields
 from odoo.http import request
-import traceback
-import logging
-
-logger = logging.getLogger(__name__)
 
 class PendingTasks(http.Controller):
 
@@ -18,6 +14,11 @@ class PendingTasks(http.Controller):
         try:
             task = kw.get('task')
             email = kw.get('email')
+            client_tz = kw.get('tz')
+
+            env = request.env
+            if client_tz:
+                env = env(context=dict(env.context, tz=client_tz))
 
             map_task = {
                 "picks": "Pick",
@@ -26,23 +27,22 @@ class PendingTasks(http.Controller):
                 "pack": "Pack"
             }
 
-            if task=="batch_pick":
-                pending_tasks = request.env['stock.picking.batch'].sudo().search([
+            if task == "batch_pick":
+                pending_tasks = env['stock.picking.batch'].sudo().search([
                     ('state', '=', 'in_progress'),
                     ('operator.login', '=', email)
                 ])
 
             else:
-                fields = [
+                search_domain = [
                     ('picking_type_id.name', '=', map_task[task]),
                     ('state', '=', 'assigned'),
                 ]
 
                 if task not in ["acomodo", "ingresos"]:
-                    fields.append(('operator.login', '=', email))
+                    search_domain.append(('operator.login', '=', email))
 
-                pending_tasks = request.env['stock.picking'].sudo().search(fields)
-
+                pending_tasks = env['stock.picking'].sudo().search(search_domain)
 
             result = []
             for record in pending_tasks:
@@ -54,22 +54,19 @@ class PendingTasks(http.Controller):
                 else:
                     label = record.name
 
+                scheduled_date_tz = False
+                if record.scheduled_date:
+                    scheduled_date_tz = fields.Datetime.context_timestamp(record, record.scheduled_date).strftime('%Y-%m-%d %H:%M:%S')
+
                 result.append({
                     "key": record.id,
                     "label": label,
                     "data": record.name,
                     "pick": record.name,
                     "origin": source_doc,
-                    "date": record.scheduled_date
+                    "date": scheduled_date_tz
                 })
-
+            
             return result
-
         except Exception as e:
-            return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
-        except Exception as e:
-            return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
+            return {"error": str(e)}

@@ -25,7 +25,7 @@ class LogStockRecord(http.Controller):
 
         operator_id = request.env['res.users'].sudo().search([('login', '=', operator_mail)], limit=1)
         
-        product_list = "\n".join([f"- {m.product_id.display_name}: {m.qty_done}" for m in picking.move_line_ids])
+        product_list = "; ".join([f"- {m.product_id.display_name}: {m.qty_done if m.qty_done>0 else m.product_uom_qty}" for m in picking.move_line_ids])
         
         p_type_name = picking.picking_type_id.name or ""
         p_type_code = picking.picking_type_id.code
@@ -36,7 +36,7 @@ class LogStockRecord(http.Controller):
         if not is_storage:
             location_header = f"Hacia la ubicación {picking.location_dest_id.name}, "
 
-        detail_header = f"{location_header}se han trasladado los siguientes productos:\n{product_list}"
+        detail_header = f"{location_header}se han trasladado los siguientes productos:{product_list}"
 
         if type_of_log == "external":
             base_log = ""
@@ -56,7 +56,7 @@ class LogStockRecord(http.Controller):
             log_msg = f"{base_log}\n\n{detail_header}"
         
         elif type_of_log == "backorder":
-            log_msg = f"Backorder creada para {picking.name}.\n\n{detail_header}"
+            log_msg = f"Backorder creada para {picking.name}.{detail_header}"
         
         else:
             log_msg = f"{message}\n\n{detail_header}" if message else detail_header

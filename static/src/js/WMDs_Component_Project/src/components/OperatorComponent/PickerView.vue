@@ -54,35 +54,40 @@ export default {
             return this.rawPackData;
         }
     },
-
     async mounted() {
-        try {
-            const data = await this.store.callOdoo(
-                "pending_tasks",
-                "pack",
-                { email: this.store.role.email }
-            );
+        try {
+            const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-            if (data && Array.isArray(data)) {
-                this.rawPackData = data.map((p, i) => ({
-                    key: `pack-${i}`,
-                    label: p.label || p,
-                    data: p.data || p,
-                    origin: p.origin || 'Sin origen',
-                    pick: p.pick || p,
-                    date: p.date || new Date().toLocaleDateString() // Por si p.date no viene
-                }));
-            }
-        } catch (error) {
-            this.$toast.add({ 
-                severity: 'error', 
-                summary: 'Error', 
-                detail: 'No se pudieron cargar las tareas de empaque.', 
-                life: 3000 
-            });
-            console.error("Error cargando pack:", error);
-        }
-    },
+            const data = await this.store.callOdoo(
+                "pending_tasks",
+                "pack",
+                { 
+                    email: this.store.role.email,
+                    tz: clientTimeZone 
+                }
+            );
+
+            if (data && Array.isArray(data)) {
+                this.rawPackData = data.map((p, i) => ({
+                    key: `pack-${i}`,
+                    label: p.label || p,
+                    data: p.data || p,
+                    origin: p.origin || 'Sin origen',
+                    pick: p.pick || p,
+                    date: p.date || new Date().toLocaleDateString()
+                }));
+            }
+        } catch (error) {
+            this.$toast.add({ 
+                severity: 'error', 
+                summary: 'Error', 
+                detail: 'No se pudieron cargar las tareas de empaque.', 
+                life: 3000 
+            });
+            console.error("Error cargando pack:", error);
+        }
+    },
+   
 
     methods: {
         async openTask(pickName) {
@@ -116,13 +121,9 @@ export default {
     padding: 1rem;
     cursor: pointer;
     background: white;
-    
-    /* Manejo del ancho:
-       Intentará ocupar el 25% menos el espacio del gap, 
-       pero no bajará de 280px para que no se vea mal en móviles */
     flex: 1 1 calc(25% - 1rem); 
     min-width: 280px; 
-    max-width: 100%; /* Evita que se desborde en pantallas muy pequeñas */
+    max-width: 25%; /* Evita que se desborde en pantallas muy pequeñas */
     
     box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     transition: transform 0.2s;

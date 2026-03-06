@@ -23,12 +23,12 @@ export const useGeneralStore = defineStore('general_store', {
             value: "home"
         },
         ingresos: {
-            title: "Ingresos",
+            title: "Recepciones",
             description: "Validación de los productos ingresados a almacén.",
             value: "ingresos"
         },
         disponibilizar: {
-            title: "Disponibilizar",
+            title: "Rackeo",
             description: "Traslado de productos desde posición de ingreso a alguna ubicación de almacén",
             value: "disponibilizar"
         },
@@ -85,11 +85,19 @@ export const useGeneralStore = defineStore('general_store', {
                         ]
                     }
                 },
-                {
+                batch_pick: {
                     title: "Planes de pickeo", 
-                    description: "",
+                    description: "Agrupación de órdenes para surtido masivo",
                     screen: "batch_pick",
-                    value: "batch_pick",
+                    value: "batch_pick", 
+                    form_title: "Detalle del Plan de Pickeo:",
+                    map_columns:[
+                        {name: "id", label: "ID"},
+                        {name: "name", label: "Referencia"},
+                        {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
+                        {name: "scheduled_date", label: "Fecha Programada"},
+                        {name: "state", label: "Estado"}
+                    ],
                     create_by_aggregate: {
                         button_string: "Crear plan de pickeo",
                         input_aggregate_instructions: "Pedidos o Picks",
@@ -106,6 +114,12 @@ export const useGeneralStore = defineStore('general_store', {
                                 required: true
                             }
                         ]                        
+                    },
+                    form_config: {
+                        save_context: "assign_pick",
+                        related_data_endpoint: "pick_products",
+                        on_save_actions: [
+                        ]
                     }
                 }
             ]

@@ -13,6 +13,13 @@ class SOWMDS(models.Model):
     @api.model
     def create(self, vals):
         res = super(SOWMDS, self).create(vals)
+        self.env['wmds.log'].sudo().create({
+            'sale': res.id,
+            'log': f"Se ha creado la órden de venta",
+            'user': self.env.user.id,
+            'date': fields.Datetime.now(),
+        })
+
         if vals.get('carrier_selection_relational'):
             carrier_name = res.carrier_selection_relational.name
             self.env['wmds.log'].sudo().create({
@@ -30,7 +37,7 @@ class SOWMDS(models.Model):
                 'draft': 'Cotización (Borrador)',
                 'sent': 'Cotización Enviada',
                 'sale': 'Orden de Venta (Confirmado)',
-                'done': 'Bloqueado / Realizado',
+                'done': 'Bloqueado',
                 'cancel': 'Cancelado'
             }
             msg_state = state_map.get(new_state, f"Estado cambiado a: {new_state}")

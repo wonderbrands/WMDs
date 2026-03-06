@@ -427,3 +427,107 @@ class GetPicks(http.Controller):
             return {
                 "error": f"{str(e)}\n{traceback.format_exc()}"
             }
+
+    @http.route(
+        '/wmds/v2/engine/get/batch_pick',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def get_batch_pick(self, **kw):
+        try:
+            parsed_params = {
+                "cur_page": kw.get('page', 1),
+                "per_page": kw.get('per_page', 30),
+                "sort_by": kw.get('sort_by'),
+                "sort_order": kw.get('sort_order'),
+            }
+
+            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order']:
+                if popped_param in kw:
+                    kw.pop(popped_param)
+
+            col_domain = []
+            if len(kw) > 0:
+                for key, value in kw.items():
+                    col_domain.append((key, "ilike", value))
+
+            offset_val = (parsed_params['cur_page'] - 1) * parsed_params['per_page'] if parsed_params['cur_page'] and parsed_params['per_page'] else 0
+            order_val = f"{parsed_params['sort_by']} {parsed_params['sort_order']}" if parsed_params['sort_by'] and parsed_params['sort_order'] else 'id desc'
+
+            batches = request.env['stock.picking.batch'].sudo().search(
+                col_domain,
+                limit=parsed_params['per_page'],
+                offset=offset_val,
+                order=order_val
+            )
+            total = request.env['stock.picking.batch'].sudo().search_count(col_domain)
+
+            map_cols = [
+                {
+                    "name": "ID",
+                    "field": "id",
+                },
+                {
+                    "name": "Referencia",
+                    "field": "name",
+                },
+                {
+                    "name": "Operador",
+                    "field": "operator",
+                    "type": "one2many",
+                    "non_blocked_field": True
+                },
+                {
+                    "name": "Fecha Programada",
+                    "field": "scheduled_date"
+                },
+                {
+                    "name": "Estado",
+                    "field": "state",
+                    "type": "selectable",
+                    "options": [
+                        {
+                            "value": "draft",
+                            "label": "Borrador"
+                        },
+                        {
+                            "value": "in_progress",
+                            "label": "En progreso",
+                            "default": True
+                        },
+                        {
+                            "value": "done",
+                            "label": "Hecho"
+                        },
+                        {
+                            "value": "cancel",
+                            "label": "Cancelado"
+                        }
+                    ]
+                }
+            ]
+
+            return {
+                "map_cols": map_cols,
+                "data": [
+                    {
+                        "id": batch.id,
+                        "name": batch.name,
+                        "operator": None if not batch.operator else {
+                            "name": batch.operator.name,
+                            "id": batch.operator.id,
+                            "email": batch.operator.login
+                        },
+                        "scheduled_date": batch.scheduled_date,
+                        "state": convert_value_in_label(map_cols, batch.state, "state")
+                    } for batch in batches
+                ],
+                "total_count": total
+            }
+
+        except Exception as e:
+            return {
+                "error": f"{str(e)}\n{traceback.format_exc()}"
+            }

@@ -266,6 +266,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             pack: {url: '/wmds/v2/engine/get/pack', method: 'POST'},
             assign_pack: {url: '/wmds/v2/engine/post/pick_assign_operator', method: 'POST'},
             dispatch_orders: {url: '/wmds/v2/engine/post/dispatch_packet', method: 'POST'},
+            batch_pick: {url: '/wmds/v2/engine/get/batch_pick', method: 'POST'},
         };
     }
 
