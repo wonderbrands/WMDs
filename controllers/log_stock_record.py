@@ -53,13 +53,13 @@ class LogStockRecord(http.Controller):
             else:
                 base_log = f"Operación {picking.name} completada."
 
-            log_msg = f"{base_log}\n\n{detail_header}"
+            log_msg = f"{base_log} {detail_header}"
         
         elif type_of_log == "backorder":
             log_msg = f"Backorder creada para {picking.name}.{detail_header}"
         
         else:
-            log_msg = f"{message}\n\n{detail_header}" if message else detail_header
+            log_msg = f"{message} {detail_header}" if message else detail_header
 
         try:
             request.env["wmds.log"].sudo().create({
