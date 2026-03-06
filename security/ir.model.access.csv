@@ -2,6 +2,7 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_manager_log,access_manager_log,model_wmds_log,wmds.group_wmds_manager,1,0,0,0
 access_base_user_wmds_log,wmds.log.base.user.read,model_wmds_log,base.group_user,1,0,0,0
 access_manager_status,access_manager_status,model_wmds_stock_status,wmds.group_wmds_manager,1,1,1,1
+access_base_user_wmds_stock_status,wmds.stock.status.base.user.read,model_wmds_stock_status,base.group_user,1,0,0,0
 
 access_bin_storage_manager,bin.storage.manager,model_bin_storage,group_wmds_manager,1,1,1,1
 access_dock_storage_manager,dock.storage.manager,model_dock_storage,group_wmds_manager,1,1,1,1
