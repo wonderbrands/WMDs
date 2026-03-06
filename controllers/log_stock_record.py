@@ -74,6 +74,7 @@ class LogStockRecord(http.Controller):
 
     @http.route('/wmds/v2/engine/post/change_wmds_status', type='json', auth='user', methods=['POST'], csrf=False)
     def change_wmds_status(self, **kw):
+        """
         params = kw
         pick_id = params.get('pick_id')
         pick_name = params.get('pick_name')
@@ -94,3 +95,5 @@ class LogStockRecord(http.Controller):
             return {"error": "Picking o Estatus no encontrado"}
         except Exception as e:
             return {"error": f"{str(e)}\n{traceback.format_exc()}"}
+        """
+        pass
