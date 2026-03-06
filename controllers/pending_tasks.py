@@ -1,5 +1,9 @@
 from odoo import http, fields
 from odoo.http import request
+import logging
+
+_logger = logging.getLogger(__name__)
+
 
 class PendingTasks(http.Controller):
 
@@ -42,8 +46,12 @@ class PendingTasks(http.Controller):
                 if task not in ["acomodo", "ingresos"]:
                     search_domain.append(('operator.login', '=', email))
 
+                _logger.info("AAAAAAAAAAAAAAAAAAAAAAAA")
+                _logger.info(search_domain)
+            
                 pending_tasks = env['stock.picking'].sudo().search(search_domain)
-
+                _logger.info(pending_tasks)
+            
             result = []
             for record in pending_tasks:
                 
