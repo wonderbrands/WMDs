@@ -85,7 +85,7 @@ export const useGeneralStore = defineStore('general_store', {
                         ]
                     }
                 },
-                batch_pick: {
+                 {
                     title: "Planes de pickeo", 
                     description: "Agrupación de órdenes para surtido masivo",
                     screen: "batch_pick",
