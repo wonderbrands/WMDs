@@ -1,35 +1,52 @@
 <template>
-    <div style="padding: 1em; width: 100%; height: 100%; display: flex; flex-direction: column;">
-        <div v-show="camera_init" style="width: 100%; height: 100%; position:relative ">
-            <Button v-if="can_close" @click="closeScanner" label="&#10006;" style="position: absolute; top: 10px; right: 10px; z-index: 100;" />
-            
-            <div 
-                ref="barcodeScanner" 
-                class="quagga-container"
-                style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: black; overflow: hidden;"
-            ></div>
-
-            <div style="position: absolute; top: 50%; left: 10%; right: 10%; height: 2px; background: red; opacity: 0.5; z-index: 50; box-shadow: 0 0 8px red; pointer-events: none;"></div>
+    <div class="scanner-wrapper" @click="focusLaserInput">
+        <div class="controls-overlay">
+            <ButtonCamera @click="setReader('camera')" class="control-btn" />
+            <ButtonScanner @click="setReader('laser')" class="control-btn" />
+            <Button v-if="can_close" @click="closeScanner" label="&#10006;" class="control-btn close-btn" />
         </div>
 
-        <Message v-if="!camera_init && error" style="width: 100%; height: 100%;" severity="error">{{ error }}</Message>
-        <Message v-if="instructions && camera_init" style="position: absolute; bottom: 5px; width: 90%; left: 5%; z-index: 10;" severity="info">{{ instructions }}</Message>
+        <div v-if="reader === 'camera'" v-show="camera_init" class="camera-container">
+            <div ref="barcodeScanner" class="quagga-container"></div>
+            <div class="laser-line" :class="{ 'laser-locked': scan_lockout }"></div>
+        </div>
+
+        <div v-if="reader === 'laser'" class="laser-container">
+            <input 
+                ref="laserInput"
+                type="text" 
+                v-model="laser_input" 
+                @change="processScanedData"
+                @blur="keepFocus"
+                class="hidden-input"
+            >
+        </div>
+
+        <Message v-if="!camera_init && error && reader === 'camera'" class="error-msg" severity="error">{{ error }}</Message>
+        <Message v-if="instructions && (camera_init || reader === 'laser')" class="instruction-msg" severity="info">
+            {{ scan_lockout ? 'Please wait...' : instructions }}
+        </Message>
     </div>
 </template>
 
 <script>
-    import Button from 'primevue/button';
-    import Message from 'primevue/message';
-    import { useGeneralStore } from "../../store/index"
+import Button from 'primevue/button';
+import Message from 'primevue/message';
+import { useGeneralStore } from "../../store/index"
+import ButtonCamera from '../ResuableComponentIcons/ButtonCamera.vue';
+import ButtonScanner from '../ResuableComponentIcons/ButtonScanner.vue';
 
-    export default {
+export default {
     name: "BarcodeScannerComponent", 
     data() {
         return {
             store: useGeneralStore(),
             camera_init: false,
             error: null,
-            is_scanning: false 
+            is_scanning: false,
+            reader: "laser",
+            laser_input: "",
+            scan_lockout: false
         }
     },
     props: {
@@ -40,15 +57,17 @@
         extra_data: Object
     },
     mounted() {
-        this.initCamera();
-    },
-    beforeUnmount() {
-        this.closeScanner();
+        if (this.reader === 'camera') {
+            this.initCamera();
+        } else {
+            this.focusLaserInput();
+        }
     },
     methods: {
         initCamera() {
             this.camera_init = true;
             this.is_scanning = true;
+            this.scan_lockout = false;
             
             window.Quagga.init({
                 inputStream: {
@@ -67,8 +86,7 @@
                     halfSample: true
                 },
                 decoder: {
-                    // Optimized to only read the most common industrial formats
-                    readers: ["code_128_reader", "ean_reader", "code_39_reader"]
+                    readers: ["code_128_reader"]
                 },
                 locate: true
             }, (err) => {
@@ -84,20 +102,26 @@
 
         setupDetection() {
             window.Quagga.onDetected((result) => {
-                if (!this.is_scanning) return;
+                if (!this.is_scanning || this.scan_lockout) return;
 
                 if (result && result.codeResult && result.codeResult.code) {
-                    const code = result.codeResult.code;
-                    
-                    // Immediately lock and stop to prevent multiple scans
-                    this.is_scanning = false;
-                    window.Quagga.stop();
-
-                    if (this.onScan) {
-                        this.onScan(code);
-                    }
+                    this.triggerScan(result.codeResult.code);
                 }
             });
+        },
+
+        setReader(newReader) {
+            this.reader = newReader;
+            this.scan_lockout = false;
+            
+            if (newReader === 'camera') {
+                this.initCamera();
+            } else {
+                this.closeScanner();
+                this.$nextTick(() => {
+                    this.focusLaserInput();
+                });
+            }
         },
 
         closeScanner() {
@@ -107,16 +131,164 @@
                 window.Quagga.offDetected();
             }
             this.camera_init = false;
+        },
+        
+        focusLaserInput() {
+            if (this.reader === 'laser' && this.$refs.laserInput) {
+                this.$refs.laserInput.focus();
+            }
+        },
+
+        keepFocus() {
+            if (this.reader === 'laser') {
+                setTimeout(() => {
+                    this.focusLaserInput();
+                }, 10);
+            }
+        },
+
+        processScanedData() {
+            if (this.scan_lockout) {
+                this.laser_input = "";
+                return;
+            }
+
+            if (this.laser_input.trim() !== "") {
+                this.triggerScan(this.laser_input); 
+                this.laser_input = "";
+            }
+        },
+
+        playBeep() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AudioContext();
+                const oscillator = ctx.createOscillator();
+                const gainNode = ctx.createGain();
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+                
+                gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(ctx.destination);
+                
+                oscillator.start();
+                oscillator.stop(ctx.currentTime + 0.1);
+            } catch (error) {
+                console.warn("AudioContext not supported in this environment.");
+            }
+        },
+
+        triggerScan(code) {
+            this.scan_lockout = true;
+            this.playBeep();
+            
+            if (this.onScan) {
+                this.onScan(code);
+            }
+
+            setTimeout(() => {
+                this.scan_lockout = false;
+            }, 3000);
         }
     },
-    components: { Button, Message }
+    beforeUnmount() {
+        this.closeScanner();
+    },
+    components: { Button, Message, ButtonCamera, ButtonScanner }
 }
 </script>
 
-<style>
-:deep(.quagga-container video), :deep(.quagga-container canvas) {
+<style scoped>
+.scanner-wrapper {
+    padding: 1em;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column; 
+    position: relative;
+}
+
+.controls-overlay {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 100;
+    display: flex;
+    gap: 10px;
+}
+
+.camera-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    flex-grow: 1;
+}
+
+.quagga-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: black;
+    overflow: hidden;
+}
+
+:deep(.quagga-container video), 
+:deep(.quagga-container canvas) {
     width: 100%;
     height: 100%;
     object-fit: cover;
+}
+
+.laser-line {
+    position: absolute;
+    top: 50%;
+    left: 10%;
+    right: 10%;
+    height: 2px;
+    background: red;
+    opacity: 0.5;
+    z-index: 50;
+    box-shadow: 0 0 8px red;
+    pointer-events: none;
+    transition: background 0.3s, box-shadow 0.3s;
+}
+
+.laser-locked {
+    background: gray;
+    box-shadow: 0 0 8px gray;
+}
+
+.laser-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    height: 100%;
+    flex-grow: 1;
+}
+
+.hidden-input {
+    opacity: 0;
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
+}
+
+.error-msg {
+    width: 100%;
+    height: 100%;
+}
+
+.instruction-msg {
+    position: absolute;
+    bottom: 5px;
+    width: 90%;
+    left: 5%;
+    z-index: 10;
 }
 </style>
