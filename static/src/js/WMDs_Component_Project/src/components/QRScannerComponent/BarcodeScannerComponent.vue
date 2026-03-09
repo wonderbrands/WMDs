@@ -50,7 +50,8 @@ export default {
             reader: "laser",
             laser_input: "",
             scan_lockout: false,
-            inputTimeout: null
+            inputTimeout: null,
+            quagga_running: false
         }
     },
     props: {
@@ -81,10 +82,12 @@ export default {
                 this.focusLaserInput();
             }
         },
-        initCamera() {
+        async initCamera() {
             this.camera_init = true;
             this.is_scanning = true;
             this.scan_lockout = false;
+            
+            await this.$nextTick();
             
             window.Quagga.init({
                 inputStream: {
@@ -113,6 +116,7 @@ export default {
                     return;
                 }
                 window.Quagga.start();
+                this.quagga_running = true;
                 this.setupDetection();
             });
         },
@@ -140,9 +144,10 @@ export default {
         },
         closeScanner() {
             this.is_scanning = false;
-            if (window.Quagga) {
+            if (window.Quagga && this.quagga_running) {
                 window.Quagga.stop();
                 window.Quagga.offDetected();
+                this.quagga_running = false;
             }
             this.camera_init = false;
         },
