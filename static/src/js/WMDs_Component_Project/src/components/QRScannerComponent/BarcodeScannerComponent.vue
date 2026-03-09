@@ -16,16 +16,19 @@
                 ref="laserInput"
                 type="text" 
                 v-model="laser_input" 
-                @change="processScanedData"
+                @input="handleInput"
                 @blur="keepFocus"
                 class="hidden-input"
             >
         </div>
 
         <Message v-if="!camera_init && error && reader === 'camera'" class="error-msg" severity="error">{{ error }}</Message>
-        <Message v-if="instructions && (camera_init || reader === 'laser')" class="instruction-msg" severity="info">
-            {{ scan_lockout ? 'Please wait...' : instructions }}
-        </Message>
+        
+        <div class="message-container">
+            <Message v-if="instructions && (camera_init || reader === 'laser')" class="instruction-msg" severity="info">
+                {{ scan_lockout ? 'Please wait...' : instructions }}
+            </Message>
+        </div>
     </div>
 </template>
 
@@ -46,7 +49,8 @@ export default {
             is_scanning: false,
             reader: "laser",
             laser_input: "",
-            scan_lockout: false
+            scan_lockout: false,
+            inputTimeout: null
         }
     },
     props: {
@@ -60,10 +64,23 @@ export default {
         if (this.reader === 'camera') {
             this.initCamera();
         } else {
-            this.focusLaserInput();
+            this.$nextTick(() => {
+                this.focusLaserInput();
+            });
         }
+        
+        window.addEventListener('keydown', this.handleGlobalKeydown);
+    },
+    beforeUnmount() {
+        this.closeScanner();
+        window.removeEventListener('keydown', this.handleGlobalKeydown);
     },
     methods: {
+        handleGlobalKeydown(e) {
+            if (this.reader === 'laser' && document.activeElement !== this.$refs.laserInput) {
+                this.focusLaserInput();
+            }
+        },
         initCamera() {
             this.camera_init = true;
             this.is_scanning = true;
@@ -99,7 +116,6 @@ export default {
                 this.setupDetection();
             });
         },
-
         setupDetection() {
             window.Quagga.onDetected((result) => {
                 if (!this.is_scanning || this.scan_lockout) return;
@@ -109,7 +125,6 @@ export default {
                 }
             });
         },
-
         setReader(newReader) {
             this.reader = newReader;
             this.scan_lockout = false;
@@ -123,7 +138,6 @@ export default {
                 });
             }
         },
-
         closeScanner() {
             this.is_scanning = false;
             if (window.Quagga) {
@@ -132,13 +146,11 @@ export default {
             }
             this.camera_init = false;
         },
-        
         focusLaserInput() {
             if (this.reader === 'laser' && this.$refs.laserInput) {
                 this.$refs.laserInput.focus();
             }
         },
-
         keepFocus() {
             if (this.reader === 'laser') {
                 setTimeout(() => {
@@ -146,19 +158,26 @@ export default {
                 }, 10);
             }
         },
-
-        processScanedData() {
+        handleInput() {
             if (this.scan_lockout) {
                 this.laser_input = "";
                 return;
             }
 
+            if (this.inputTimeout) {
+                clearTimeout(this.inputTimeout);
+            }
+
+            this.inputTimeout = setTimeout(() => {
+                this.processScanedData();
+            }, 50); 
+        },
+        processScanedData() {
             if (this.laser_input.trim() !== "") {
                 this.triggerScan(this.laser_input); 
                 this.laser_input = "";
             }
         },
-
         playBeep() {
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -180,7 +199,6 @@ export default {
                 console.warn("AudioContext not supported in this environment.");
             }
         },
-
         triggerScan(code) {
             this.scan_lockout = true;
             this.playBeep();
@@ -194,9 +212,6 @@ export default {
             }, 3000);
         }
     },
-    beforeUnmount() {
-        this.closeScanner();
-    },
     components: { Button, Message, ButtonCamera, ButtonScanner }
 }
 </script>
@@ -209,6 +224,7 @@ export default {
     display: flex;
     flex-direction: column; 
     position: relative;
+    box-sizing: border-box;
 }
 
 .controls-overlay {
@@ -222,9 +238,10 @@ export default {
 
 .camera-container {
     width: 100%;
-    height: 100%;
+    flex: 0 0 80%; 
     position: relative;
-    flex-grow: 1;
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 .quagga-container {
@@ -264,11 +281,11 @@ export default {
 }
 
 .laser-container {
+    width: 100%;
+    flex: 0 0 10%; 
     display: flex;
     flex-direction: column;
     justify-content: center;
-    height: 100%;
-    flex-grow: 1;
 }
 
 .hidden-input {
@@ -281,14 +298,20 @@ export default {
 
 .error-msg {
     width: 100%;
-    height: 100%;
+    margin-top: 10px;
+}
+
+.message-container {
+    width: 100%;
+    flex: 1; 
+    display: flex;
+    align-items: center; 
+    justify-content: center;
+    margin-top: 10px;
 }
 
 .instruction-msg {
-    position: absolute;
-    bottom: 5px;
-    width: 90%;
-    left: 5%;
-    z-index: 10;
+    width: 100%;
+    margin: 0;
 }
 </style>
