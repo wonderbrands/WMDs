@@ -4,12 +4,12 @@
         style="border-radius: 0%; padding: 2em;">
         
         <svg 
-            width="20" 
-            height="20" 
-            viewBox="0 0 24 24" 
-            fill="none"
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
             xmlns="http://www.w3.org/2000/svg"
-            style="display: block;"
+            style="display:block; flex-shrink:0;"
+
         >
             <path
                 fill-rule="evenodd"
