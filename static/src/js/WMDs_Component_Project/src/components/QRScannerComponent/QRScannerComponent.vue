@@ -1,5 +1,5 @@
 <template>
-    <div class="scanner-wrapper">
+    <div class="scanner-wrapper" @click="focusLaserInput">
         <div class="controls-overlay">
             <ButtonCamera @click="setReader('camera')" class="control-btn" />
             <ButtonScanner @click="setReader('laser')" class="control-btn" />
@@ -11,7 +11,15 @@
         </div>
 
         <div v-if="reader === 'laser'" class="laser-container">
-            </div>
+            <input 
+                ref="laserInput"
+                type="text" 
+                v-model="laser_input" 
+                @input="handleInput"
+                @blur="keepFocus"
+                class="hidden-input"
+            >
+        </div>
 
         <Message v-if="!camera_init && error && reader === 'camera'" class="error-msg" severity="error">{{ error }}</Message>
         
@@ -41,7 +49,7 @@ export default {
             reader: "laser",
             laser_input: "",
             scan_lockout: false,
-            lastKeyTime: 0
+            inputTimeout: null 
         }
     },
     props: {
@@ -52,50 +60,41 @@ export default {
         extra_data: Object
     },
     mounted() {
+        console.log("mounted");
         if (this.reader === 'camera') {
             this.initCamera();
+        } else {
+            this.$nextTick(() => {
+                this.focusLaserInput();
+            });
         }
+        
         window.addEventListener('keydown', this.handleGlobalKeydown);
     },
     beforeUnmount() {
+        console.log("beforeUnmount");
         this.closeScanner();
         window.removeEventListener('keydown', this.handleGlobalKeydown);
     },
     methods: {
         handleGlobalKeydown(e) {
-            if (this.reader !== 'laser' || this.scan_lockout) return;
-            
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-
-            const currentTime = Date.now();
-            
-            if (currentTime - this.lastKeyTime > 100) {
-                this.laser_input = "";
-            }
-            this.lastKeyTime = currentTime;
-
-            if (e.key === 'Enter') {
-                if (this.laser_input.trim() !== "") {
-                    e.preventDefault();
-                    this.triggerScan(this.laser_input);
-                    this.laser_input = "";
-                }
-                return;
-            }
-
-            if (e.key.length === 1) {
-                this.laser_input += e.key;
+            console.log("handleGlobalKeydown", e.key);
+            if (this.reader === 'laser' && document.activeElement !== this.$refs.laserInput) {
+                this.focusLaserInput();
             }
         },
         async mountQRScanner() {
+            console.log("mountQRScanner");
             const video = this.$refs.qrScanner;
             if (!video) return false;
+
             try {
                 this.scanner = new window.QrScanner(
                     video,
                     async result => {
                         if (this.scan_lockout) return;
                         const data = result.data || result;
+                        console.log("QR scanned", data);
                         this.triggerScan(data);
                     },
                     { preferredCamera: "environment", highlightScanRegion: true }
@@ -103,11 +102,13 @@ export default {
                 await this.scanner.start();
                 return true;
             } catch (err) {
+                console.log("QR scanner error", err.message);
                 this.error = `Error: ${err.message}`;
                 return false;
             }
         },
         async initCamera() {
+            console.log("initCamera");
             try {
                 this.camera_init = true;
                 this.scan_lockout = false;
@@ -116,55 +117,105 @@ export default {
                 const success = await this.mountQRScanner();
                 if (!success) this.camera_init = false;
             } catch (err) {
+                console.log("Camera initialization failed");
                 this.error = "Camera error";
                 this.camera_init = false;
             }
         },
         setReader(newReader) {
+            console.log("setReader", newReader);
             this.reader = newReader;
             this.scan_lockout = false;
-            this.laser_input = "";
+            
             if (newReader === 'camera') {
                 this.initCamera();
             } else {
                 this.closeScanner();
+                this.$nextTick(() => {
+                    this.focusLaserInput();
+                });
             }
         },
         closeScanner() {
+            console.log("closeScanner");
             if (this.scanner) {
                 this.scanner.destroy();
                 this.scanner = null;
             }
             this.camera_init = false;
         },
+        focusLaserInput() {
+            console.log("focusLaserInput");
+            if (this.reader === 'laser' && this.$refs.laserInput) {
+                this.$refs.laserInput.focus();
+            }
+        },
+        keepFocus() {
+            console.log("keepFocus");
+            if (this.reader === 'laser') {
+                setTimeout(() => {
+                    this.focusLaserInput();
+                }, 10);
+            }
+        },
+        handleInput() {
+            console.log("handleInput", this.laser_input);
+            if (this.scan_lockout) {
+                this.laser_input = "";
+                return;
+            }
+
+            if (this.inputTimeout) {
+                clearTimeout(this.inputTimeout);
+            }
+
+            this.inputTimeout = setTimeout(() => {
+                this.processScanedData();
+            }, 50); 
+        },
+        processScanedData() {
+            console.log("processScanedData");
+            if (this.laser_input.trim() !== "") {
+                this.triggerScan(this.laser_input); 
+                this.laser_input = "";
+            }
+        },
         playBeep() {
+            console.log("playBeep");
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 const ctx = new AudioContext();
                 const oscillator = ctx.createOscillator();
                 const gainNode = ctx.createGain();
+                
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+                
                 gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
+                
                 oscillator.connect(gainNode);
                 gainNode.connect(ctx.destination);
+                
                 oscillator.start();
                 oscillator.stop(ctx.currentTime + 0.1);
             } catch (error) {
-                console.warn("AudioContext not supported");
+                console.log("AudioContext not supported");
             }
         },
         async triggerScan(code) {
+            console.log("triggerScan", code);
             this.scan_lockout = true;
             this.playBeep();
+            
             if (this.context){
                 this.store.executeActionByContext(this.context, code, this.extra_data);
             } else if (this.onScan) {
                 await this.onScan(code);
             }
+
             setTimeout(() => {
+                console.log("scan_lockout lifted");
                 this.scan_lockout = false;
-                this.laser_input = "";
             }, 3000);
         }
     },
@@ -217,6 +268,14 @@ export default {
     display: flex;
     flex-direction: column;
     justify-content: center;
+}
+
+.hidden-input {
+    opacity: 0;
+    position: absolute;
+    left: -9999px;
+    width: 1px;
+    height: 1px;
 }
 
 .error-msg {
