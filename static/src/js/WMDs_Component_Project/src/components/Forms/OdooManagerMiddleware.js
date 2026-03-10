@@ -236,6 +236,10 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                     "is_manager": true,
                     "json_user": "{}"
                 }
+            case "get_locations_by_range":
+                return {
+                    "locations":["WH/Stock"]
+                }
             
             default:
                 break;
@@ -267,6 +271,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             assign_pack: {url: '/wmds/v2/engine/post/pick_assign_operator', method: 'POST'},
             dispatch_orders: {url: '/wmds/v2/engine/post/dispatch_packet', method: 'POST'},
             batch_pick: {url: '/wmds/v2/engine/get/batch_pick', method: 'POST'},
+            get_locations_by_range: {url: '/wmds/v2/engine/get/locations_by_range', method: 'POST'},
         };
     }
 
@@ -275,6 +280,9 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
     }
 
     async _fetch(endpoint, params, method) {
+        console.log("Call backend")
+        console.log(params)
+        console.log(methods)
         try {
             const response = await fetch(endpoint, {
                 method: method,

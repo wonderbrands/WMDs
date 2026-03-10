@@ -3,36 +3,50 @@
         <div v-if="isCreating">
             <h2 class="mb-4 text-xl font-bold">Crear Nuevo Conteo Cíclico</h2>
             
-            <div class="mb-4 surface-100 p-3 border-round">
-                <div>
-                    <label class="font-bold block mb-2">Pasillo (Del - Al)</label>
+            <div class="grid mb-4 surface-100 p-3 border-round">
+                <div class="col-12 md:col-3">
+                    <label class="font-bold block mb-2">Pasillo (A - Z)</label>
                     <div class="flex gap-2">
-                        <InputText v-model="filters.aisle_from" placeholder="A" />
-                        <InputText v-model="filters.aisle_to" placeholder="C" />
+                        <InputText v-model="filters.aisle_from" placeholder="A" maxlength="1" 
+                                   @input="filters.aisle_from = filters.aisle_from.toUpperCase()" class="w-full" />
+                        <InputText v-model="filters.aisle_to" placeholder="C" maxlength="1" 
+                                   @input="filters.aisle_to = filters.aisle_to.toUpperCase()" class="w-full" />
                     </div>
                 </div>
-                <div>
-                    <label class="font-bold block mb-2">Nivel (Del - Al)</label>
+
+                <div class="col-12 md:col-3">
+                    <label class="font-bold block mb-2">Posición (1 - 99)</label>
                     <div class="flex gap-2">
-                        <InputText v-model="filters.level_from" placeholder="1" />
-                        <InputText v-model="filters.level_to" placeholder="3" />
+                        <InputNumber v-model="filters.position_from" :min="1" :max="99" placeholder="1" inputClass="w-full" />
+                        <InputNumber v-model="filters.position_to" :min="1" :max="99" placeholder="99" inputClass="w-full" />
                     </div>
                 </div>
-                <div>
-                    <label class="font-bold block mb-2">Frente (Del - Al)</label>
+
+                <div class="col-12 md:col-3">
+                    <label class="font-bold block mb-2">Nivel (1 - 5)</label>
                     <div class="flex gap-2">
-                        <InputText v-model="filters.front_from" placeholder="01" />
-                        <InputText v-model="filters.front_to" placeholder="10" />
+                        <InputNumber v-model="filters.level_from" :min="1" :max="5" placeholder="1" inputClass="w-full" />
+                        <InputNumber v-model="filters.level_to" :min="1" :max="5" placeholder="5" inputClass="w-full" />
                     </div>
                 </div>
-                <div>
-                    <Button label="Buscar Ubicaciones" icon="pi pi-search" @click="fetchLocations" :loading="store.loading" />
+
+                <div class="col-12 md:col-3">
+                    <label class="font-bold block mb-2">Frente (1 - 2)</label>
+                    <div class="flex gap-2">
+                        <InputNumber v-model="filters.front_from" :min="1" :max="2" placeholder="1" inputClass="w-full" />
+                        <InputNumber v-model="filters.front_to" :min="1" :max="2" placeholder="2" inputClass="w-full" />
+                    </div>
+                </div>
+
+                <div class="col-12 mt-3 flex justify-content-end">
+                    <Button label="Buscar Ubicaciones" icon="pi pi-search" @click="fetchLocations" 
+                            :loading="store.loading" :disabled="isRangeInvalid" />
                 </div>
             </div>
 
-            <div class="mb-4">
-                <div>
-                    <DataTable :value="searchResults" paginator :rows="5" class="p-datatable-sm border-1 surface-border border-round" emptyMessage="Realiza una búsqueda para ver ubicaciones.">
+            <div class="grid mb-4">
+                <div class="col-12 md:col-6">
+                    <DataTable :value="searchResults" paginator :rows="5" class="p-datatable-sm border-1 surface-border border-round" emptyMessage="Realiza una búsqueda válida para ver ubicaciones.">
                         <template #header>
                             <div class="flex justify-content-between align-items-center">
                                 <span class="font-bold">Resultados ({{ searchResults.length }})</span>
@@ -48,7 +62,7 @@
                     </DataTable>
                 </div>
 
-                <div>
+                <div class="col-12 md:col-6">
                     <DataTable :value="selectedLocations" paginator :rows="5" class="p-datatable-sm border-1 surface-border border-round" emptyMessage="Aún no has seleccionado ubicaciones.">
                         <template #header>
                             <div class="flex justify-content-between align-items-center">
@@ -66,17 +80,17 @@
                 </div>
             </div>
 
-            <div v-if="selectedLocations.length > 0">
-                <div>
+            <div v-if="selectedLocations.length > 0" class="surface-100 p-3 border-round grid">
+                <div class="col-12 md:col-6">
                     <label class="font-bold block mb-2">Referencia del Conteo</label>
-                    <InputText v-model="newCount.ref" placeholder="Ej. Conteo Anual" />
+                    <InputText v-model="newCount.ref" placeholder="Ej. Conteo Anual" class="w-full" />
                 </div>
-                <div>
+                <div class="col-12 md:col-6">
                     <label class="font-bold block mb-2">Operador Ola 1</label>
-                    <Dropdown v-model="newCount.operator_id" :options="operators" optionLabel="name" optionValue="id" placeholder="Asignar a..." />
+                    <Dropdown v-model="newCount.operator_id" :options="operators" optionLabel="name" optionValue="id" placeholder="Asignar a..." class="w-full" />
                 </div>
-                <div>
-                    <Button label="Generar" icon="pi pi-check" severity="success" @click="submitNewCount" :loading="store.loading" :disabled="!newCount.ref || !newCount.operator_id" />
+                <div class="col-12 mt-3 flex justify-content-end">
+                    <Button label="Generar Conteo" icon="pi pi-check" severity="success" @click="submitNewCount" :loading="store.loading" :disabled="!newCount.ref || !newCount.operator_id" />
                 </div>
             </div>
         </div>
@@ -102,19 +116,19 @@
                 </Column>
             </DataTable>
 
-            <div class="surface-100 p-3 border-round">
+            <div class="surface-100 p-3 border-round mt-4">
                 <h4 class="mb-3 font-bold">Añadir Nueva Ola a este Conteo</h4>
-                <div>
-                    <div>
-                        <label class="block mb-2">Nombre de la Ola</label>
-                        <InputText v-model="newWave.name" placeholder="Ej. Ola 2 - Re-conteo" />
+                <div class="grid">
+                    <div class="col-12 md:col-5">
+                        <label class="block mb-2 text-sm">Nombre de la Ola</label>
+                        <InputText v-model="newWave.name" placeholder="Ej. Ola 2 - Re-conteo" class="w-full" />
                     </div>
-                    <div>
-                        <label class="block mb-2">Asignar Operador</label>
-                        <Dropdown v-model="newWave.operator_id" :options="operators" optionLabel="name" optionValue="id" placeholder="Seleccionar" />
+                    <div class="col-12 md:col-5">
+                        <label class="block mb-2 text-sm">Asignar Operador</label>
+                        <Dropdown v-model="newWave.operator_id" :options="operators" optionLabel="name" optionValue="id" placeholder="Seleccionar" class="w-full" />
                     </div>
-                    <div>
-                        <Button label="Añadir Ola" icon="pi pi-plus" @click="addNewWave" :loading="store.loading" :disabled="!newWave.name || !newWave.operator_id" />
+                    <div class="col-12 md:col-2 flex align-items-end">
+                        <Button label="Añadir" icon="pi pi-plus" @click="addNewWave" :loading="store.loading" :disabled="!newWave.name || !newWave.operator_id" class="w-full" />
                     </div>
                 </div>
             </div>
@@ -125,6 +139,7 @@
 <script>
 import { useGeneralStore } from "../../store/index";
 import InputText from "primevue/inputtext";
+import InputNumber from "primevue/inputnumber";
 import Button from "primevue/button";
 import DataTable from "primevue/datatable";
 import Column from "primevue/column";
@@ -132,7 +147,7 @@ import Dropdown from "primevue/dropdown";
 
 export default {
     name: "CycleCountModal",
-    components: { InputText, Button, DataTable, Column, Dropdown },
+    components: { InputText, InputNumber, Button, DataTable, Column, Dropdown },
     
     data() {
         return {
@@ -140,7 +155,12 @@ export default {
             operators: [],
             
             // Estado para Creación
-            filters: { aisle_from: "", aisle_to: "", level_from: "", level_to: "", front_from: "", front_to: "" },
+            filters: { 
+                aisle_from: "", aisle_to: "", 
+                position_from: 1, position_to: 99,
+                level_from: 1, level_to: 5, 
+                front_from: 1, front_to: 2 
+            },
             searchResults: [], 
             selectedLocations: [], 
             newCount: { ref: "", operator_id: null },
@@ -157,6 +177,16 @@ export default {
         },
         isCreating() {
             return !!this.modalData.cycle_count || this.modalData.form_type === 'new';
+        },
+        // Bloquea el botón si algún rango es inválido o los pasillos están vacíos
+        isRangeInvalid() {
+            const f = this.filters;
+            if (!f.aisle_from || !f.aisle_to) return true;
+            
+            return (f.aisle_from > f.aisle_to) || 
+                   (f.position_from > f.position_to) ||
+                   (f.level_from > f.level_to) || 
+                   (f.front_from > f.front_to);
         }
     },
 
@@ -172,12 +202,38 @@ export default {
             try {
                 let response = await this.store.callOdoo("get_operators", "");
                 if (response && response.data) this.operators = response.data;
-            } catch (error) { this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los operadores.', life: 3000 });
-                console.error("Error cargando operadores", error); }
+            } catch (error) { 
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron cargar los operadores.', life: 3000 });
+                console.error("Error cargando operadores", error); 
+            }
         },
 
-        /* --- METODOS DE CREACIÓN --- */
         async fetchLocations() {
+            const f = this.filters;
+
+            // 1. Validar Pasillos
+            if (!f.aisle_from || !f.aisle_to) {
+                this.$toast.add({ severity: 'warn', summary: 'Campos incompletos', detail: 'Debe ingresar el rango de pasillos.', life: 3000 });
+                return;
+            }
+            if (f.aisle_from > f.aisle_to) {
+                this.$toast.add({ severity: 'error', summary: 'Rango Inválido', detail: `El pasillo ${f.aisle_from} no puede ser posterior a ${f.aisle_to}.`, life: 4000 });
+                return;
+            }
+
+            if (f.position_from > f.position_to) {
+                this.$toast.add({ severity: 'error', summary: 'Rango Inválido', detail: 'La posición inicial debe ser menor o igual a la final.', life: 3000 });
+                return;
+            }
+            if (f.level_from > f.level_to) {
+                this.$toast.add({ severity: 'error', summary: 'Rango Inválido', detail: 'El nivel inicial debe ser menor o igual al final.', life: 3000 });
+                return;
+            }
+            if (f.front_from > f.front_to) {
+                this.$toast.add({ severity: 'error', summary: 'Rango Inválido', detail: 'El frente inicial debe ser menor o igual al final.', life: 3000 });
+                return;
+            }
+
             try {
                 let response = await this.store.callOdoo("get_locations_by_range", "", this.filters);
                 if (response && response.locations) {
@@ -230,7 +286,7 @@ export default {
             } 
         },
 
-        /* --- METODOS DE EDICIÓN --- */
+        /* --- MÉTODOS DE EDICIÓN --- */
         async fetchWavesForCount() {
             if (!this.modalData.id) return;
             try {
@@ -239,10 +295,11 @@ export default {
                     this.waves = response.waves;
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron obtener las olas del conteo.', life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudieron obtener las olas.', life: 3000 });
                 console.error("Error obteniendo olas", e);
             }
         },
+
         async addNewWave() {
             try {
                 const payload = {
@@ -263,6 +320,7 @@ export default {
                 console.error(e);
             }
         },
+
         async finishWave(waveId) {
             if (!confirm("¿Terminar esta ola?")) return;
             try {
@@ -276,6 +334,7 @@ export default {
                 console.error(e);
             }
         },
+
         async closeEntireCount() {
             if (!confirm("Al cerrar el conteo, ninguna ola podrá ser modificada. ¿Estás seguro?")) return;
             try {
@@ -293,3 +352,10 @@ export default {
     }
 };
 </script>
+
+<style scoped>
+.cycle-count-modal {
+    max-width: 1000px;
+    margin: 0 auto;
+}
+</style>
