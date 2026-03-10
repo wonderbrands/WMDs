@@ -282,7 +282,8 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
     async _fetch(endpoint, params, method) {
         console.log("Call backend")
         console.log(params)
-        console.log(methods)
+        console.log(method)
+        console.log(endpoint)
         try {
             const response = await fetch(endpoint, {
                 method: method,
