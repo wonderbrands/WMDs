@@ -14,10 +14,12 @@
             <input 
                 ref="laserInput"
                 type="text" 
+                inputmode="none"
                 v-model="laser_input" 
                 @input="handleInput"
                 @blur="keepFocus"
                 class="hidden-input"
+                autocomplete="off"
             >
         </div>
 
@@ -67,7 +69,6 @@ export default {
                 this.focusLaserInput();
             });
         }
-        
         window.addEventListener('keydown', this.handleGlobalKeydown);
     },
     beforeUnmount() {
@@ -83,7 +84,6 @@ export default {
         async mountQRScanner() {
             const video = this.$refs.qrScanner;
             if (!video) return false;
-
             try {
                 this.scanner = new window.QrScanner(
                     video,
@@ -117,7 +117,6 @@ export default {
         setReader(newReader) {
             this.reader = newReader;
             this.scan_lockout = false;
-            
             if (newReader === 'camera') {
                 this.initCamera();
             } else {
@@ -151,11 +150,9 @@ export default {
                 this.laser_input = "";
                 return;
             }
-
             if (this.inputTimeout) {
                 clearTimeout(this.inputTimeout);
             }
-
             this.inputTimeout = setTimeout(() => {
                 this.processScanedData();
             }, 50); 
@@ -172,15 +169,11 @@ export default {
                 const ctx = new AudioContext();
                 const oscillator = ctx.createOscillator();
                 const gainNode = ctx.createGain();
-                
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(880, ctx.currentTime);
-                
                 gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-                
                 oscillator.connect(gainNode);
                 gainNode.connect(ctx.destination);
-                
                 oscillator.start();
                 oscillator.stop(ctx.currentTime + 0.1);
             } catch (error) {
@@ -190,15 +183,16 @@ export default {
         async triggerScan(code) {
             this.scan_lockout = true;
             this.playBeep();
-            
             if (this.context){
                 this.store.executeActionByContext(this.context, code, this.extra_data);
             } else if (this.onScan) {
                 await this.onScan(code);
             }
-
             setTimeout(() => {
                 this.scan_lockout = false;
+                this.$nextTick(() => {
+                    this.focusLaserInput();
+                });
             }, 3000);
         }
     },
@@ -254,9 +248,11 @@ export default {
 }
 
 .hidden-input {
-    opacity: 0;
     position: absolute;
-    left: -9999px;
+    opacity: 0;
+    pointer-events: none;
+    left: -1000px;
+    top: -1000px;
     width: 1px;
     height: 1px;
 }

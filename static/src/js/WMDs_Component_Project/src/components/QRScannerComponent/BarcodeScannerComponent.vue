@@ -15,10 +15,12 @@
             <input 
                 ref="laserInput"
                 type="text" 
+                inputmode="none"
                 v-model="laser_input" 
                 @input="handleInput"
                 @blur="keepFocus"
                 class="hidden-input"
+                autocomplete="off"
             >
         </div>
 
@@ -69,7 +71,6 @@ export default {
                 this.focusLaserInput();
             });
         }
-        
         window.addEventListener('keydown', this.handleGlobalKeydown);
     },
     beforeUnmount() {
@@ -86,9 +87,7 @@ export default {
             this.camera_init = true;
             this.is_scanning = true;
             this.scan_lockout = false;
-            
             await this.$nextTick();
-            
             window.Quagga.init({
                 inputStream: {
                     name: "Live",
@@ -123,7 +122,6 @@ export default {
         setupDetection() {
             window.Quagga.onDetected((result) => {
                 if (!this.is_scanning || this.scan_lockout) return;
-
                 if (result && result.codeResult && result.codeResult.code) {
                     this.triggerScan(result.codeResult.code);
                 }
@@ -132,7 +130,6 @@ export default {
         setReader(newReader) {
             this.reader = newReader;
             this.scan_lockout = false;
-            
             if (newReader === 'camera') {
                 this.initCamera();
             } else {
@@ -168,11 +165,9 @@ export default {
                 this.laser_input = "";
                 return;
             }
-
             if (this.inputTimeout) {
                 clearTimeout(this.inputTimeout);
             }
-
             this.inputTimeout = setTimeout(() => {
                 this.processScanedData();
             }, 50); 
@@ -189,15 +184,11 @@ export default {
                 const ctx = new AudioContext();
                 const oscillator = ctx.createOscillator();
                 const gainNode = ctx.createGain();
-                
                 oscillator.type = 'sine';
                 oscillator.frequency.setValueAtTime(880, ctx.currentTime);
-                
                 gainNode.gain.setValueAtTime(0.1, ctx.currentTime);
-                
                 oscillator.connect(gainNode);
                 gainNode.connect(ctx.destination);
-                
                 oscillator.start();
                 oscillator.stop(ctx.currentTime + 0.1);
             } catch (error) {
@@ -207,13 +198,14 @@ export default {
         triggerScan(code) {
             this.scan_lockout = true;
             this.playBeep();
-            
             if (this.onScan) {
                 this.onScan(code);
             }
-
             setTimeout(() => {
                 this.scan_lockout = false;
+                this.$nextTick(() => {
+                    this.focusLaserInput();
+                });
             }, 3000);
         }
     },
@@ -294,9 +286,11 @@ export default {
 }
 
 .hidden-input {
-    opacity: 0;
     position: absolute;
-    left: -9999px;
+    opacity: 0;
+    pointer-events: none;
+    left: -1000px;
+    top: -1000px;
     width: 1px;
     height: 1px;
 }

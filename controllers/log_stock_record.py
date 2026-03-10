@@ -4,7 +4,6 @@ from datetime import datetime
 import traceback
 
 class LogStockRecord(http.Controller):
-
     @http.route('/wmds/v2/engine/post/log_stock_record', type='json', auth='user', methods=['POST'], csrf=False)
     def log_stock_record(self, **kw):
         params = kw
@@ -25,7 +24,8 @@ class LogStockRecord(http.Controller):
 
         operator_id = request.env['res.users'].sudo().search([('login', '=', operator_mail)], limit=1)
         
-        product_list = "; ".join([f"- {m.product_id.display_name}: {m.qty_done if m.qty_done>0 else m.product_uom_qty}" for m in picking.move_line_ids])
+        lines = picking.move_line_ids or picking.move_ids_without_package
+        product_list = "; ".join([f"- {m.product_id.display_name}: {getattr(m, 'qty_done', 0) if getattr(m, 'qty_done', 0) > 0 else m.product_uom_qty}" for m in lines])
         
         p_type_name = picking.picking_type_id.name or ""
         p_type_code = picking.picking_type_id.code
@@ -36,10 +36,9 @@ class LogStockRecord(http.Controller):
         if not is_storage:
             location_header = f"Hacia la ubicación {picking.location_dest_id.name}, "
 
-        detail_header = f"{location_header}se han trasladado los siguientes productos:{product_list}"
+        detail_header = f"{location_header}se han trasladado los siguientes productos: {product_list}"
 
         if type_of_log == "external":
-            base_log = ""
             if is_storage:
                 base_log = f"El rackeo {picking.name} ha sido completado."
             elif p_type_code == 'incoming':
@@ -52,25 +51,25 @@ class LogStockRecord(http.Controller):
                 base_log = f"Se ha ejecutado el out {picking.name}, despacho completado."
             else:
                 base_log = f"Operación {picking.name} completada."
-
             log_msg = f"{base_log} {detail_header}"
         
         elif type_of_log == "backorder":
-            log_msg = f"Backorder creada para {picking.name}.{detail_header}"
+            log_msg = f"Backorder creada para {picking.name}. {detail_header}"
         
         else:
             log_msg = f"{message} {detail_header}" if message else detail_header
 
         try:
+            from odoo import fields
             request.env["wmds.log"].sudo().create({
                 'user': operator_id.id if operator_id else request.env.user.id,
-                'date': datetime.now(),
+                'date': fields.Datetime.now(),
                 'pick': picking.id,
                 'log': log_msg
             })
-            return {"saved": True}
+            return {"saved": True, "log_created": log_msg} 
         except Exception as e:
-            return {"error": f"{str(e)}\n{traceback.format_exc()}"}
+            return {"error": str(e)}
 
     @http.route('/wmds/v2/engine/post/change_wmds_status', type='json', auth='user', methods=['POST'], csrf=False)
     def change_wmds_status(self, **kw):

@@ -187,8 +187,7 @@ export default {
 }
 
 .scanner-col {
-    height: 40%;
-    min-height: 250px;
+    height: 30%;
     display: flex;
     gap: 10px;
 }
@@ -207,7 +206,7 @@ export default {
 }
 
 .buttons-col {
-    height: 20%;
+    height: 10%;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -216,7 +215,7 @@ export default {
 }
 
 .log-col {
-    height: 40%;
+    height: 60%;
     display: flex;
     flex-direction: column;
     background: #2c3e50;
