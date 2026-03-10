@@ -1,5 +1,5 @@
 <template>
-    <div class="scanner-wrapper" @click="focusLaserInput">
+    <div class="scanner-wrapper">
         <div class="controls-overlay">
             <ButtonCamera @click="setReader('camera')" class="control-btn" />
             <ButtonScanner @click="setReader('laser')" class="control-btn" />
@@ -11,17 +11,7 @@
         </div>
 
         <div v-if="reader === 'laser'" class="laser-container">
-            <input 
-                ref="laserInput"
-                type="text" 
-                inputmode="none"
-                v-model="laser_input" 
-                @input="handleInput"
-                @blur="keepFocus"
-                class="hidden-input"
-                autocomplete="off"
-            >
-        </div>
+            </div>
 
         <Message v-if="!camera_init && error && reader === 'camera'" class="error-msg" severity="error">{{ error }}</Message>
         
@@ -51,7 +41,7 @@ export default {
             reader: "laser",
             laser_input: "",
             scan_lockout: false,
-            inputTimeout: null 
+            lastKeyTime: 0
         }
     },
     props: {
@@ -64,10 +54,6 @@ export default {
     mounted() {
         if (this.reader === 'camera') {
             this.initCamera();
-        } else {
-            this.$nextTick(() => {
-                this.focusLaserInput();
-            });
         }
         window.addEventListener('keydown', this.handleGlobalKeydown);
     },
@@ -77,8 +63,28 @@ export default {
     },
     methods: {
         handleGlobalKeydown(e) {
-            if (this.reader === 'laser' && document.activeElement !== this.$refs.laserInput) {
-                this.focusLaserInput();
+            if (this.reader !== 'laser' || this.scan_lockout) return;
+            
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+            const currentTime = Date.now();
+            
+            if (currentTime - this.lastKeyTime > 100) {
+                this.laser_input = "";
+            }
+            this.lastKeyTime = currentTime;
+
+            if (e.key === 'Enter') {
+                if (this.laser_input.trim() !== "") {
+                    e.preventDefault();
+                    this.triggerScan(this.laser_input);
+                    this.laser_input = "";
+                }
+                return;
+            }
+
+            if (e.key.length === 1) {
+                this.laser_input += e.key;
             }
         },
         async mountQRScanner() {
@@ -117,13 +123,11 @@ export default {
         setReader(newReader) {
             this.reader = newReader;
             this.scan_lockout = false;
+            this.laser_input = "";
             if (newReader === 'camera') {
                 this.initCamera();
             } else {
                 this.closeScanner();
-                this.$nextTick(() => {
-                    this.focusLaserInput();
-                });
             }
         },
         closeScanner() {
@@ -132,36 +136,6 @@ export default {
                 this.scanner = null;
             }
             this.camera_init = false;
-        },
-        focusLaserInput() {
-            if (this.reader === 'laser' && this.$refs.laserInput) {
-                this.$refs.laserInput.focus();
-            }
-        },
-        keepFocus() {
-            if (this.reader === 'laser') {
-                setTimeout(() => {
-                    this.focusLaserInput();
-                }, 10);
-            }
-        },
-        handleInput() {
-            if (this.scan_lockout) {
-                this.laser_input = "";
-                return;
-            }
-            if (this.inputTimeout) {
-                clearTimeout(this.inputTimeout);
-            }
-            this.inputTimeout = setTimeout(() => {
-                this.processScanedData();
-            }, 50); 
-        },
-        processScanedData() {
-            if (this.laser_input.trim() !== "") {
-                this.triggerScan(this.laser_input); 
-                this.laser_input = "";
-            }
         },
         playBeep() {
             try {
@@ -190,9 +164,7 @@ export default {
             }
             setTimeout(() => {
                 this.scan_lockout = false;
-                this.$nextTick(() => {
-                    this.focusLaserInput();
-                });
+                this.laser_input = "";
             }, 3000);
         }
     },
@@ -245,16 +217,6 @@ export default {
     display: flex;
     flex-direction: column;
     justify-content: center;
-}
-
-.hidden-input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
-    left: -1000px;
-    top: -1000px;
-    width: 1px;
-    height: 1px;
 }
 
 .error-msg {

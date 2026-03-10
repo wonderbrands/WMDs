@@ -195,8 +195,7 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    height: 100vh;
-    max-height: 90%;
+    height: 90vh;
     padding: 10px;
     box-sizing: border-box;
 }

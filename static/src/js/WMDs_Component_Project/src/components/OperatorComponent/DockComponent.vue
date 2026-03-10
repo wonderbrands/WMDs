@@ -180,7 +180,7 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    height: 100vh;
+    height: 90vh;
     max-height: 90%;
     padding: 10px;
     box-sizing: border-box;
