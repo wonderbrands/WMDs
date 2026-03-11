@@ -1,14 +1,15 @@
 0<template>
     <div class="cycle-count-wrapper">
         <div class="cycle-count-modal">
-            <h2 class="modal-title">{{ isCreating ? 'Nuevo Conteo Cíclico' : 'Gestionar Conteo' }}</h2>
-
-            <div v-if="isCreating" class="wizard-stepper">
-                <div :class="['step-pill', { active: currentStep === 1 }]">1. Selección</div>
-                <div :class="['step-pill', { active: currentStep === 2 }]">2. Asignación</div>
-            </div>
-
+            <!-- WIZARD PARA CREAR NUEVO CONTEO -->
             <div v-if="isCreating">
+                <h2 class="modal-title">Nuevo Conteo Cíclico</h2>
+                <div class="wizard-stepper">
+                    <div :class="['step-pill', { active: currentStep === 1 }]">1. Selección</div>
+                    <div :class="['step-pill', { active: currentStep === 2 }]">2. Asignación</div>
+                </div>
+
+                <!-- PASO 1: UBICACIONES -->
                 <div v-if="currentStep === 1" class="fade-in">
                     <div class="filter-section card-background">
                         <div class="filter-group">
@@ -75,6 +76,7 @@
                     </div>
                 </div>
 
+                <!-- PASO 2: OPERADORES -->
                 <div v-if="currentStep === 2" class="fade-in">
                     <div class="card-background mb-medium">
                         <div class="flex-between">
@@ -104,32 +106,76 @@
                 </div>
             </div>
 
+            <!-- VISTA PARA GESTIONAR CONTEO EXISTENTE -->
             <div v-else class="fade-in">
-                <div class="flex-between mb-medium">
-                    <h2 class="modal-title no-margin">{{ modalData?.name }}</h2>
-                    <Button label="Cerrar Ciclo" icon="pi pi-lock" severity="danger" @click="closeEntireCount" :loading="store.loading" />
-                </div>
+                <!-- VISTA PRINCIPAL (DETALLE DEL CICLO Y LISTA DE OLAS) -->
+                <div v-if="!detailView">
+                    <div class="flex-between mb-medium">
+                        <div>
+                            <h2 class="modal-title no-margin">{{ modalData?.name }}</h2>
+                            <span class="sub-title">Creado por: {{ created_by }}</span>
+                        </div>
+                        <div>
+                            <Button label="Añadir Ola" icon="pi pi-plus" class="p-button-outlined mr-2" @click="showOperatorDialog('add')" />
+                            <Button label="Cerrar Ciclo" icon="pi pi-lock" severity="danger" @click="closeEntireCount" :loading="store.loading" />
+                        </div>
+                    </div>
 
-                <div class="mb-medium">
-                    <h4 class="small-label">Ubicaciones Planificadas</h4>
-                    <DataTable :value="selectedLocations" paginator :rows="3" class="p-datatable-sm custom-border">
-                        <Column field="complete_name" header="Ubicación"></Column>
+                    <div class="mb-medium">
+                        <h4 class="small-label">Ubicaciones Planificadas ({{ selectedLocations.length }})</h4>
+                        <DataTable :value="selectedLocations" paginator :rows="3" class="p-datatable-sm custom-border">
+                            <Column field="complete_name" header="Ubicación"></Column>
+                        </DataTable>
+                    </div>
+
+                    <DataTable :value="waves" class="p-datatable-sm custom-border mb-medium" @row-click="showWaveDetails" selectionMode="single">
+                         <template #header>
+                            <h4 class="small-label no-margin">Olas de Conteo ({{ waves.length }}) - <small>Click para ver detalle</small></h4>
+                        </template>
+                        <Column field="name" header="Ola"></Column>
+                        <Column field="operator_name" header="Operador"></Column>
+                        <Column field="state_label" header="Estado"></Column>
+                        <Column header="Acciones" style="width: 25rem">
+                            <template #body="slotProps">
+                                <div v-if="slotProps.data.state !== 'done' && slotProps.data.state !== 'cancelled'">
+                                    <Button label="Reasignar" icon="pi pi-user-edit" class="p-button-text text-orange-500" @click.stop="showOperatorDialog('reassign', slotProps.data)" />
+                                    <Button label="Finalizar" icon="pi pi-check" severity="success" class="p-button-text" @click.stop="finishWave(slotProps.data.id)" />
+                                    <Button label="Cancelar" icon="pi pi-times" severity="danger" class="p-button-text" @click.stop="cancelWave(slotProps.data.id)" />
+                                </div>
+                                <span v-else-if="slotProps.data.state === 'done'" class="text-green-500 font-bold"><i class="pi pi-check-circle"></i> Lista</span>
+                                <span v-else-if="slotProps.data.state === 'cancelled'" class="text-red-500 font-bold"><i class="pi pi-ban"></i> Cancelada</span>
+                            </template>
+                        </Column>
                     </DataTable>
                 </div>
 
-                <DataTable :value="waves" class="p-datatable-sm custom-border mb-medium">
-                    <Column field="name" header="Ola"></Column>
-                    <Column field="operator_name" header="Operador"></Column>
-                    <Column field="state_label" header="Estado"></Column>
-                    <Column header="Acciones">
-                        <template #body="slotProps">
-                            <Button v-if="slotProps.data.state !== 'done'" label="Finalizar" icon="pi pi-check" severity="success" class="p-button-text" @click="finishWave(slotProps.data.id)" />
-                            <span v-else class="text-green-500 font-bold"><i class="pi pi-check-circle"></i> Lista</span>
+                <!-- VISTA DE DETALLE DE UNA OLA -->
+                <div v-else-if="detailView === 'wave'">
+                     <div class="flex-between mb-medium">
+                        <div>
+                            <Button icon="pi pi-arrow-left" label="Volver a Olas" @click="detailView = null" class="p-button-text" />
+                            <h3 class="modal-title no-margin mt-2">Detalle de Ola: {{ selectedWave.name }}</h3>
+                        </div>
+                    </div>
+                    <DataTable :value="waveLines" class="p-datatable-sm custom-border">
+                         <template #header>
+                            <h4 class="small-label no-margin">Productos Contados ({{ waveLines.length }})</h4>
                         </template>
-                    </Column>
-                </DataTable>
+                        <Column v-for="col of waveLinesCols" :key="col.field" :field="col.field" :header="col.name"></Column>
+                        <template #empty>No se encontraron productos contados para esta ola.</template>
+                    </DataTable>
+                </div>
             </div>
         </div>
+
+        <!-- DIALOG PARA ASIGNAR/REASIGNAR OPERADOR -->
+        <Dialog v-model:visible="operatorDialog.visible" :header="operatorDialog.title" modal class="p-fluid" style="width: 450px">
+            <Listbox v-model="operatorDialog.selected" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" :multiple="operatorDialog.multiSelect" filter listStyle="max-height:250px" />
+            <template #footer>
+                <Button label="Cancelar" icon="pi pi-times" @click="operatorDialog.visible = false" class="p-button-text" />
+                <Button label="Guardar" icon="pi pi-check" @click="handleOperatorSave" :loading="store.loading" />
+            </template>
+        </Dialog>
     </div>
 </template>
 
@@ -141,15 +187,17 @@ import Button from "primevue/button";
 import DataTable from "primevue/datatable";
 import Column from "primevue/column";
 import Dropdown from "primevue/dropdown";
+import Dialog from 'primevue/dialog';
+import Listbox from 'primevue/listbox';
 
 export default {
     name: "CycleCountModal",
-    components: { InputText, InputNumber, Button, DataTable, Column, Dropdown },
+    components: { InputText, InputNumber, Button, DataTable, Column, Dropdown, Dialog, Listbox },
     data() {
         return {
             store: useGeneralStore(),
             currentStep: 1,
-            filters: { aisle_from: "", aisle_to: "", position_from: 1, position_to: 99, level_from: 1, level_to: 5, front_from: 1, front_to: 2 },
+            filters: { aisle_from: "A", aisle_to: "Z", position_from: 1, position_to: 99, level_from: 1, level_to: 5, front_from: 1, front_to: 2 },
             searchResults: [],
             selectedLocations: [],
             tempSelection: [],
@@ -157,7 +205,23 @@ export default {
             assignedOperators: [{ operator_id: null }],
             newCount: { ref: "" },
             waves: [],
-            optionsCache: { operadores: [] }
+            created_by: '',
+            optionsCache: { operadores: [] },
+            
+            // Master-detail view state
+            detailView: null, // null or 'wave'
+            selectedWave: null,
+            waveLines: [],
+            waveLinesCols: [],
+
+            // Operator dialog state
+            operatorDialog: {
+                visible: false,
+                title: '',
+                mode: 'add', // 'add' or 'reassign'
+                multiSelect: true,
+                selected: null
+            }
         };
     },
     computed: {
@@ -175,6 +239,7 @@ export default {
     async mounted() {
         await this.loadOperators();
         if (!this.isCreating && this.modalData.id) {
+            this.created_by = this.modalData.create_uid;
             await this.loadExistingCountDetails();
         }
     },
@@ -189,6 +254,7 @@ export default {
             if (res?.locations) { this.searchResults = res.locations; this.tempSelection = []; }
         },
         async loadExistingCountDetails() {
+            this.detailView = null; // Reset view when reloading
             let res = await this.store.callOdoo("get_cycle_count_details", "", { count_id: this.modalData.id });
             if (res.ok) {
                 this.selectedLocations = res.details.locations;
@@ -217,36 +283,89 @@ export default {
                 operators: this.assignedOperators.map(op => op.operator_id)
             };
             let res = await this.store.callOdoo("create_full_cycle_count", "", payload);
-            if (res.ok) this.store.closeModal();
+            if (res.ok) this.store.closeModal(true);
         },
         async finishWave(id) {
+            if (!confirm("¿Marcar esta ola como finalizada?")) return;
             let res = await this.store.callOdoo("finish_cycle_count_wave", "", { wave_id: id });
             if (res.ok) await this.loadExistingCountDetails();
         },
+        async cancelWave(id) {
+            if (!confirm("¿Cancelar esta ola? Esta acción no se puede deshacer.")) return;
+            let res = await this.store.callOdoo("cancel_cycle_count_wave", "", { wave_id: id });
+            if (res.ok) await this.loadExistingCountDetails();
+        },
         async closeEntireCount() {
-            if (!confirm("¿Cerrar ciclo?")) return;
+            if (!confirm("¿Cerrar ciclo completo? Las olas no finalizadas no podrán ser procesadas.")) return;
             let res = await this.store.callOdoo("close_cycle_count", "", { count_id: this.modalData.id });
-            if (res.ok) this.store.closeModal();
+            if (res.ok) this.store.closeModal(true);
+        },
+        async showWaveDetails(event) {
+            this.selectedWave = event.data;
+            const res = await this.store.callOdoo("get_cycle_wave_lines", "", { wave_id: this.selectedWave.id });
+            if (res.ok) {
+                this.waveLines = res.data;
+                this.waveLinesCols = res.map_cols;
+                this.detailView = 'wave';
+            }
+        },
+        showOperatorDialog(mode, wave = null) {
+            this.operatorDialog.mode = mode;
+            this.selectedWave = wave;
+            if (mode === 'add') {
+                this.operatorDialog.title = 'Añadir Nueva Ola';
+                this.operatorDialog.multiSelect = true;
+                this.operatorDialog.selected = [];
+            } else { // reassign
+                this.operatorDialog.title = `Reasignar Operador para ${wave.name}`;
+                this.operatorDialog.multiSelect = false;
+                this.operatorDialog.selected = null;
+            }
+            this.operatorDialog.visible = true;
+        },
+        async handleOperatorSave() {
+            if (this.operatorDialog.mode === 'add') {
+                 if (!this.operatorDialog.selected || this.operatorDialog.selected.length === 0) return;
+                const payload = {
+                    location_ids: this.selectedLocations.map(l => l.id),
+                    operators: this.operatorDialog.selected,
+                    cycle_count_id: this.modalData.id
+                };
+                 let res = await this.store.callOdoo("create_waves_for_cycle", "", payload);
+                 if (res.ok) await this.loadExistingCountDetails();
+
+            } else { // reassign
+                if (!this.operatorDialog.selected) return;
+                const payload = {
+                    wave_id: this.selectedWave.id,
+                    operator_id: this.operatorDialog.selected
+                };
+                let res = await this.store.callOdoo("reassign_cycle_count_wave_operator", "", payload);
+                if (res.ok) await this.loadExistingCountDetails();
+            }
+            this.operatorDialog.visible = false;
         }
     }
 };
 </script>
 
 <style scoped>
-.cycle-count-wrapper { padding: 1.5rem; }
+.cycle-count-wrapper { padding: 1rem 1.5rem; }
 .cycle-count-modal { max-width: 1050px; margin: 0 auto; color: #333; }
-.modal-title { font-size: 1.6rem; font-weight: 800; margin-bottom: 1.5rem; }
+.modal-title { font-size: 1.6rem; font-weight: 800; margin-bottom: 0.25rem; }
+.sub-title { font-size: 0.9rem; color: #6c757d; display: block; margin-bottom: 1.5rem; }
 .wizard-stepper { display: flex; justify-content: center; gap: 1rem; margin-bottom: 2rem; }
 .step-pill { padding: 0.6rem 1.5rem; background: #e9ecef; border-radius: 25px; font-weight: 700; color: #999; }
 .step-pill.active { background: #007bff; color: #fff; box-shadow: 0 4px 10px rgba(0,123,255,0.3); }
 .card-background { background: #f9f9f9; padding: 1.25rem; border-radius: 8px; border: 1px solid #eee; }
-.filter-section { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; }
+.filter-section { display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.5rem; align-items: flex-end; }
 .filter-group { flex: 1 1 calc(25% - 1rem); min-width: 180px; }
 .filter-label { display: block; font-weight: 700; font-size: 0.85rem; margin-bottom: 0.4rem; }
-.filter-actions { flex: 1 1 100%; display: flex; justify-content: flex-end; }
+.filter-actions { flex-grow: 0; }
 .tables-container { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-bottom: 1.5rem; }
 .table-half { flex: 1 1 calc(50% - 1.5rem); min-width: 350px; }
 .custom-border { border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+:deep(.p-datatable-row-selectable) { cursor: pointer; }
 :deep(.row-locked) { background-color: #e8f5e9 !important; color: #2e7d32 !important; font-style: italic; }
 :deep(.row-locked .p-checkbox) { display: none; }
 .wizard-footer { display: flex; justify-content: flex-end; margin-top: 1rem; }
@@ -261,5 +380,9 @@ export default {
 .gap-small { gap: 0.5rem; }
 .input-full { width: 100%; }
 .fade-in { animation: fadeIn 0.3s ease-in; }
+.text-orange-500 { color: #f59e0b; }
+.mr-2 { margin-right: 0.5rem; }
+.mt-2 { margin-top: 0.5rem; }
+
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 </style>

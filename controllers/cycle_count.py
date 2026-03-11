@@ -5,24 +5,60 @@ import re
 
 _logger = logging.getLogger(__name__)
 
-class CycleCount(http.Controller):
+def convert_value_in_label(map_cols, value, key):
+    if not value:
+        return ""
 
-    def convert_value_in_label(self, model, value, field_name):
-        if not value: return ''
-        return dict(model._fields[field_name].selection).get(value, value)
+    for col in map_cols:
+        if col.get('field') == key and col.get('type') == 'selectable':
+            for option in col.get('options', []):
+                if option['value'] == value:
+                    return option['label']
+    return value
+
+class CycleCount(http.Controller):
 
     @http.route('/wmds/v2/engine/get/cycle_counts', type='json', auth='user', methods=['POST'])
     def get_cycle_counts(self, **kw):
         try:
             model = request.env['scheduled.cycle.count'].sudo()
-            counts = model.search([], order='id desc')
             
-            # Encabezados legibles para el frontend
+            parsed_params = {
+                "cur_page": kw.get('page', 1),
+                "per_page": kw.get('per_page', 30),
+                "sort_by": kw.get('sort_by'),
+                "sort_order": kw.get('sort_order'),
+            }
+            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order']:
+                if popped_param in kw:
+                    kw.pop(popped_param)
+
+            domain = []
+            for key, value in kw.items():
+                if value:
+                    domain.append((key, 'ilike', value))
+            
+            order = f"{parsed_params['sort_by']} {parsed_params['sort_order']}" if parsed_params['sort_by'] and parsed_params['sort_order'] else 'id desc'
+            limit = parsed_params['per_page']
+            offset = (parsed_params['cur_page'] - 1) * parsed_params['per_page']
+
+            counts = model.search(domain, order=order, limit=limit, offset=offset)
+            total_count = model.search_count(domain)
+
+            state_options = [{'value': s[0], 'label': s[1]} for s in model._fields['state'].selection]
+            default_state = next((opt['value'] for opt in state_options if opt['value'] == 'in_progress'), None)
+
             map_cols = [
-                {"field": "id", "header": "ID"},
-                {"field": "name", "header": "Código"},
-                {"field": "notes", "header": "Referencia"},
-                {"field": "state", "header": "Estado"}
+                {"field": "id", "name": "ID"},
+                {"field": "name", "name": "Código"},
+                {"field": "notes", "name": "Referencia"},
+                {"field": "create_date", "name": "Fecha Creación", "type": "date"},
+                {"field": "create_uid", "name": "Creado por"},
+                {
+                    "field": "state", "name": "Estado", "type": "selectable",
+                    "options": state_options,
+                    "default": default_state
+                }
             ]
 
             data = []
@@ -31,17 +67,21 @@ class CycleCount(http.Controller):
                     "id": count.id,
                     "name": count.name,
                     "notes": count.notes or '',
-                    "state": self.convert_value_in_label(model, count.state, "state")
+                    "create_date": count.create_date.strftime('%Y-%m-%d %H:%M') if count.create_date else '',
+                    "create_uid": count.create_uid.name if count.create_uid else '',
+                    "state": convert_value_in_label(map_cols, count.state, "state")
                 })
 
             return {
                 "ok": True,
                 "map_cols": map_cols,
                 "data": data,
-                "total_count": len(counts)
+                "total_count": total_count
             }
         except Exception as e:
+            _logger.error(f"Error fetching cycle counts: {e}")
             return {'ok': False, 'error': str(e)}
+
 
     @http.route('/wmds/v2/engine/get/locations_by_range', type='json', auth='user', methods=['POST'])
     def get_locations_by_range(self, **kw):
@@ -144,4 +184,76 @@ class CycleCount(http.Controller):
             count.write({'state': 'finalized'})
             return {'ok': True}
         except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/reassign_cycle_count_wave_operator', type='json', auth='user', methods=['POST'])
+    def reassign_cycle_count_wave_operator(self, **kw):
+        try:
+            wave = request.env['cycle.count.wave'].sudo().browse(kw.get('wave_id'))
+            wave.write({'operator_id': kw.get('operator_id')})
+            return {'ok': True}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/cancel_cycle_count_wave', type='json', auth='user', methods=['POST'])
+    def cancel_cycle_count_wave(self, **kw):
+        try:
+            wave = request.env['cycle.count.wave'].sudo().browse(kw.get('wave_id'))
+            wave.write({'state': 'cancelled'})
+            return {'ok': True}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/get/cycle_wave_lines', type='json', auth='user', methods=['POST'])
+    def get_cycle_wave_lines(self, **kw):
+        try:
+            wave_id = kw.get('wave_id')
+            if not wave_id:
+                return {'ok': False, 'error': 'Se requiere ID de ola.'}
+            
+            lines = request.env['cycle.count.line'].sudo().search([('wave_id', '=', wave_id)])
+            
+            map_cols = [
+                {'name': 'Producto', 'field': 'product_name'},
+                {'name': 'SKU', 'field': 'product_sku'},
+                {'name': 'Ubicación', 'field': 'location_name'},
+                {'name': 'Cantidad Contada', 'field': 'qty'},
+            ]
+            
+            data = [{
+                'id': line.id,
+                'product_name': line.product_id.display_name,
+                'product_sku': line.product_id.default_code,
+                'location_name': line.stock_location_id.complete_name,
+                'qty': line.qty,
+            } for line in lines]
+            
+            return {'ok': True, 'map_cols': map_cols, 'data': data, 'total_count': len(lines)}
+        except Exception as e:
+            _logger.error(f"Error getting wave lines {e}")
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/create_waves_for_cycle', type='json', auth='user', methods=['POST'])
+    def create_waves_for_cycle(self, **kw):
+        try:
+            location_ids = kw.get('location_ids', [])
+            operators = kw.get('operators', [])
+            cycle_count_id = kw.get('cycle_count_id')
+
+            if not location_ids or not operators or not cycle_count_id:
+                return {'ok': False, 'error': 'Faltan ubicaciones, operadores o id del ciclo.'}
+
+            # 2. Crear las olas (El nombre se computa solo en el modelo)
+            for op_id in operators:
+                wave_obj = request.env['cycle.count.wave'].sudo().create({
+                    'cycle_count_id': cycle_count_id,
+                    'operator_id': op_id,
+                    'state': 'draft'
+                })
+                line_vals = [(0, 0, {'stock_location_id': lid}) for lid in location_ids]
+                wave_obj.write({'line_ids': line_vals})
+
+            return {'ok': True}
+        except Exception as e:
+            _logger.error(f"Error creando olas: {str(e)}")
             return {'ok': False, 'error': str(e)}

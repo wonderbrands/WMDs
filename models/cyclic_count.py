@@ -40,7 +40,8 @@ class CycleCountWave(models.Model):
     state = fields.Selection([
         ("draft", "Borrador"),
         ("ongoing", "En Proceso"),
-        ("done", "Completada")
+        ("done", "Completada"),
+        ("cancelled", "Cancelada")
     ], default='draft', string="Estado de Ola")
 
     @api.depends('cycle_count_id', 'cycle_count_id.name')
