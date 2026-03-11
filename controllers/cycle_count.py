@@ -56,34 +56,6 @@ class CycleCount(http.Controller):
             _logger.error(f"Error en búsqueda de ubicaciones: {str(e)}")
             return {'ok': False, 'error': str(e)}
 
-    @http.route('/wmds/v2/engine/create_full_cycle_count', type='json', auth='user', methods=['POST'])
-    def create_full_cycle_count(self, **kw):
-        try:
-            location_ids = kw.get('location_ids', [])
-            operators = kw.get('operators', [])
-            user_notes = kw.get('name')
-
-            count_obj = request.env['scheduled.cycle.count'].sudo().create({
-                'notes': user_notes,
-                'selected_location_ids': [(0, 0, {'location_id': lid}) for lid in location_ids]
-            })
-
-            for index, op_id in enumerate(operators, start=1):
-                wave_name = f"{count_obj.name}-WAVE{str(index).zfill(3)}"
-                wave_obj = request.env['cycle.count.wave'].sudo().create({
-                    'name': wave_name,
-                    'cycle_count_id': count_obj.id,
-                    'operator_id': op_id,
-                })
-                for loc_id in location_ids:
-                    request.env['cycle.count.line'].sudo().create({
-                        'wave_id': wave_obj.id,
-                        'stock_location_id': loc_id,
-                    })
-
-            return {'ok': True, 'id': count_obj.id, 'name': count_obj.name}
-        except Exception as e:
-            return {'ok': False, 'error': str(e)}
 
     @http.route('/wmds/v2/engine/get/cycle_counts', type='json', auth='user', methods=['POST'])
     def get_cycle_counts(self, **kw):
@@ -106,4 +78,48 @@ class CycleCount(http.Controller):
             }
         except Exception as e:
             _logger.error(f"Error obteniendo conteos cíclicos: {str(e)}")
+            return {'ok': False, 'error': str(e)}
+
+
+    @http.route('/wmds/v2/engine/create_full_cycle_count', type='json', auth='user', methods=['POST'], csrf=True)
+    def create_full_cycle_count(self, **kw):
+        try:
+            location_ids = kw.get('location_ids', [])
+            operators = kw.get('operators', [])
+            user_notes = kw.get('name')
+
+            if not location_ids or not operators:
+                return {'ok': False, 'error': 'Faltan ubicaciones u operadores para generar el conteo.'}
+
+            count_obj = request.env['scheduled.cycle.count'].sudo().create({
+                'notes': user_notes,
+                'selected_location_ids': [(0, 0, {'location_id': lid}) for lid in location_ids]
+            })
+
+            for index, op_id in enumerate(operators, start=1):
+                wave_name = f"{count_obj.name}-WAVE{str(index).zfill(3)}"
+                wave_obj = request.env['cycle.count.wave'].sudo().create({
+                    'name': wave_name,
+                    'cycle_count_id': count_obj.id,
+                    'operator_id': op_id,
+                    'state': 'draft'
+                })
+
+                line_vals = []
+                for loc_id in location_ids:
+                    line_vals.append((0, 0, {
+                        'wave_id': wave_obj.id,
+                        'stock_location_id': loc_id,
+                    }))
+                
+                wave_obj.sudo().write({'line_ids': line_vals})
+
+            return {
+                'ok': True, 
+                'id': count_obj.id, 
+                'name': count_obj.name
+            }
+
+        except Exception as e:
+            _logger.error(f"Error creando conteo cíclico completo: {str(e)}")
             return {'ok': False, 'error': str(e)}
