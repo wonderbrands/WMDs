@@ -130,14 +130,15 @@ export default {
       this.store.openModal(modal.value, event);
     },
     onRowClick(event, modal) {
-      console.log("event")
-      console.log(event)
-      console.log(modal)
       if(modal.create_by_aggregate){
-        event.data = {}
-        event.data.create_by_aggregate = modal.create_by_aggregate
-        event.data.form_type = "new"
-        this.store.openModal(modal.value, event)
+        event.data = event.data || {};
+        event.data.create_by_aggregate = modal.create_by_aggregate;
+        event.data.form_type = "new";
+        this.store.openModal(modal.value, event);
+      } else if (modal.value === 'get_cycle_counts') {
+        // Explicitly handle cycle count row click for editing/management
+        event.data.map_cols = this.server_data.map_cols;
+        this.store.openModal(modal.value, event);
       } else {
         event.data.map_cols = this.server_data.map_cols;
         this.store.openModal(modal.value, event);
