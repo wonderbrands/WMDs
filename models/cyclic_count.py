@@ -5,7 +5,8 @@ class ScheduledCycleCount(models.Model):
     _name = "scheduled.cycle.count"
     _description = "Conteo Cíclico Programado"
 
-    name = fields.Char(string="Referencia", required=True, default=lambda self: _('Nuevo'))
+    name = fields.Char(string="Código", required=True, readonly=True, copy=False, default=lambda self: _('Nuevo'))
+    notes = fields.Char(string="Referencia")
     state = fields.Selection([
         ("created", "Borrador"),
         ("in_progress", "En Progreso"),
@@ -23,16 +24,14 @@ class ScheduledCycleCount(models.Model):
 
 class CycleCountSelectedLocation(models.Model):
     _name = "cycle.count.selected.location"
-    _description = "Ubicación Seleccionada para Conteo"
-
+    _description = "Ubicación Planificada"
     cycle_count_id = fields.Many2one("scheduled.cycle.count", ondelete="cascade")
     location_id = fields.Many2one("stock.location", string="Ubicación", required=True)
 
 class CycleCountWave(models.Model):
     _name = "cycle.count.wave"
     _description = "Ola de Conteo Cíclico"
-
-    name = fields.Char(string="Referencia de Ola", required=True, default=lambda self: _('Nueva Ola'))
+    name = fields.Char(string="Referencia de Ola", required=True)
     cycle_count_id = fields.Many2one("scheduled.cycle.count", string="Ciclo Padre", ondelete="cascade")
     operator_id = fields.Many2one("res.users", string="Operador Responsable")
     line_ids = fields.One2many("cycle.count.line", "wave_id", string="Líneas de la Ola")
@@ -42,23 +41,12 @@ class CycleCountWave(models.Model):
         ("done", "Completada")
     ], default='draft', string="Estado de Ola")
 
-    @api.model
-    def create(self, vals):
-        if vals.get('name', _('Nueva Ola')) == _('Nueva Ola'):
-            parent = self.env['scheduled.cycle.count'].browse(vals.get('cycle_count_id'))
-            prefix = parent.name if parent else "CC"
-            seq = self.env['ir.sequence'].next_by_code('cycle.count.wave') or '000'
-            vals['name'] = f"{prefix}-WAVE{seq}"
-        return super(CycleCountWave, self).create(vals)
-
 class CycleCountLine(models.Model):
     _name = "cycle.count.line"
-    _description = "Línea de Conteo Cíclico"
-
-    wave_id = fields.Many2one("cycle.count.wave", string="Ola de Conteo", ondelete="cascade")
+    wave_id = fields.Many2one("cycle.count.wave", ondelete="cascade")
     product_id = fields.Many2one("product.product", string="Producto")
-    qty = fields.Float(string="Cantidad Contada")
+    qty = fields.Float(string="Cantidad")
     stock_location_id = fields.Many2one("stock.location", string="Ubicación")
-    counted_by_id = fields.Many2one("res.users", string="Contado por")
-    counted_at = fields.Datetime(string="Fecha de Conteo", default=fields.Datetime.now)
-    description = fields.Text(string="Notas")
+    counted_by_id = fields.Many2one("res.users")
+    counted_at = fields.Datetime(default=fields.Datetime.now)
+    description = fields.Text()

@@ -5,7 +5,7 @@
 
             <div v-if="isCreating" class="wizard-stepper">
                 <div :class="['step-pill', { active: currentStep === 1 }]">1. Selección</div>
-                <div :class="['step-pill', { active: currentStep === 2 }]">2. Distribución de Olas</div>
+                <div :class="['step-pill', { active: currentStep === 2 }]">2. Asignación</div>
             </div>
 
             <div v-if="isCreating">
@@ -14,33 +14,33 @@
                         <div class="filter-group">
                             <label class="filter-label">Pasillo (A - Z)</label>
                             <div class="flex-row gap-small">
-                                <InputText v-model="filters.aisle_from" placeholder="A" maxlength="1" @input="filters.aisle_from = filters.aisle_from.toUpperCase()" class="input-full" />
-                                <InputText v-model="filters.aisle_to" placeholder="C" maxlength="1" @input="filters.aisle_to = filters.aisle_to.toUpperCase()" class="input-full" />
+                                <InputText v-model="filters.aisle_from" maxlength="1" @input="filters.aisle_from = filters.aisle_from.toUpperCase()" class="input-full" />
+                                <InputText v-model="filters.aisle_to" maxlength="1" @input="filters.aisle_to = filters.aisle_to.toUpperCase()" class="input-full" />
                             </div>
                         </div>
                         <div class="filter-group">
                             <label class="filter-label">Posición (1 - 99)</label>
                             <div class="flex-row gap-small">
-                                <InputNumber v-model="filters.position_from" :min="1" :max="99" placeholder="1" inputClass="input-full" />
-                                <InputNumber v-model="filters.position_to" :min="1" :max="99" placeholder="99" inputClass="input-full" />
+                                <InputNumber v-model="filters.position_from" :min="1" :max="99" inputClass="input-full" />
+                                <InputNumber v-model="filters.position_to" :min="1" :max="99" inputClass="input-full" />
                             </div>
                         </div>
                         <div class="filter-group">
                             <label class="filter-label">Nivel (1 - 5)</label>
                             <div class="flex-row gap-small">
-                                <InputNumber v-model="filters.level_from" :min="1" :max="5" placeholder="1" inputClass="input-full" />
-                                <InputNumber v-model="filters.level_to" :min="1" :max="5" placeholder="5" inputClass="input-full" />
+                                <InputNumber v-model="filters.level_from" :min="1" :max="5" inputClass="input-full" />
+                                <InputNumber v-model="filters.level_to" :min="1" :max="5" inputClass="input-full" />
                             </div>
                         </div>
                         <div class="filter-group">
                             <label class="filter-label">Frente (1 - 2)</label>
                             <div class="flex-row gap-small">
-                                <InputNumber v-model="filters.front_from" :min="1" :max="2" placeholder="1" inputClass="input-full" />
-                                <InputNumber v-model="filters.front_to" :min="1" :max="2" placeholder="2" inputClass="input-full" />
+                                <InputNumber v-model="filters.front_from" :min="1" :max="2" inputClass="input-full" />
+                                <InputNumber v-model="filters.front_to" :min="1" :max="2" inputClass="input-full" />
                             </div>
                         </div>
                         <div class="filter-actions">
-                            <Button label="Buscar Ubicaciones" icon="pi pi-search" @click="fetchLocations" :loading="store.loading" :disabled="isRangeInvalid" />
+                            <Button label="Buscar" icon="pi pi-search" @click="fetchLocations" :loading="store.loading" :disabled="isRangeInvalid" />
                         </div>
                     </div>
 
@@ -50,7 +50,7 @@
                                 <template #header>
                                     <div class="flex-between">
                                         <span class="font-bold">Resultados ({{ searchResults.length }})</span>
-                                        <Button label="Añadir Seleccionados" icon="pi pi-plus" class="p-button-sm p-button-success" @click="addSelected" :disabled="!tempSelection.length" />
+                                        <Button label="Añadir" icon="pi pi-plus" class="p-button-sm p-button-success" @click="addSelected" :disabled="!tempSelection.length" />
                                     </div>
                                 </template>
                                 <Column selectionMode="multiple" headerStyle="width: 3rem" :selectable="isSelectable"></Column>
@@ -61,8 +61,8 @@
                             <DataTable v-model:selection="finalSelection" :value="selectedLocations" paginator :rows="5" class="p-datatable-sm custom-border" dataKey="id">
                                 <template #header>
                                     <div class="flex-between">
-                                        <span class="font-bold text-primary">A Contar ({{ selectedLocations.length }})</span>
-                                        <Button label="Quitar Seleccionados" icon="pi pi-trash" class="p-button-sm p-button-danger p-button-outlined" @click="removeSelected" :disabled="!finalSelection.length" />
+                                        <span class="font-bold text-primary">Seleccionadas ({{ selectedLocations.length }})</span>
+                                        <Button label="Quitar" icon="pi pi-trash" class="p-button-sm p-button-danger p-button-outlined" @click="removeSelected" :disabled="!finalSelection.length" />
                                     </div>
                                 </template>
                                 <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
@@ -70,58 +70,43 @@
                             </DataTable>
                         </div>
                     </div>
-
                     <div class="wizard-footer">
-                        <Button label="Siguiente: Configurar Olas" icon="pi pi-arrow-right" iconPos="right" @click="currentStep = 2" :disabled="!selectedLocations.length" />
+                        <Button label="Siguiente" icon="pi pi-arrow-right" iconPos="right" @click="currentStep = 2" :disabled="!selectedLocations.length" />
                     </div>
                 </div>
 
                 <div v-if="currentStep === 2" class="fade-in">
-                    <div class="flex-between mb-medium">
-                        <Button label="Regresar" icon="pi pi-arrow-left" class="p-button-text" @click="currentStep = 1" />
-                        <Button label="Nueva Ola" icon="pi pi-plus-circle" @click="addNewTempWave" class="p-button-outlined" />
+                    <div class="card-background mb-medium">
+                        <div class="flex-between">
+                            <Button label="Volver" icon="pi pi-arrow-left" class="p-button-text" @click="currentStep = 1" />
+                            <div class="ref-container">
+                                <label class="filter-label">Referencia / Notas</label>
+                                <InputText v-model="newCount.ref" placeholder="Ej: Auditoría Pasillo A" class="input-ref" />
+                            </div>
+                            <Button label="Añadir Operador" icon="pi pi-user-plus" class="p-button-outlined" @click="addOperatorField" />
+                        </div>
                     </div>
-                    <div class="waves-container">
-                        <div v-for="(wave, index) in tempWaves" :key="index" class="wave-card card-background">
+
+                    <div class="operators-grid">
+                        <div v-for="(op, index) in assignedOperators" :key="index" class="operator-card card-background">
                             <div class="flex-between mb-small">
-                                <span class="wave-badge">Ola {{ index + 1 }}</span>
-                                <Button icon="pi pi-trash" class="p-button-rounded p-button-text p-button-danger" @click="removeTempWave(index)" v-if="tempWaves.length > 1" />
+                                <span class="wave-number">Ola #{{ index + 1 }}</span>
+                                <Button icon="pi pi-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOperatorField(index)" v-if="assignedOperators.length > 1" />
                             </div>
-                            <div class="mb-medium">
-                                <label class="small-label">Operador Responsable</label>
-                                <Dropdown v-model="wave.operator_id" :options="operators" optionLabel="name" optionValue="id" placeholder="Asignar..." class="input-full" />
-                            </div>
-                            <div class="wave-items-box">
-                                <div class="items-header">Ubicaciones ({{ wave.locations.length }})</div>
-                                <div v-if="!wave.locations.length" class="empty-msg">Sin ubicaciones</div>
-                                <div v-for="loc in wave.locations" :key="loc.id" class="item-row">
-                                    <span>{{ loc.complete_name }}</span>
-                                    <i class="pi pi-times cursor-pointer text-red-500" @click="returnToUnassigned(wave, loc)"></i>
-                                </div>
-                            </div>
+                            <label class="small-label">Responsable</label>
+                            <Dropdown v-model="assignedOperators[index]" :options="operators" optionLabel="name" optionValue="id" placeholder="Seleccionar..." class="input-full" />
                         </div>
                     </div>
-                    <div v-if="unassignedLocations.length" class="unassigned-box card-background mt-medium">
-                        <h4 class="unassigned-title">Pendientes de Asignar ({{ unassignedLocations.length }})</h4>
-                        <div class="flex-row wrap gap-small">
-                            <div v-for="loc in unassignedLocations" :key="loc.id" class="loc-chip" @click="autoAssign(loc)">
-                                {{ loc.complete_name }} <i class="pi pi-plus ml-1"></i>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="final-save-section card-background">
-                        <div class="ref-input">
-                            <label class="filter-label">Referencia del Conteo</label>
-                            <InputText v-model="newCount.ref" placeholder="Ej. Conteo Semanal" class="input-full" />
-                        </div>
-                        <Button label="GUARDAR CONTEO Y OLAS" icon="pi pi-save" severity="success" size="large" @click="saveFullCount" :loading="store.loading" :disabled="isSaveDisabled" />
+
+                    <div class="final-footer mt-large">
+                        <Button label="GENERAR CONTEO" icon="pi pi-save" severity="success" size="large" @click="saveFullCount" :loading="store.loading" :disabled="isSaveDisabled" />
                     </div>
                 </div>
             </div>
 
             <div v-else class="fade-in">
                 <div class="flex-between mb-medium">
-                    <h2 class="modal-title no-margin">ID: {{ modalData?.name || modalData?.id }}</h2>
+                    <h2 class="modal-title no-margin">{{ modalData?.name }}</h2>
                     <Button label="Cerrar Ciclo" icon="pi pi-lock" severity="danger" @click="closeEntireCount" :loading="store.loading" />
                 </div>
                 <DataTable :value="waves" class="p-datatable-sm custom-border mb-medium">
@@ -162,10 +147,9 @@ export default {
             selectedLocations: [],
             tempSelection: [],
             finalSelection: [],
-            tempWaves: [{ operator_id: null, locations: [] }],
+            assignedOperators: [null],
             newCount: { ref: "" },
-            waves: [],
-            newWave: { name: "", operator_id: null }
+            waves: []
         };
     },
     computed: {
@@ -176,12 +160,8 @@ export default {
             if (!f.aisle_from || !f.aisle_to) return true;
             return (f.aisle_from > f.aisle_to) || (f.position_from > f.position_to) || (f.level_from > f.level_to) || (f.front_from > f.front_to);
         },
-        unassignedLocations() {
-            const assignedIds = this.tempWaves.flatMap(w => w.locations.map(l => l.id));
-            return this.selectedLocations.filter(l => !assignedIds.includes(l.id));
-        },
         isSaveDisabled() {
-            return !this.newCount.ref || this.unassignedLocations.length > 0 || this.tempWaves.some(w => !w.operator_id || !w.locations.length);
+            return !this.newCount.ref || this.assignedOperators.some(op => !op) || !this.selectedLocations.length;
         }
     },
     async mounted() {
@@ -190,7 +170,7 @@ export default {
     },
     methods: {
         async fetchOperators() {
-            let res = await this.store.callOdoo("get_operators", "");
+            let res = await this.store.callOdoo("operadores", "");
             if (res?.data) this.operators = res.data;
         },
         async fetchLocations() {
@@ -208,17 +188,15 @@ export default {
         removeSelected() {
             const idsToRemove = this.finalSelection.map(s => s.id);
             this.selectedLocations = this.selectedLocations.filter(l => !idsToRemove.includes(l.id));
-            this.tempWaves.forEach(w => { w.locations = w.locations.filter(l => !idsToRemove.includes(l.id)); });
             this.finalSelection = [];
         },
-        addNewTempWave() { this.tempWaves.push({ operator_id: null, locations: [] }); },
-        removeTempWave(idx) { this.tempWaves.splice(idx, 1); },
-        autoAssign(loc) { this.tempWaves[0].locations.push(loc); },
-        returnToUnassigned(wave, loc) { wave.locations = wave.locations.filter(l => l.id !== loc.id); },
+        addOperatorField() { this.assignedOperators.push(null); },
+        removeOperatorField(idx) { this.assignedOperators.splice(idx, 1); },
         async saveFullCount() {
             const payload = {
                 name: this.newCount.ref,
-                waves: this.tempWaves.map(w => ({ operator_id: w.operator_id, location_ids: w.locations.map(l => l.id) }))
+                location_ids: this.selectedLocations.map(l => l.id),
+                operators: this.assignedOperators
             };
             let res = await this.store.callOdoo("create_full_cycle_count", "", payload);
             if (res.ok) this.store.closeModal();
@@ -228,12 +206,10 @@ export default {
             if (res?.waves) this.waves = res.waves;
         },
         async finishWave(id) {
-            if (!confirm("¿Finalizar ola?")) return;
             let res = await this.store.callOdoo("finish_cycle_count_wave", "", { wave_id: id });
             if (res.ok) await this.fetchWavesForCount();
         },
         async closeEntireCount() {
-            if (!confirm("¿Cerrar ciclo?")) return;
             let res = await this.store.callOdoo("close_cycle_count", "", { count_id: this.modalData.id });
             if (res.ok) this.store.closeModal();
         }
@@ -259,19 +235,13 @@ export default {
 :deep(.row-locked) { background-color: #e8f5e9 !important; color: #2e7d32 !important; font-style: italic; }
 :deep(.row-locked .p-checkbox) { display: none; }
 .wizard-footer { display: flex; justify-content: flex-end; margin-top: 1rem; }
-.waves-container { display: flex; flex-wrap: wrap; gap: 1.2rem; }
-.wave-card { flex: 1 1 calc(33.33% - 1.2rem); min-width: 300px; border-top: 5px solid #007bff; }
-.wave-badge { background: #007bff; color: white; padding: 0.2rem 0.8rem; border-radius: 5px; font-size: 0.8rem; font-weight: bold; }
-.wave-items-box { background: #fff; border: 1px solid #eee; border-radius: 5px; min-height: 120px; max-height: 250px; overflow-y: auto; }
-.items-header { background: #f1f1f1; padding: 0.4rem; font-size: 0.8rem; font-weight: bold; position: sticky; top: 0; }
-.item-row { display: flex; justify-content: space-between; padding: 0.4rem; border-bottom: 1px solid #f9f9f9; font-size: 0.8rem; }
-.unassigned-box { border-left: 5px solid #fd7e14; }
-.unassigned-title { color: #fd7e14; font-weight: 800; margin-bottom: 0.8rem; }
-.loc-chip { background: #fff; border: 1px solid #ddd; padding: 0.3rem 0.6rem; border-radius: 4px; font-size: 0.75rem; cursor: pointer; }
-.final-save-section { display: flex; flex-wrap: wrap; gap: 1.5rem; align-items: flex-end; margin-top: 2rem; border-bottom: 5px solid #28a745; }
-.ref-input { flex: 1 1 60%; }
+.input-ref { width: 350px; }
+.operators-grid { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+.operator-card { flex: 1 1 calc(33.33% - 1rem); min-width: 280px; border-left: 5px solid #007bff; }
+.wave-number { font-weight: 800; color: #007bff; }
+.small-label { font-size: 0.8rem; font-weight: bold; color: #666; margin-bottom: 0.3rem; display: block; }
+.final-footer { display: flex; justify-content: center; padding: 2rem 0; }
 .flex-row { display: flex; align-items: center; }
-.flex-row.wrap { flex-wrap: wrap; }
 .flex-between { display: flex; justify-content: space-between; align-items: center; }
 .gap-small { gap: 0.5rem; }
 .input-full { width: 100%; }

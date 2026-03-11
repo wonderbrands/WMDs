@@ -174,7 +174,13 @@ export const useGeneralStore = defineStore('general_store', {
             value: "cycle_count",
             cycle_count: {
                 button_string: "Crear conteo cíclico"
-            }
+            },
+            map_columns: [
+                { name: "id", label: "ID" },
+                { name: "name", label: "Código" },
+                { name: "notes", label: "Referencia" },
+                { name: "state_label", label: "Estado" }
+            ],
         },
         devolucion: {
             title: "Devoluciones",
