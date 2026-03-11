@@ -55,3 +55,33 @@ class CycleCount(http.Controller):
         except Exception as e:
             _logger.error(f"Error en búsqueda de ubicaciones: {str(e)}")
             return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/create_full_cycle_count', type='json', auth='user', methods=['POST'])
+    def create_full_cycle_count(self, **kw):
+        try:
+            all_loc_ids = []
+            for w in kw.get('waves', []):
+                all_loc_ids.extend(w.get('location_ids', []))
+            unique_loc_ids = list(set(all_loc_ids))
+
+            count_obj = request.env['scheduled.cycle.count'].sudo().create({
+                'name': kw.get('name'),
+                'state': 'created',
+                'selected_location_ids': [(0, 0, {'location_id': lid}) for lid in unique_loc_ids]
+            })
+
+            for wave_data in kw.get('waves', []):
+                wave_obj = request.env['cycle.count.wave'].sudo().create({
+                    'cycle_count_id': count_obj.id,
+                    'operator_id': wave_data.get('operator_id'),
+                    'state': 'draft'
+                })
+                for loc_id in wave_data.get('location_ids', []):
+                    request.env['cycle.count.line'].sudo().create({
+                        'wave_id': wave_obj.id,
+                        'stock_location_id': loc_id,
+                    })
+
+            return {'ok': True, 'id': count_obj.id}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
