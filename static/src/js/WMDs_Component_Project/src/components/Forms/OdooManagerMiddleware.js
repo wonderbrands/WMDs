@@ -274,6 +274,10 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_locations_by_range: {url: '/wmds/v2/engine/get/locations_by_range', method: 'POST'},
             cycle_count: {url: '/wmds/v2/engine/get/cycle_counts', method: 'POST'},
             create_full_cycle_count: {url: '/wmds/v2/engine/create_full_cycle_count', method: 'POST'},
+            reassign_cycle_count_wave_operator: {url: '/wmds/v2/engine/reassign_cycle_count_wave_operator', method: 'POST'},
+            cancel_cycle_count_wave: {url: '/wmds/v2/engine/cancel_cycle_count_wave', method: 'POST'},
+            get_cycle_wave_lines: {url: '/wmds/v2/engine/get/cycle_wave_lines', method: 'POST'},
+            create_waves_for_cycle: {url: '/wmds/v2/engine/create_waves_for_cycle', method: 'POST'},
         };
     }
 

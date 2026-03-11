@@ -127,7 +127,8 @@ export default {
       event.data.cycle_count = modal.cycle_count;
       event.data = {...event.data, ...payload};
       
-      this.store.openModal(modal.value, event);
+      const modalContext = modal.form_context_key || modal.value;
+      this.store.openModal(modalContext, event);
     },
     onRowClick(event, modal) {
       if(modal.create_by_aggregate){
@@ -135,13 +136,10 @@ export default {
         event.data.create_by_aggregate = modal.create_by_aggregate;
         event.data.form_type = "new";
         this.store.openModal(modal.value, event);
-      } else if (modal.value === 'get_cycle_counts') {
-        // Explicitly handle cycle count row click for editing/management
-        event.data.map_cols = this.server_data.map_cols;
-        this.store.openModal(modal.value, event);
       } else {
+        const modalContext = modal.form_context_key || modal.value;
         event.data.map_cols = this.server_data.map_cols;
-        this.store.openModal(modal.value, event);
+        this.store.openModal(modalContext, event);
       }
     },
 

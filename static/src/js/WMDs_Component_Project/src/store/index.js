@@ -172,6 +172,7 @@ export const useGeneralStore = defineStore('general_store', {
             title: "Conteo cíclico",
             description: "Creación y asignación de rutinas de conteo cíclico de inventario",
             value: "cycle_count",
+            form_context_key: "cycle_count_management",
             cycle_count: {
                 button_string: "Crear conteo cíclico"
             },
