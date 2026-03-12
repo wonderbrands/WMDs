@@ -99,7 +99,8 @@ class AvailableOperators(http.Controller):
                         "id": user.id,
                         "name": user.name,
                         "login": user.login,
-                        "role_ids": [g.id for g in user.groups_id if g.name.startswith('WMDs Operator - ')]
+                        "role_ids": [g.id for g in user.groups_id if g.name.startswith('WMDs Operator - ')],
+                        "qr_image": user.qr_image.decode('utf-8') if isinstance(user.qr_image, bytes) else user.qr_image if user.qr_image else False
                     } for user in users
                 ],
                 "total_count": total
@@ -139,7 +140,8 @@ class AvailableOperators(http.Controller):
                         user.write({'groups_id': [(4, r_id) for r_id in role_ids]})
             else:
                 operator_group = request.env.ref('wmds.group_wmds_operator')
-                groups_to_add = [(4, operator_group.id)]
+                portal_group = request.env.ref('base.group_portal')
+                groups_to_add = [(4, operator_group.id), (4, portal_group.id)]
                 if role_ids:
                     groups_to_add += [(4, r_id) for r_id in role_ids]
 
