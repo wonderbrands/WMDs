@@ -111,7 +111,8 @@
                 }
                 const results = await this.store.callOdoo(source, term || "*");
                 console.log("Odoo response for options:", results);
-                this.optionsCache[source] = results || [];
+                const data = results?.data || (Array.isArray(results) ? results : []);
+                this.optionsCache[source] = data;
                 console.log("optionsCache updated state:", this.optionsCache);
             },
             onSearchInput(term, source) {
@@ -205,7 +206,12 @@
             }
             
             nonBlockedCols.forEach(col => {
-                if (this.form_data[col.field] && typeof this.form_data[col.field] === 'object' && this.form_data[col.field].id) {
+                if (col.type === 'multiselect' && Array.isArray(this.form_data[col.field])) {
+                    if (this.form_data[col.field].length > 0 && typeof this.form_data[col.field][0] === 'object') {
+                        this.form_data[col.field] = this.form_data[col.field].map(item => item.id || item);
+                        console.log("Overwrote array of objects with array of IDs for field:", col.field, this.form_data[col.field]);
+                    }
+                } else if (this.form_data[col.field] && typeof this.form_data[col.field] === 'object' && !Array.isArray(this.form_data[col.field]) && this.form_data[col.field].id) {
                     this.form_data[col.field] = this.form_data[col.field].id;
                     console.log("Overwrote object representation with ID for field:", col.field, this.form_data[col.field]);
                 }
