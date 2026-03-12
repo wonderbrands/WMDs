@@ -11,7 +11,7 @@
                     :id="store.form_context.data.form_type"/>
             </div>
             <div style="width: 100%; height: 100%;"
-            v-else-if="store.form_context.data.cycle_count">
+            v-else-if="store.form_context.data.cycle_count || store.modal_context === 'cycle_count_management'">
                 <CycleCount/>
             </div>
             <div  style="width: 100%; height: 100%;"
