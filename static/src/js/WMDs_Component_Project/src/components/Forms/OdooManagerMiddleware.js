@@ -91,6 +91,30 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                 regex = new RegExp(".*" + term + ".*", "i")
                 const filteredOperadores = operadores.filter(operador => regex.test(operador.name)).slice(0, 5)
                 return filteredOperadores;
+            case "operator_list":
+                return {
+                    map_cols: [
+                        { field: "id", name: "ID" },
+                        { field: "name", name: "Nombre" },
+                        { field: "login", name: "Correo" },
+                    ],
+                    total_count: 12,
+                    data: [
+                        { id: 1, name: "Juan Perez", login: "juan@test.com", role_ids: [101] },
+                        { id: 2, name: "Pedro Gomez", login: "pedro@test.com", role_ids: [102, 103] },
+                    ]
+                }
+
+            case "operator_roles":
+                return [
+                    { id: 101, name: "Reception" },
+                    { id: 102, name: "Picker" },
+                    { id: 103, name: "Packer" },
+                ]
+
+            case "save_operator":
+                return { saved: true }
+
             case "pick":
                 console.log("in pick")
                 const picks = {
@@ -251,6 +275,9 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
     constructor() {
         super()
         this.endpointMap = {
+            operator_list: {url: '/wmds/v2/engine/get/operators', method: 'POST'},
+            operator_roles: {url: '/wmds/v2/engine/get/operator_roles', method: 'POST'},
+            save_operator: {url: '/wmds/v2/engine/post/save_operator', method: 'POST'},
             skip_log_if_manager: {url: '/wmds/v2/engine/post/skip_log_if_manager', method: 'POST'},
             ingreso: {url: '/wmds/engine/picks', method: 'POST'},
             operadores: {url: '/wmds/engine/available_operators', method: 'POST'},
@@ -273,6 +300,10 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             batch_pick: {url: '/wmds/v2/engine/get/batch_pick', method: 'POST'},
             get_locations_by_range: {url: '/wmds/v2/engine/get/locations_by_range', method: 'POST'},
             cycle_count: {url: '/wmds/v2/engine/get/cycle_counts', method: 'POST'},
+            get_cycle_count_details: {url: '/wmds/v2/engine/get/cycle_count_details', method: 'POST'},
+            finish_cycle_count_wave: {url: '/wmds/v2/engine/finish_cycle_count_wave', method: 'POST'},
+            close_cycle_count: {url: '/wmds/v2/engine/close_cycle_count', method: 'POST'},
+            cancel_cycle_count: {url: '/wmds/v2/engine/cancel_cycle_count', method: 'POST'},
             create_full_cycle_count: {url: '/wmds/v2/engine/create_full_cycle_count', method: 'POST'},
             reassign_cycle_count_wave_operator: {url: '/wmds/v2/engine/reassign_cycle_count_wave_operator', method: 'POST'},
             cancel_cycle_count_wave: {url: '/wmds/v2/engine/cancel_cycle_count_wave', method: 'POST'},

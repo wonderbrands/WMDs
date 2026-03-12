@@ -13,6 +13,11 @@
         :label="store.main_manager_screen.cycle_count.button_string" 
         @click="cycleCountCreate($event, store.main_manager_screen)"/> 
       </div>
+      <div v-else-if="store.main_manager_screen.create_new">
+        <Button 
+        :label="store.main_manager_screen.create_new.button_string" 
+        @click="onRowClick({data: {}}, store.main_manager_screen)"/> 
+      </div>
     </div>
     <div class="table_wrapper">
       <DataTable

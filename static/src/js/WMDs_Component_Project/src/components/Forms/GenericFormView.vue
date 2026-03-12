@@ -12,6 +12,25 @@
                     <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
                 
+                <FloatLabel v-else-if="col.type === 'text'">
+                    <InputText :id="col.field" v-model="form_data[col.field]" :placeholder="col.label" class="w-full" />
+                    <label :for="col.field">{{ col.label }}</label>
+                </FloatLabel>
+
+                <FloatLabel v-else-if="col.type === 'multiselect'">
+                    <MultiSelect v-model="form_data[col.field]" 
+                        :id="col.field"
+                        :options="optionsCache[col.source]" 
+                        filter
+                        :placeholder="'Selecciona ' + col.label" 
+                        class="w-full" 
+                        display="chip"
+                        optionLabel="name"
+                        optionValue="id">
+                    </MultiSelect>
+                    <label :for="col.field">{{ col.label }}</label>
+                </FloatLabel>
+                
                 <FloatLabel v-else>
                     <Select v-model="form_data[col.field]" 
                         :id="col.field"
@@ -62,6 +81,7 @@
     import FloatLabel from 'primevue/floatlabel';
     import Button from 'primevue/button';
     import Select from 'primevue/select';
+    import MultiSelect from 'primevue/multiselect';
     import DataTable from 'primevue/datatable';
     import Column from 'primevue/column';
 
@@ -113,7 +133,7 @@
 
                 nonBlockedCols.forEach(col => {
                     console.log("Evaluating col before save:", col.field);
-                    if (this.optionsCache[col.source]) {
+                    if (col.type !== 'multiselect' && col.type !== 'text' && this.optionsCache[col.source]) {
                         data[col.field] = this.optionsCache[col.source].find(opt => opt.id === data[col.field]);
                         console.log("Field reassigned with full object:", data[col.field]);
                     }
@@ -162,7 +182,8 @@
                     field: col.name,
                     label: col.label,
                     non_blocked_field: col.non_blocked_field || false,
-                    source: col.source || null
+                    source: col.source || null,
+                    type: col.type || null
                 };
                 console.log("Generated merged column definition:", generatedCol);
                 return generatedCol;
@@ -199,6 +220,7 @@
         components: {
             Button,
             Select,
+            MultiSelect,
             InputText,
             FloatLabel,
             DataTable,

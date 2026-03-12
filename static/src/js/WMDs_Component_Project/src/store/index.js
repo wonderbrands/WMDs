@@ -187,6 +187,25 @@ export const useGeneralStore = defineStore('general_store', {
             title: "Devoluciones",
             description: ""
         },
+        operators: {
+            title: "Operadores",
+            description: "Gestión de operadores",
+            value: "operator_list",
+            form_context_key: "operator_definition",
+            create_new: {
+                button_string: "Dar de alta operador"
+            },
+            map_columns: [
+                { name: "id", label: "ID" },
+                { name: "name", label: "Nombre", non_blocked_field: true, type: "text" },
+                { name: "login", label: "Correo", non_blocked_field: true, type: "text" },
+                { name: "role_ids", label: "Roles", non_blocked_field: true, type: "multiselect", source: "operator_roles" },
+            ],
+            form_config: {
+                save_context: "save_operator",
+                on_save_actions: []
+            }
+        },
       },
       main_manager_screen: null,
       odoo_middleware: OdooManagerMiddleware()

@@ -247,3 +247,12 @@ body{
 .pending-badge { font-style: italic; color: red; }
 .empty-tasks { padding: 1em; color: #666; font-style: italic; }
 .full-width { width: 100%; }
+
+/* Mobile Toast Overrides */
+@media screen and (max-width: 768px) {
+    .p-toast {
+        width: 90vw !important;
+        left: 5vw !important;
+        right: 5vw !important;
+    }
+}

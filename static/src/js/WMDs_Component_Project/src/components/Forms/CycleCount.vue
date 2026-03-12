@@ -113,11 +113,18 @@
                     <div class="flex-between mb-medium">
                         <div>
                             <h2 class="modal-title no-margin">{{ modalData?.name }}</h2>
+                            <p v-if="cycleCountNotes" class="no-margin text-secondary"><strong>Referencia:</strong> {{ cycleCountNotes }}</p>
                             <span class="sub-title">Creado por: {{ created_by }}</span>
                         </div>
-                        <div>
+                        <div v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'">
                             <Button label="Añadir Ola" icon="pi pi-plus" class="p-button-outlined mr-2" @click="showOperatorDialog('add')" />
-                            <Button label="Cerrar Ciclo" icon="pi pi-lock" severity="danger" @click="closeEntireCount" :loading="store.loading" />
+                            <Button label="Finalizar Ciclo" icon="pi pi-check-square" severity="success" class="mr-2" @click="closeEntireCount" :loading="store.loading" />
+                            <Button label="Cancelar Ciclo" icon="pi pi-ban" severity="danger" class="p-button-outlined" @click="cancelEntireCount" :loading="store.loading" />
+                        </div>
+                        <div v-else>
+                             <span :class="['state-badge', cycleCountState]">
+                                {{ cycleCountState === 'finalized' ? 'FINALIZADO' : 'CANCELADO' }}
+                             </span>
                         </div>
                     </div>
 
@@ -137,13 +144,14 @@
                         <Column field="state_label" header="Estado"></Column>
                         <Column header="Acciones" style="width: 25rem">
                             <template #body="slotProps">
-                                <div v-if="slotProps.data.state !== 'done' && slotProps.data.state !== 'cancelled'">
+                                <div v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled' && slotProps.data.state !== 'done' && slotProps.data.state !== 'cancelled'">
                                     <Button label="Reasignar" icon="pi pi-user-edit" class="p-button-text text-orange-500" @click.stop="showOperatorDialog('reassign', slotProps.data)" />
                                     <Button label="Finalizar" icon="pi pi-check" severity="success" class="p-button-text" @click.stop="finishWave(slotProps.data.id)" />
                                     <Button label="Cancelar" icon="pi pi-times" severity="danger" class="p-button-text" @click.stop="cancelWave(slotProps.data.id)" />
                                 </div>
                                 <span v-else-if="slotProps.data.state === 'done'" class="text-green-500 font-bold"><i class="pi pi-check-circle"></i> Lista</span>
                                 <span v-else-if="slotProps.data.state === 'cancelled'" class="text-red-500 font-bold"><i class="pi pi-ban"></i> Cancelada</span>
+                                <span v-else-if="cycleCountState === 'finalized' || cycleCountState === 'cancelled'" class="text-secondary italic">Sin acciones</span>
                             </template>
                         </Column>
                     </DataTable>
@@ -206,6 +214,8 @@ export default {
             newCount: { ref: "" },
             waves: [],
             created_by: '',
+            cycleCountState: 'created',
+            cycleCountNotes: '',
             optionsCache: { operadores: [] },
             
             // Master-detail view state
@@ -259,6 +269,8 @@ export default {
             if (res.ok) {
                 this.selectedLocations = res.details.locations;
                 this.waves = res.details.waves;
+                this.cycleCountState = res.details.state;
+                this.cycleCountNotes = res.details.notes;
             }
         },
         isAlreadySelected(data) { return this.selectedLocations.some(s => s.id === data.id); },
@@ -298,7 +310,12 @@ export default {
         async closeEntireCount() {
             if (!confirm("¿Cerrar ciclo completo? Las olas no finalizadas no podrán ser procesadas.")) return;
             let res = await this.store.callOdoo("close_cycle_count", "", { count_id: this.modalData.id });
-            if (res.ok) this.store.closeModal(true);
+            if (res.ok) await this.loadExistingCountDetails();
+        },
+        async cancelEntireCount() {
+            if (!confirm("¿Cancelar ciclo completo? Todas las olas en curso también serán canceladas.")) return;
+            let res = await this.store.callOdoo("cancel_cycle_count", "", { count_id: this.modalData.id });
+            if (res.ok) await this.loadExistingCountDetails();
         },
         async showWaveDetails(event) {
             this.selectedWave = event.data;
@@ -383,6 +400,12 @@ export default {
 .text-orange-500 { color: #f59e0b; }
 .mr-2 { margin-right: 0.5rem; }
 .mt-2 { margin-top: 0.5rem; }
+.text-secondary { color: #6c757d; }
+.no-margin { margin: 0; }
+.italic { font-style: italic; }
+.state-badge { padding: 0.4rem 0.8rem; border-radius: 4px; font-weight: 800; font-size: 0.9rem; letter-spacing: 0.5px; }
+.state-badge.finalized { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+.state-badge.cancelled { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 </style>

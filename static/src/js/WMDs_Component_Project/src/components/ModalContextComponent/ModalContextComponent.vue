@@ -17,7 +17,7 @@
             <div  style="width: 100%; height: 100%;"
             v-else>
                 <IngresoComponent v-if="store.modal_context === 'ingreso'"/>
-                <GenericFormView v-else-if="['pick','pack'].includes(store.modal_context)"/>
+                <GenericFormView v-else-if="['pick','pack','operator_definition'].includes(store.modal_context)"/>
             </div>
            
         </section>
