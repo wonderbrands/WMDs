@@ -13,7 +13,7 @@
                 </FloatLabel>
                 
                 <FloatLabel v-else-if="col.type === 'text'">
-                    <InputText :id="col.field" v-model="form_data[col.field]" :placeholder="col.label" class="w-full" />
+                    <InputText :id="col.field" :name="col.field" type="text" autocomplete="off" v-model="form_data[col.field]" :placeholder="col.label" class="w-full" />
                     <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
 
@@ -120,7 +120,7 @@
                 }
                 const results = await this.store.callOdoo(source, term || "*");
                 console.log("Odoo response for options:", results);
-                const data = results?.data || (Array.isArray(results) ? results : []);
+                const data = results?.data || results?.results || (Array.isArray(results) ? results : []);
                 
                 const existing = this.optionsCache[source] || [];
                 const merged = [...existing, ...data];
