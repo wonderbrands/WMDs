@@ -27,6 +27,15 @@
                         display="chip"
                         optionLabel="name"
                         optionValue="id">
+                        
+                        <template #filter="{ filterModel }">
+                            <InputText 
+                                v-model="filterModel.value" 
+                                @input="onSearchInput(filterModel.value, col.source)"
+                                placeholder="Buscar..."
+                                class="w-full"
+                            />
+                        </template>
                     </MultiSelect>
                     <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
@@ -112,7 +121,19 @@
                 const results = await this.store.callOdoo(source, term || "*");
                 console.log("Odoo response for options:", results);
                 const data = results?.data || (Array.isArray(results) ? results : []);
-                this.optionsCache[source] = data;
+                
+                const existing = this.optionsCache[source] || [];
+                const merged = [...existing, ...data];
+                
+                const unique = [];
+                const map = new Map();
+                for (const item of merged) {
+                    if (item && item.id && !map.has(item.id)) {
+                        map.set(item.id, true);
+                        unique.push(item);
+                    }
+                }
+                this.optionsCache[source] = unique;
                 console.log("optionsCache updated state:", this.optionsCache);
             },
             onSearchInput(term, source) {
@@ -208,10 +229,27 @@
             nonBlockedCols.forEach(col => {
                 if (col.type === 'multiselect' && Array.isArray(this.form_data[col.field])) {
                     if (this.form_data[col.field].length > 0 && typeof this.form_data[col.field][0] === 'object') {
+                        const existing = this.optionsCache[col.source] || [];
+                        const merged = [...existing, ...this.form_data[col.field]];
+                        const unique = [];
+                        const map = new Map();
+                        for (const item of merged) {
+                            if (item && item.id && !map.has(item.id)) {
+                                map.set(item.id, true);
+                                unique.push(item);
+                            }
+                        }
+                        this.optionsCache[col.source] = unique;
+
                         this.form_data[col.field] = this.form_data[col.field].map(item => item.id || item);
                         console.log("Overwrote array of objects with array of IDs for field:", col.field, this.form_data[col.field]);
                     }
                 } else if (this.form_data[col.field] && typeof this.form_data[col.field] === 'object' && !Array.isArray(this.form_data[col.field]) && this.form_data[col.field].id) {
+                    const existing = this.optionsCache[col.source] || [];
+                    if (!existing.find(i => i.id === this.form_data[col.field].id)) {
+                        this.optionsCache[col.source] = [...existing, { ...this.form_data[col.field] }];
+                    }
+
                     this.form_data[col.field] = this.form_data[col.field].id;
                     console.log("Overwrote object representation with ID for field:", col.field, this.form_data[col.field]);
                 }

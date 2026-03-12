@@ -108,8 +108,12 @@ class CycleCount(http.Controller):
                 ('complete_name', 'not ilike', 'Cuarentena'),
                 ('usage', '=', 'internal') 
             ]
-            all_locs = request.env['stock.location'].sudo().search(domain, order='complete_name asc')
-            locations = all_locs.filtered(lambda u: re.fullmatch(final_regex, u.complete_name, re.IGNORECASE))
+            all_locs = request.env['stock.location'].sudo().with_context(active_test=True).search(domain, order='complete_name asc')
+            
+            active_counts = request.env['scheduled.cycle.count'].sudo().search([('state', 'not in', ['finalized', 'cancelled'])])
+            active_location_ids = active_counts.mapped('selected_location_ids.location_id.id')
+            
+            locations = all_locs.filtered(lambda u: u.id not in active_location_ids and re.fullmatch(final_regex, u.complete_name, re.IGNORECASE))
             return {
                 'ok': True,
                 'locations': [{'id': l.id, 'complete_name': l.complete_name} for l in locations]
@@ -142,6 +146,10 @@ class CycleCount(http.Controller):
                 })
                 line_vals = [(0, 0, {'stock_location_id': lid}) for lid in location_ids]
                 wave_obj.write({'line_ids': line_vals})
+
+            # 3. Archive the locations so they aren't used in sales/other operations
+            locations = request.env['stock.location'].sudo().browse(location_ids)
+            locations.write({'active': False})
 
             return {'ok': True, 'id': count_obj.id, 'name': count_obj.name}
         except Exception as e:
@@ -184,6 +192,13 @@ class CycleCount(http.Controller):
         try:
             count = request.env['scheduled.cycle.count'].sudo().browse(kw.get('count_id'))
             count.write({'state': 'finalized'})
+            
+            # Unarchive the locations
+            location_ids = count.selected_location_ids.mapped('location_id.id')
+            if location_ids:
+                locations = request.env['stock.location'].sudo().with_context(active_test=False).browse(location_ids)
+                locations.write({'active': True})
+                
             return {'ok': True}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
@@ -195,6 +210,13 @@ class CycleCount(http.Controller):
             count.write({'state': 'cancelled'})
             # Cancelar olas no terminadas
             count.wave_ids.filtered(lambda w: w.state not in ['done', 'cancelled']).write({'state': 'cancelled'})
+            
+            # Unarchive the locations
+            location_ids = count.selected_location_ids.mapped('location_id.id')
+            if location_ids:
+                locations = request.env['stock.location'].sudo().with_context(active_test=False).browse(location_ids)
+                locations.write({'active': True})
+                
             return {'ok': True}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
