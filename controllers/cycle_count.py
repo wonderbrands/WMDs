@@ -155,6 +155,8 @@ class CycleCount(http.Controller):
             return {
                 'ok': True,
                 'details': {
+                    'state': count.state,
+                    'notes': count.notes,
                     'locations': [{'id': l.location_id.id, 'complete_name': l.location_id.complete_name} for l in count.selected_location_ids],
                     'waves': [{
                         'id': w.id,
@@ -182,6 +184,17 @@ class CycleCount(http.Controller):
         try:
             count = request.env['scheduled.cycle.count'].sudo().browse(kw.get('count_id'))
             count.write({'state': 'finalized'})
+            return {'ok': True}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/cancel_cycle_count', type='json', auth='user', methods=['POST'])
+    def cancel_cycle_count(self, **kw):
+        try:
+            count = request.env['scheduled.cycle.count'].sudo().browse(kw.get('count_id'))
+            count.write({'state': 'cancelled'})
+            # Cancelar olas no terminadas
+            count.wave_ids.filtered(lambda w: w.state not in ['done', 'cancelled']).write({'state': 'cancelled'})
             return {'ok': True}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
