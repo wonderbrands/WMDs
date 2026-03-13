@@ -2,9 +2,6 @@
     <div class="pick_component" v-if="form_data">
         <div class="title_section">
             <h1>{{ store.main_manager_screen.form_title }} {{ form_data.name }}</h1>
-            <div v-if="form_data.qr_image" style="margin-top: 1rem; margin-bottom: 1.5rem; text-align: center; display: flex; justify-content: center;">
-                <img :src="'data:image/png;base64,' + form_data.qr_image" alt="QR Code" style="width: 150px; height: 150px; border: 1px solid #ddd; border-radius: 8px; padding: 5px; background: white;" />
-            </div>
         </div>
         
         <div class="form_items">
@@ -66,6 +63,10 @@
                     <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
                 
+            </div>
+
+            <div v-if="form_data.qr_image" style="margin-top: 1rem; margin-bottom: 1.5rem; text-align: center; display: flex; justify-content: center;">
+                <img :src="'data:image/png;base64,' + form_data.qr_image" alt="QR Code" style="width: 150px; height: 150px; border: 1px solid #ddd; border-radius: 8px; padding: 5px; background: white;" />
             </div>
             
             <div v-if="extra_data" class="w-full mt-4">

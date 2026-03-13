@@ -246,7 +246,6 @@ export default {
         "",
         params
       );
-
     }
   },
 
@@ -263,11 +262,18 @@ export default {
       }
     }
   },
-
   async mounted() {
     if (this.store.main_manager_screen?.value) {
       await this.getData(this.store.main_manager_screen.value);
     }
+
+    this.store.$onAction(({name, after})=> {
+      if (name === "closeModal"){
+        after(async ()=>{
+          await this.getData(this.store.main_manager_screen.value);
+        })
+      }
+    })
   }
 };
 </script>

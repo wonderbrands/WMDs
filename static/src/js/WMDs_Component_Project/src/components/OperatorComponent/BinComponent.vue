@@ -2,7 +2,7 @@
     <div class="test-flow-container">
         
         <div class="scanner-col">
-            <div v-if="ready && !scan_bin" class="scanner-wrapper">
+            <div v-if="ready && !scan_bin && !showConfirmation" class="scanner-wrapper">
                 <BarcodeScannerComponent 
                     :key="scannerKey"
                     context="scan_so"
@@ -10,7 +10,7 @@
                     :onScan="(data) => serachAndValidateSO(data)"
                 />
             </div>
-            <div v-else-if="ready && scan_bin" class="scanner-wrapper">
+            <div v-else-if="ready && scan_bin && !showConfirmation" class="scanner-wrapper">
                 <Button 
                     icon="pi pi-arrow-left" 
                     @click="backToScanSO" 
@@ -21,9 +21,21 @@
                     :onScan="(data) => validateBin(data)"
                 />
             </div>
+
+            <div v-else-if="showConfirmation" class="confirmation-wrapper">
+                <div class="confirmation-content">
+                    <i class="pi pi-exclamation-triangle confirmation-icon"></i>
+                    <h3>Confirmación de Traslado</h3>
+                    <p>Vas a mover <b>{{ so.length }}</b> órdenes al BIN: <b>{{ targetBin }}</b></p>
+                    <div class="confirmation-buttons">
+                        <Button label="Confirmar" icon="pi pi-check" class="p-button-success" @click="confirmMove" />
+                        <Button label="Re-escanear BIN" icon="pi pi-refresh" class="p-button-secondary" @click="cancelConfirmation" />
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="buttons-col">
+        <div class="buttons-col" v-if="!showConfirmation">
             <Button v-if="so.length > 0 && !scan_bin"
                 @click="goToScanBin"
                 class="p-button-success p-button-sm" 
@@ -42,7 +54,7 @@
             <div class="log-header">
                 <div class="log-header-info">
                     <span class="log-title">Órdenes escaneadas: {{ so.length }}</span>
-                    <Button icon="pi pi-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0"/>
+                    <Button icon="pi pi-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0 && !showConfirmation"/>
                 </div>
             </div>
 
@@ -52,7 +64,7 @@
                         <i class="pi pi-barcode barcode-icon"></i>
                         {{ order }}
                     </div>
-                    <Button icon="pi pi-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
+                    <Button v-if="!showConfirmation" icon="pi pi-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
                 </div>
                 <div v-if="so.length === 0" class="empty-log">
                     <i class="pi pi-search search-icon"></i>
@@ -82,7 +94,9 @@ export default {
             scan_bin: false,
             so: [],
             ready: false,
-            scannerKey: 0
+            scannerKey: 0,
+            showConfirmation: false,
+            targetBin: null
         }
     },
     mounted() {
@@ -134,10 +148,11 @@ export default {
             console.log("Action: Clearing data and finalizing flow");
             this.so = [];
             this.scan_bin = false;
+            this.showConfirmation = false;
             this.store.mandatory_uncompleted.doneMandatory();
         },
-        async validateBin(data) {
-            console.log("Action: validateBin triggered with data:", data);
+        validateBin(data) {
+            console.log("Action: validateBin data received:", data);
             if (this.so.length === 0) {
                 console.log("Action: No SOs to move, returning");
                 return;
@@ -145,11 +160,20 @@ export default {
             
             try {
                 let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-                let nameToValidate = parsedData.name;
-
-                console.log("Action: Calling Odoo move_to_bin with bin:", nameToValidate);
+                this.targetBin = parsedData.name;
+                this.showConfirmation = true;
+                console.log("Action: Confirmation screen displayed for bin:", this.targetBin);
+            } catch (e) {
+                console.log("Action: Error parsing bin data", e);
+                this.$toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'El código del bin no es válido.', life: 3000 });
+            }
+        },
+        async confirmMove() {
+            console.log("Action: confirmMove triggered");
+            try {
+                console.log("Action: Calling Odoo move_to_bin with bin:", this.targetBin);
                 let response = await this.store.callOdoo("move_to_bin", "", {
-                    bin: nameToValidate,
+                    bin: this.targetBin,
                     operator: this.store.role.email,
                     orders: this.so
                 });
@@ -158,12 +182,20 @@ export default {
                     console.log("Action: move_to_bin successful");
                     this.so = [];
                     this.scan_bin = false;
+                    this.showConfirmation = false;
+                    this.targetBin = null;
                     this.scannerKey++; 
                 }
             } catch (e) {
-                console.log("Action: Error in validateBin", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Validación', detail: 'No se pudo validar el bin.', life: 3000 });
+                console.log("Action: Error in confirmMove", e);
+                this.$toast.add({ severity: 'error', summary: 'Error de Servidor', detail: 'No se pudo realizar el movimiento en Odoo.', life: 3000 });
             }
+        },
+        cancelConfirmation() {
+            console.log("Action: cancelConfirmation triggered, returning to bin scanner");
+            this.showConfirmation = false;
+            this.targetBin = null;
+            this.scannerKey++;
         },
         backToScanSO() {
             console.log("Action: backToScanSO triggered");
@@ -197,15 +229,40 @@ export default {
 }
 
 .scanner-col {
-    height: 30%;
+    height: 35%;
     display: flex;
     gap: 10px;
 }
 
-.scanner-wrapper {
+.scanner-wrapper, .confirmation-wrapper {
     flex: 1;
     overflow: hidden;
     position: relative;
+}
+
+.confirmation-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 2px solid #3498db;
+    color: #2c3e50;
+    text-align: center;
+    padding: 20px;
+}
+
+.confirmation-icon {
+    font-size: 3rem;
+    color: #f1c40f;
+    margin-bottom: 10px;
+}
+
+.confirmation-buttons {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 20px;
 }
 
 .back-button {
@@ -225,7 +282,7 @@ export default {
 }
 
 .log-col {
-    height: 60%;
+    flex: 1;
     display: flex;
     flex-direction: column;
     background: #2c3e50;

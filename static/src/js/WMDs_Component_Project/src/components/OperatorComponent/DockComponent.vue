@@ -2,7 +2,7 @@
     <div class="test-flow-container">
         
         <div class="scanner-col">
-            <div v-if="ready && !scannedBin" class="scanner-wrapper">
+            <div v-if="ready && !scannedBin && !showDockConfirmation" class="scanner-wrapper">
                 <QRScannerComponent 
                     :key="scannerKey"
                     instructions="Escanea el BIN que vas a mover"
@@ -10,7 +10,7 @@
                 />
             </div>
             
-            <div v-else-if="ready && scannedBin" class="scanner-wrapper">
+            <div v-else-if="ready && scannedBin && !showDockConfirmation" class="scanner-wrapper">
                 <Button 
                     icon="pi pi-arrow-left" 
                     @click="resetScan" 
@@ -22,9 +22,32 @@
                     :onScan="(data) => validateDestDock(data)"
                 />
             </div>
+
+            <div v-else-if="showDockConfirmation" class="confirmation-wrapper">
+                <div class="confirmation-content">
+                    <i class="pi pi-directions-alt confirmation-icon"></i>
+                    <h3>Confirmar Traslado a DOCK</h3>
+                    <div class="route-summary">
+                        <div class="route-point">
+                            <span class="label">ORIGEN</span>
+                            <span class="value">{{ scannedBin }}</span>
+                        </div>
+                        <i class="pi pi-arrow-right"></i>
+                        <div class="route-point">
+                            <span class="label">DESTINO</span>
+                            <span class="value">{{ targetDock }}</span>
+                        </div>
+                    </div>
+                    <p class="packages-alert">Se moverán <b>{{ packageCount }}</b> paquetes en total.</p>
+                    <div class="confirmation-buttons">
+                        <Button label="Confirmar Envío" icon="pi pi-check" class="p-button-success" @click="confirmDockMove" />
+                        <Button label="Corregir DOCK" icon="pi pi-refresh" class="p-button-secondary" @click="cancelDockConfirmation" />
+                    </div>
+                </div>
+            </div>
         </div>
 
-        <div class="buttons-col">
+        <div class="buttons-col" v-if="!showDockConfirmation">
             <Button 
                 @click="exitFlow"
                 class="p-button-text p-button-danger p-button-sm" 
@@ -51,10 +74,16 @@
                     <div class="package-count">
                         <i class="pi pi-check-circle me-1"></i> {{ packageCount }} paquetes detectados
                     </div>
-                    <div class="status-instruction">
-                        Listo para mover. <br> Escanea el DOCK de destino.
+                    
+                    <div v-if="!showDockConfirmation">
+                        <div class="status-instruction">
+                            Listo para mover. <br> Escanea el DOCK de destino.
+                        </div>
+                        <i class="pi pi-arrow-down bounce-icon"></i>
                     </div>
-                    <i class="pi pi-arrow-down bounce-icon"></i>
+                    <div v-else class="status-confirmed">
+                        <i class="pi pi-spin pi-spinner me-2"></i> Esperando confirmación de despacho...
+                    </div>
                 </div>
             </div>
         </div>
@@ -78,7 +107,9 @@ export default {
             ready: false,
             scannerKey: 0,
             scannedBin: null,
-            packageCount: 0
+            packageCount: 0,
+            showDockConfirmation: false,
+            targetDock: null
         }
     },
     mounted() {
@@ -118,45 +149,60 @@ export default {
             }
         },
 
-        async validateDestDock(data) {
-            console.log("Action: validateDestDock triggered with data:", data);
-            if (!this.scannedBin) {
-                console.log("Action: No source bin scanned, returning");
-                return;
-            }
-            
+        validateDestDock(data) {
+            console.log("Action: validateDestDock data received:", data);
             try {
                 let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-                let dockName = parsedData.name;
+                this.targetDock = parsedData.name;
+                this.showDockConfirmation = true;
+                console.log("Action: Showing confirmation screen for dock:", this.targetDock);
+            } catch (e) {
+                console.log("Action: Error parsing dock data", e);
+                this.$toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'Código de DOCK no reconocido.', life: 3000 });
+                this.scannerKey++;
+            }
+        },
 
-                console.log("Action: Calling Odoo move_bin_to_dock with bin:", this.scannedBin, "and dock:", dockName);
+        async confirmDockMove() {
+            console.log("Action: confirmDockMove triggered");
+            try {
+                console.log("Action: Calling Odoo move_bin_to_dock with bin:", this.scannedBin, "and dock:", this.targetDock);
                 let response = await this.store.callOdoo("move_bin_to_dock", "", {
                     bin: this.scannedBin,
-                    dock: dockName,
+                    dock: this.targetDock,
                     operator: this.store.role.email
                 });
 
                 if (response.ok) {
                     console.log("Action: Move successful");
-                    this.$toast.add({ severity: 'success', summary: 'Éxito', detail: `Se movieron ${response.moved_packages} paquetes al DOCK ${dockName}`, life: 3000 });
+                    this.$toast.add({ severity: 'success', summary: 'Éxito', detail: `Se movieron ${response.moved_packages} paquetes al DOCK ${this.targetDock}`, life: 3000 });
                     this.resetScan();
+                    this.showDockConfirmation = false;
+                    this.targetDock = null;
                 } else {
                     console.log("Action: Move failed", response.error);
                     this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
-                    this.scannerKey++;
                 }
 
             } catch (e) {
-                console.log("Action: Error in validateDestDock", e);
+                console.log("Action: Error in confirmDockMove", e);
                 this.$toast.add({ severity: 'error', summary: 'Error de Conexión', detail: 'No se pudo contactar al servidor.', life: 3000 });
-                this.scannerKey++;
             }
+        },
+
+        cancelDockConfirmation() {
+            console.log("Action: cancelDockConfirmation triggered");
+            this.showDockConfirmation = false;
+            this.targetDock = null;
+            this.scannerKey++;
         },
 
         resetScan() {
             console.log("Action: resetScan triggered");
             this.scannedBin = null;
             this.packageCount = 0;
+            this.showDockConfirmation = false;
+            this.targetDock = null;
             this.scannerKey++;
         },
 
@@ -187,15 +233,75 @@ export default {
 }
 
 .scanner-col {
-    height: 30%;
+    height: 35%;
     display: flex;
     gap: 10px;
 }
 
-.scanner-wrapper {
+.scanner-wrapper, .confirmation-wrapper {
     flex: 1;
     overflow: hidden;
     position: relative;
+}
+
+.confirmation-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #ffffff;
+    border-radius: 8px;
+    border: 2px solid #3498db;
+    color: #2c3e50;
+    padding: 15px;
+}
+
+.confirmation-content h3 {
+    margin: 10px 0;
+    color: #2980b9;
+}
+
+.confirmation-icon {
+    font-size: 2.5rem;
+    color: #3498db;
+}
+
+.route-summary {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    margin: 15px 0;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.route-point {
+    display: flex;
+    flex-direction: column;
+}
+
+.route-point .label {
+    font-size: 0.7rem;
+    color: #7f8c8d;
+    font-weight: bold;
+}
+
+.route-point .value {
+    font-size: 1.1rem;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.packages-alert {
+    font-size: 0.9rem;
+    margin-bottom: 15px;
+}
+
+.confirmation-buttons {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
 }
 
 .back-button {
@@ -215,7 +321,7 @@ export default {
 }
 
 .log-col {
-    height: 60%;
+    flex: 1;
     display: flex;
     flex-direction: column;
     background: #2c3e50;
@@ -273,6 +379,11 @@ export default {
 .status-instruction {
     color: #ecf0f1;
     margin-bottom: 20px;
+}
+
+.status-confirmed {
+    color: #3498db;
+    font-weight: bold;
 }
 
 .bounce-icon {
