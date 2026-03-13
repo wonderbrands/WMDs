@@ -46,6 +46,10 @@
         <record id="role_wmds_dispatch" model="res.groups">
             <field name="name">WMDs Operator - Dispatch</field>
         </record>
+
+        <record id="role_wmds_counter" model="res.groups">
+            <field name="name">WMDs Operator - Stock Counter</field>
+        </record>
         
     </data>
     

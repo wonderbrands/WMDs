@@ -91,20 +91,28 @@ export default {
             assigned: [{ key: `${t.id}-root`, label: t.label, selectable: false, children: [] }]
         }));
 
+        let data=null;
         const fetchPromises = this.filteredTasks
             .filter(t => t.fetch)
             .map(async (task) => {
-                // 2. Agregar 'tz' al objeto de datos
-                const data = await this.store.callOdoo("pending_tasks", task.id, { 
-                    email: this.store.role.email,
-                    tz: clientTimeZone 
-                });
-                task.assigned[0].children = (data || []).map((p, i) => ({
-                    key: `${task.id}-${i}`,
-                    label: p.label || p,
-                    data: p.data || p,
-                    leaf: true
+                if(task.id==="cycle_count_assigned"){
+                    data = await this.store.callOdoo(task.id, "" , { 
+                            email: this.store.role.email,
+                            tz: clientTimeZone 
+                        });
+                } else {
+                    data = await this.store.callOdoo("pending_tasks", task.id, { 
+                        email: this.store.role.email,
+                        tz: clientTimeZone 
+                    });
+                }
+                task.assigned[0].children = (data || []).map((p, i) => ({
+                        key: `${task.id}-${i}`,
+                        label: p.label || p,
+                        data: p.data || p,
+                        leaf: true
                 }));
+                
             });
         await Promise.all(fetchPromises);
     },

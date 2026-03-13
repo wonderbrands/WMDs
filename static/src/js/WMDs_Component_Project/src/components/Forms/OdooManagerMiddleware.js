@@ -309,6 +309,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             cancel_cycle_count_wave: {url: '/wmds/v2/engine/cancel_cycle_count_wave', method: 'POST'},
             get_cycle_wave_lines: {url: '/wmds/v2/engine/get/cycle_wave_lines', method: 'POST'},
             create_waves_for_cycle: {url: '/wmds/v2/engine/create_waves_for_cycle', method: 'POST'},
+            cycle_count_assigned: {url: '/wmds/v2/engine/cycle_count_assigned', method: 'POST'},
         };
     }
 

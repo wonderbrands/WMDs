@@ -278,7 +278,6 @@ class CycleCount(http.Controller):
             if not location_ids or not operators or not cycle_count_id:
                 return {'ok': False, 'error': 'Faltan ubicaciones, operadores o id del ciclo.'}
 
-            # 2. Crear las olas (El nombre se computa solo en el modelo)
             for op_id in operators:
                 wave_obj = request.env['cycle.count.wave'].sudo().create({
                     'cycle_count_id': cycle_count_id,
@@ -292,3 +291,29 @@ class CycleCount(http.Controller):
         except Exception as e:
             _logger.error(f"Error creando olas: {str(e)}")
             return {'ok': False, 'error': str(e)}
+
+
+    @http.route('/wmds/v2/engine/cycle_count_assigned', type='json', auth='user', methods=['POST'])
+    def create_waves_for_cycle(self, **kw):
+        operator = kw.get("email")
+        
+        waves = request.env['cycle.count.wave'].sudo().search(
+            [
+                ('operator_id.login', '=', operator),
+                ("state", "in", ["draft", "ongoing"])
+            ]
+        )
+
+        if not waves or len(waves):
+            return []
+
+        result = []
+        for wave in waves:
+            result.append({
+                    "key": wave.id,
+                    "label": wane.name,
+                    "data": wave.name,
+                    "pick": wave.name,
+                    "date": null
+                })
+    

@@ -18,6 +18,7 @@
                 @input="handleInput"
                 @blur="keepFocus"
                 class="hidden-input"
+                inputmode="none"
             >
         </div>
 
