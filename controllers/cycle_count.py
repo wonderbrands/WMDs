@@ -294,7 +294,7 @@ class CycleCount(http.Controller):
 
 
     @http.route('/wmds/v2/engine/cycle_count_assigned', type='json', auth='user', methods=['POST'])
-    def create_waves_for_cycle(self, **kw):
+    def cycle_count_assigned(self, **kw):
         operator = kw.get("email")
         
         waves = request.env['cycle.count.wave'].sudo().search(
