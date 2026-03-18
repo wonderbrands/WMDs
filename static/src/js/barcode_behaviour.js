@@ -7,10 +7,11 @@ import { patch } from "@web/core/utils/patch";
 patch(BarcodeModel.prototype, {
 
     constructor(){
-            super();
+        const result = super.constructor(...arguments);
             
             console.log(this.resId)
             console.log(this)
+        return result
     },
     async _validate() {
         console.log(this)
