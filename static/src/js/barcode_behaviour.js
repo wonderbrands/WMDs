@@ -10,6 +10,8 @@ patch(BarcodeModel.prototype, {
         const result = super.setup(...arguments);
         console.log(this.resId)
         console.log(this)
+
+        return result
     },
 
     async _validate() {
