@@ -137,6 +137,18 @@ patch(BarcodeModel.prototype, {
                 window.location.href = data.result.url;
             }
         } catch (error) {}
+    },
+    async onCustomAction(actionName) {
+        console.log(actionName)
+        console.log(this.env)
+        const recordId = this.env.model.record.id;
+        if (!recordId) return;
+        try {
+            const action = await this.env.services.orm.call('stock.picking', actionName, [[recordId]]);
+            if (action) {
+                await this.env.services.action.doAction(action);
+            }
+        } catch (error) {}
     }
 });
 
