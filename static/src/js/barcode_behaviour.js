@@ -7,8 +7,9 @@ import { patch } from "@web/core/utils/patch";
 patch(BarcodeModel.prototype, {
 
     async _validate() {
-        this.onCustomAction('action_imprimir_guia')
-        this.onCustomAction('action_imprimir_tag')
+        console.log(this)
+        /*this.onCustomAction('action_imprimir_guia')
+        this.onCustomAction('action_imprimir_tag')*/
         const isBatch = this.resModel === 'stock.picking.batch';
         const recordData = Object.assign({}, this.record);
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
