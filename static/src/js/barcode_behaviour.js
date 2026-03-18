@@ -6,6 +6,12 @@ import { patch } from "@web/core/utils/patch";
 
 patch(BarcodeModel.prototype, {
 
+    setup(){
+        const result = super.setup(...arguments);
+        console.log(this.resId)
+        console.log(this)
+    },
+
     async _validate() {
         console.log(this)
         /*this.onCustomAction('action_imprimir_guia')
