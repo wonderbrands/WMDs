@@ -22,6 +22,8 @@
                         </div>
                         <div class="task-origin">
                             {{ task.origin }}
+                        </div>
+                        <div class="task-origin">
                             {{ task.carrier ? task.carrier : "Sin carrier" }}
                         </div>
                         <div class="task-footer">
@@ -49,13 +51,14 @@ import LogoutComponent from "../RolePicker/LogoutComponent.vue"
 import { useGeneralStore } from "../../store/index";
 
 export default {
-    name: "PackerView",
+    name: "PickerView",
     components: { LogoutComponent, Tag },
 
     data() {
         return {
             store: useGeneralStore(),
-            rawPackData: [] 
+            rawPackData: [],
+            batchColors: {}
         };
     },
 
@@ -121,13 +124,11 @@ export default {
         },
         getBatchColor(batchId) {
             if (batchId === 'sin-batch') return 'transparent';
-            let hash = 0;
-            const str = String(batchId);
-            for (let i = 0; i < str.length; i++) {
-                hash = str.charCodeAt(i) + ((hash << 5) - hash);
+            if (!this.batchColors[batchId]) {
+                const hue = Math.floor(Math.random() * 360);
+                this.batchColors[batchId] = `hsl(${hue}, 70%, 92%)`;
             }
-            const hue = Math.abs(hash) % 360;
-            return `hsl(${hue}, 60%, 94%)`;
+            return this.batchColors[batchId];
         }
     }
 };
@@ -137,7 +138,7 @@ export default {
 .pack-container {
     padding: 1rem;
     width: 100%;
-    height: 100vh;
+    height: 90vh;
     display: flex;
     flex-direction: column;
 }
