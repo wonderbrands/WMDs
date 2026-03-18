@@ -17,13 +17,13 @@
             </div>
         </xpath>
 
-        <xpath expr="//button[contains(@class, 'o_add_line')]" position="before">
+        <!--<xpath expr="//button[contains(@class, 'o_add_line')]" position="before">
             <button t-if="env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
                     class="btn btn-primary" 
                     t-on-click="() => this.onCustomAction('action_imprimir_guia')">
                 <i class="fa fa-print me-1"/> Imprimir Guía de Envío
             </button>
-        </xpath>
+        </xpath>-->
 
         <xpath expr="//button[contains(@class, 'o_add_line')]" position="attributes">
             <attribute name="t-att-style">
@@ -32,13 +32,13 @@
         </xpath>
 
 
-        <xpath expr="//button[contains(@class, 'o_put_in_pack')]" position="before">
+        <!--<xpath expr="//button[contains(@class, 'o_put_in_pack')]" position="before">
             <button t-if="env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
                     class="btn btn-secondary" 
                     t-on-click="() => this.onCustomAction('action_print_tag')">
                 <i class="fa fa-tag me-1"/> Imprimir Etiqueta de la Orden
             </button>
-        </xpath>
+        </xpath>-->
 
         <xpath expr="//button[contains(@class, 'o_put_in_pack')]" position="attributes">
             <attribute name="t-att-style">
