@@ -46,11 +46,8 @@ class PendingTasks(http.Controller):
                 if task not in ["acomodo", "ingresos"]:
                     search_domain.append(('operator.login', '=', email))
 
-                _logger.info("AAAAAAAAAAAAAAAAAAAAAAAA")
-                _logger.info(search_domain)
-            
+
                 pending_tasks = env['stock.picking'].sudo().search(search_domain)
-                _logger.info(pending_tasks)
             
             result = []
             for record in pending_tasks:
@@ -66,13 +63,28 @@ class PendingTasks(http.Controller):
                 if record.scheduled_date:
                     scheduled_date_tz = fields.Datetime.context_timestamp(record, record.scheduled_date).strftime('%Y-%m-%d %H:%M:%S')
 
+                sale = env['sale.order'].sudo().search([
+                    ('name', '=', source_doc),
+                ])
+                carrier = None if not sale else sale.data_carrier_selection_relational.name
+
+                #manage if the movement is a pack
+                #if so, get the pick and get the batch it was part of 
+                if task == "pack":
+                    pick = sale.picking_ids.filtered(lambda pick: "PICK" in pick.name)
+                    if len(pick)>0:
+                        batch = pick.batch_id
+                        batch_name = None if not batch else batch.name
+
                 result.append({
                     "key": record.id,
                     "label": label,
                     "data": record.name,
                     "pick": record.name,
                     "origin": source_doc,
-                    "date": scheduled_date_tz
+                    "date": scheduled_date_tz,
+                    "carrier": carrier,
+                    "batch": None if not batch_name else batch_name
                 })
             
             return result

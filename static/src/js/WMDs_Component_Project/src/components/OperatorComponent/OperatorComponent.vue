@@ -1,5 +1,5 @@
 <template>
-    <PickerView v-if="store.role.permissions.includes('WMDs Operator - Packer')" />
+    <PackerView v-if="store.role.permissions.includes('WMDs Operator - Packer')" />
 
     <div class="task-container" v-else>
         <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
@@ -24,7 +24,7 @@
                         :value="task.assigned"
                         selectionMode="single"
                         v-model:selectionKeys="current_task[task.id]"
-                        @node-select="openTask"
+                        @node-select="openTask(task.pick, task.id, task.key)"
                         class="full-width"
                     />
                     <div v-else-if="task.view" class="custom-view-btn" @click="createView(task)">
@@ -46,13 +46,13 @@
 <script>
 import Card from "primevue/card";
 import Tree from "primevue/tree";
-import PickerView from "./PickerView.vue";
+import PackerView from "./PackerView.vue";
 import LogoutComponent from "../RolePicker/LogoutComponent.vue";
 import { useGeneralStore } from "../../store/index";
 
 export default {
     name: "OperatorComponent",
-    components: { Card, Tree, LogoutComponent, PickerView },
+    components: { Card, Tree, LogoutComponent, PackerView },
 
     data() {
         return {
@@ -63,7 +63,6 @@ export default {
                 { id: "acomodo", title: "Rackeo", description: "Acomodo de productos.", fetch: true, label: "Abiertos", permission: "WMDs Operator - Forklift operator" },
                 { id: "traslados", title: "Traslados", description: "Traslado interno.", fetch: false, label: "Asignados", permission: "WMDs Operator - Forklift operator" },
                 { id: "batch_pick", title: "Plan de pickeo", description: "Preparación empaque.", fetch: true, label: "Asignados", permission: "WMDs Operator - Picker" },
-                { id: "conteo_ciclico", title: "Conteo cíclico", description: "Conteo de unidades.", fetch: false, label: "Pendientes", permission: "WMDs Operator - Forklift operator" },
                 { id: "bin", title:"BIN", description:"Ingresar a BIN", fetch: false, label: "Registrar", view: "BinComponent", permission: "WMDs Operator - BIN" },
                 { id: "dock", title:"DOCK", description:"Trasladar a DOCK", fetch: false, label: "Registrar", view: "DockComponent", permission: "WMDs Operator - DOCK" },
                 { id: "dispatch", title:"Despacho", description:"Entrega paquetera", fetch: false, label: "Registrar", view: "DispatchComponent", permission: "WMDs Operator - Dispatch" },
@@ -121,9 +120,22 @@ export default {
         hasChildren(task) {
             return task.assigned?.[0]?.children?.length > 0;
         },
-        async openTask({ data: pick }) {
-            const url = await this.store.callOdoo("get_barcode_url", "", { pick_name: pick });
-            window.location.href = url;
+        async openTask(pick, task_id, record_id=null) {
+            if (task_id==="cycle_count_assigned"){
+                switch (task_id) {
+                    case "cycle_count_assigned":
+                    this.store.mandatory_uncompleted.component_props = {cc_id:record_id}
+                    this.store.mandatory_uncompleted.component = CycleCountOperator;
+                        break;
+                
+                    default:
+                        break;
+                }
+            } else{
+                const url = await this.store.callOdoo("get_barcode_url", "", { pick_name: pick });
+                window.location.href = url;
+            }
+           
         },
         createView(task){
             this.store.mandatory_uncompleted.component = task.view;
