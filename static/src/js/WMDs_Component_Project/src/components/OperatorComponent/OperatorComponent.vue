@@ -24,7 +24,7 @@
                         :value="task.assigned"
                         selectionMode="single"
                         v-model:selectionKeys="current_task[task.id]"
-                        @node-select="openTask(task.pick, task.id, task.key)"
+                        @node-select="(event) => openTask(event.node.pick, task.id, event.node.key)"
                         class="full-width"
                     />
                     <div v-else-if="task.view" class="custom-view-btn" @click="createView(task)">
