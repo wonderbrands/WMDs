@@ -4,7 +4,7 @@
         <SidebarManagerComponent v-if="show_sidebar"/>
         <main class="main_manager_screen_container">
             <!--<BackButton where="role_picker" class="back_button"/>-->
-            <MainManagerScreen/>
+            <MainManagerScreen v-if="store.main_manager_screen"/>
         </main>
     </div>
 </template>
