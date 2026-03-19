@@ -1,6 +1,10 @@
 <template>
   <article class="main_manager_screen">
     <ListView v-if="['ingreso', 'ingresos', 'disponibilizar', 'traslado', 'pick', 'pack', 'devolucion', 'resurtido', 'batch_pick', 'cycle_count', 'operator_list'].includes(store.main_manager_screen.value)"/>
+    <div v-else class="home-screen">
+        <h1>Bienvenido al WMDs Manager</h1>
+        <p>Selecciona una opción del menú lateral para comenzar.</p>
+    </div>
   </article>
 </template>
 
