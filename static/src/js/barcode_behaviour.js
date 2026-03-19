@@ -112,6 +112,9 @@ patch(BarcodeModel.prototype, {
             try {
                 user = JSON.parse(session_wmds).email;
             } catch (e) {}
+        } else {
+            // No user in session storage, so we don't redirect to WMDS
+            return;
         }
         
         const isBatch = this.resModel === 'stock.picking.batch';
@@ -126,7 +129,7 @@ patch(BarcodeModel.prototype, {
             localStorage.setItem("mandatory_uncompleted",
                 JSON.stringify({
                     screen: null,
-                    component: "QRScannerComponent",
+                    component: "BarcodeScannerComponent",
                     component_props: {
                         context: "assign_pack_for_operator",
                         instructions: "Escanea la linea de empaque para asignar el Pack",

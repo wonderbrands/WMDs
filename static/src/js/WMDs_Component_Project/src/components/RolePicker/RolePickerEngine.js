@@ -55,8 +55,19 @@ class RolePickerProd extends RolePickerEngineDefinition {
     }
 
     async getUserFromServer(qrContent) {
-        const qrContentJson = JSON.parse(qrContent)
-        const tryEmail = qrContentJson.email
+        let tryEmail = null;
+        try {
+            const qrContentJson = JSON.parse(qrContent);
+            tryEmail = qrContentJson.email;
+        } catch (e) {
+            // If it's not JSON, it might be a plain barcode login
+            tryEmail = qrContent;
+        }
+
+        if (!tryEmail) {
+            throw new Error("No se pudo extraer la identificación del escaneo.");
+        }
+
         try {
             const response = await fetch('/wmds/v2/engine/get/valid_user', {
                 method: 'POST',
