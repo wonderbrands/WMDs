@@ -24,7 +24,7 @@
                         :value="task.assigned"
                         selectionMode="single"
                         v-model:selectionKeys="current_task[task.id]"
-                        @node-select="(event) => openTask(event.node.pick, task.id, event.node.key)"
+                        @node-select="(node) => openTask(node.pick, task.id, node.key)"
                         class="full-width"
                     />
                     <div v-else-if="task.view" class="custom-view-btn" @click="createView(task)">
@@ -112,6 +112,7 @@ export default {
                             key: `${task.id}-${i}`,
                             label: p.label || p,
                             data: p.data || p,
+                            pick: p.pick || p,
                             leaf: true
                     }));
                 } else {
