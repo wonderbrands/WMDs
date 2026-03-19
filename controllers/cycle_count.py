@@ -304,16 +304,18 @@ class CycleCount(http.Controller):
             ]
         )
 
-        if not waves or len(waves):
+        if not waves:
             return []
 
         result = []
         for wave in waves:
             result.append({
                     "key": wave.id,
-                    "label": wane.name,
+                    "label": wave.name,
                     "data": wave.name,
                     "pick": wave.name,
-                    "date": null
+                    "date": None
                 })
+        
+        return result
     
