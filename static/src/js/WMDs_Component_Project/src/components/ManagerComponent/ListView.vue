@@ -136,15 +136,14 @@ export default {
       this.store.openModal(modalContext, event);
     },
     onRowClick(event, modal) {
-      event.data = event.data || {};
-      if(modal.create_by_aggregate && !event.data.id){
-        event.data.create_by_aggregate = modal.create_by_aggregate;
-        event.data.form_type = "new";
-        this.store.openModal(modal.value, event);
+      const data = (event && event.data) ? event.data : {};
+      if(modal.create_by_aggregate && !data.id){
+        const newEvent = { ...event, data: { ...data, create_by_aggregate: modal.create_by_aggregate, form_type: "new" } };
+        this.store.openModal(modal.value, newEvent);
       } else {
         const modalContext = modal.form_context_key || modal.value;
-        event.data.map_cols = this.server_data.map_cols;
-        this.store.openModal(modalContext, event);
+        const newEvent = { ...event, data: { ...data, map_cols: this.server_data?.map_cols } };
+        this.store.openModal(modalContext, newEvent);
       }
     },
 
