@@ -51,7 +51,7 @@ class PendingTasks(http.Controller):
             
             result = []
             for record in pending_tasks:
-                
+                batch_name = None
                 source_doc = getattr(record, 'origin', False)
                 
                 if source_doc:

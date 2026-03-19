@@ -47,12 +47,13 @@
 import Card from "primevue/card";
 import Tree from "primevue/tree";
 import PackerView from "./PackerView.vue";
+import CycleCountOperator from "./CycleCountOperator.vue";
 import LogoutComponent from "../RolePicker/LogoutComponent.vue";
 import { useGeneralStore } from "../../store/index";
 
 export default {
     name: "OperatorComponent",
-    components: { Card, Tree, LogoutComponent, PackerView },
+    components: { Card, Tree, LogoutComponent, PackerView, CycleCountOperator },
 
     data() {
         return {
