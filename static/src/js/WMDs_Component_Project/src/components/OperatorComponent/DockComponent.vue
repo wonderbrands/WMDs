@@ -253,6 +253,7 @@ export default {
     border: 2px solid #3498db;
     color: #2c3e50;
     padding: 15px;
+    overflow-y: auto;
 }
 
 .confirmation-content h3 {

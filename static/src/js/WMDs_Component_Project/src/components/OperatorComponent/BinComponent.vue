@@ -250,6 +250,7 @@ export default {
     color: #2c3e50;
     text-align: center;
     padding: 20px;
+    overflow-y: auto;
 }
 
 .confirmation-icon {

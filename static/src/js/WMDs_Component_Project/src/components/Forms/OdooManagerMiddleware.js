@@ -311,6 +311,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_cycle_wave_lines: {url: '/wmds/v2/engine/get/cycle_wave_lines', method: 'POST'},
             create_waves_for_cycle: {url: '/wmds/v2/engine/create_waves_for_cycle', method: 'POST'},
             cycle_count_assigned: {url: '/wmds/v2/engine/cycle_count_assigned', method: 'POST'},
+            get_user_role_permissions: {url: '/wmds/v2/engine/get/user_role_permissions', method: 'POST'},
         };
     }
 

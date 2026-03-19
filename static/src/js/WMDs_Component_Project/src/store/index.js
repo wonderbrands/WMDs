@@ -276,6 +276,25 @@ export const useGeneralStore = defineStore('general_store', {
     executeActionByContext(context, data, extra) {
         const actionsMap = {
             'assign_pack_for_operator': async (qr, extra) => {
+
+                const operatorEmail = JSON.parse(qr).email;
+                const operatorPermissions = await this.callOdoo(
+                    'get_user_role_permissions',
+                    '',
+                    { email: operatorEmail }
+                );
+
+                if (!operatorPermissions.permissions || !operatorPermissions.permissions.includes('WMDs Operator - Packer')) {
+                    this.toast.add({ 
+                        severity: 'error', 
+                        summary: 'Permiso Denegado', 
+                        detail: 'El operador escaneado no tiene permisos de Packer.', 
+                        life: 4000 
+                    });
+                    this.mandatory_uncompleted.doneMandatory(); // Still need to finish the flow
+                    return;
+                }
+
                 await this.callOdoo(
                     'assign_pick',
                     null,
@@ -283,7 +302,7 @@ export const useGeneralStore = defineStore('general_store', {
                         id: extra.pick_id,
                         is_batch: extra.is_batch,
                         operation_type: "Pack",
-                        operator_mail: JSON.parse(qr).email
+                        operator_mail: operatorEmail
                     }
                 )
                 this.mandatory_uncompleted.doneMandatory()
