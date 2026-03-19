@@ -9,6 +9,12 @@
         <template v-else-if="!store.loading && store.role.role === 'operator'">
              <h1>Cargando...</h1>
         </template>
+        <template v-else-if="!store.loading">
+            <h1>Debug Info</h1>
+            <p>Role: '{{ store.role.role }}'</p>
+            <p>Loading: {{ store.loading }}</p>
+            <p>User: {{ store.role.user }}</p>
+        </template>
     </div>
 </template>
 
