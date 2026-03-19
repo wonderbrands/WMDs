@@ -298,6 +298,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             assign_pack: {url: '/wmds/v2/engine/post/pick_assign_operator', method: 'POST'},
             dispatch_orders: {url: '/wmds/v2/engine/post/dispatch_packet', method: 'POST'},
             batch_pick: {url: '/wmds/v2/engine/get/batch_pick', method: 'POST'},
+            batch_details: {url: '/wmds/v2/engine/get/batch_details', method: 'POST'},
             get_locations_by_range: {url: '/wmds/v2/engine/get/locations_by_range', method: 'POST'},
             cycle_count: {url: '/wmds/v2/engine/get/cycle_counts', method: 'POST'},
             get_cycle_count_details: {url: '/wmds/v2/engine/get/cycle_count_details', method: 'POST'},

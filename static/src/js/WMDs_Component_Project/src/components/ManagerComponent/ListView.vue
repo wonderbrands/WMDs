@@ -136,7 +136,7 @@ export default {
       this.store.openModal(modalContext, event);
     },
     onRowClick(event, modal) {
-      if(modal.create_by_aggregate){
+      if(modal.create_by_aggregate && !event.data.id){
         event.data = event.data || {};
         event.data.create_by_aggregate = modal.create_by_aggregate;
         event.data.form_type = "new";

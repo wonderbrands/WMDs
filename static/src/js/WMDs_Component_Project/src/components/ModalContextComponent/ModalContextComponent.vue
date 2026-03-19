@@ -14,6 +14,10 @@
             v-else-if="store.form_context.data.cycle_count || store.modal_context === 'cycle_count_management'">
                 <CycleCount/>
             </div>
+            <div style="width: 100%; height: 100%;"
+            v-else-if="store.modal_context === 'batch_pick'">
+                <BatchDetailView/>
+            </div>
             <div  style="width: 100%; height: 100%;"
             v-else>
                 <IngresoComponent v-if="store.modal_context === 'ingreso'"/>
@@ -28,6 +32,7 @@
     import IngresoComponent from "../Forms/IngresoComponent.vue";
     import GenericFormView from '../Forms/GenericFormView.vue';
     import AggregateCreation from '../Forms/AggregateCreation.vue';
+    import BatchDetailView from '../Forms/BatchDetailView.vue';
     import CycleCount from '../Forms/CycleCount.vue';
     import { useGeneralStore } from "../../store/index";
     export default {
@@ -42,6 +47,7 @@
             IngresoComponent, 
             GenericFormView,
             AggregateCreation,
+            BatchDetailView,
             CycleCount
         }
     }

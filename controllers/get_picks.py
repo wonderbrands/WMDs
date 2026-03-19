@@ -228,15 +228,22 @@ class GetPicks(http.Controller):
             operator = kw.get('operator')
             operator_mail = kw.get('operator_mail')
             responsible = kw.get('responsible')
+            is_batch = kw.get('is_batch')
             
             if responsible:
-                picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
-                picking.operator = responsible["id"]
+                if is_batch:
+                    batch = request.env['stock.picking.batch'].sudo().browse(int(kw.get('id')))
+                    if batch.exists():
+                        batch.operator = responsible["id"]
+                        batch.picking_ids.write({'operator': responsible["id"]})
+                else:
+                    picking = request.env['stock.picking'].sudo().browse(int(kw.get('id')))
+                    if picking.exists():
+                        picking.operator = responsible["id"]
                 return{
                     "saved": True
                 }
 
-            is_batch = kw.get('is_batch')
             operator_mail = kw.get('operator_mail')
             operator = kw.get('operator')
             operation_type = kw.get('operation_type')
@@ -427,6 +434,47 @@ class GetPicks(http.Controller):
             return {
                 "error": f"{str(e)}\n{traceback.format_exc()}"
             }
+
+    @http.route(
+        '/wmds/v2/engine/get/batch_details',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def get_batch_details(self, **kw):
+        try:
+            batch_id = kw.get('id')
+            batch = request.env['stock.picking.batch'].sudo().browse(int(batch_id))
+            if not batch.exists():
+                return {"error": "Batch not found"}
+
+            picks_data = []
+            for pick in batch.picking_ids:
+                picks_data.append({
+                    "id": pick.id,
+                    "name": pick.name,
+                    "origin": pick.origin or ""
+                })
+
+            logs_data = []
+            for log in batch.wmds_log.sorted('date', reverse=True):
+                logs_data.append({
+                    "id": log.id,
+                    "user": log.user.name,
+                    "date": log.date,
+                    "log": log.log
+                })
+
+            return {
+                "id": batch.id,
+                "name": batch.name,
+                "operator": {"id": batch.operator.id, "name": batch.operator.name} if batch.operator else None,
+                "picks": picks_data,
+                "logs": logs_data
+            }
+        except Exception as e:
+            return {"error": f"{str(e)}\n{traceback.format_exc()}"}
 
     @http.route(
         '/wmds/v2/engine/get/batch_pick',

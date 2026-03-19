@@ -37,23 +37,35 @@ class WMDSLog(models.Model):
 
         if log.pick:
             picking = log.pick
+            
+            # Record log into Sale/Purchase Orders
             if picking.sale_id:
-                new_vals['sale'] = picking.sale_id.id
-                self.with_context(wmds_log_duplicating=True).create(new_vals)
+                new_vals_sale = new_vals.copy()
+                new_vals_sale['sale'] = picking.sale_id.id
+                self.with_context(wmds_log_duplicating=True).create(new_vals_sale)
             elif picking.purchase_id:
-                new_vals['purchase'] = picking.purchase_id.id
-                self.with_context(wmds_log_duplicating=True).create(new_vals)
+                new_vals_purchase = new_vals.copy()
+                new_vals_purchase['purchase'] = picking.purchase_id.id
+                self.with_context(wmds_log_duplicating=True).create(new_vals_purchase)
             elif picking.origin:
                 if picking.origin.startswith('S'):
                     so = self.env['sale.order'].search([('name', '=', picking.origin)], limit=1)
                     if so:
-                        new_vals['sale'] = so.id
-                        self.with_context(wmds_log_duplicating=True).create(new_vals)
+                        new_vals_sale = new_vals.copy()
+                        new_vals_sale['sale'] = so.id
+                        self.with_context(wmds_log_duplicating=True).create(new_vals_sale)
                 elif picking.origin.startswith('P'):
                     po = self.env['purchase.order'].search([('name', '=', picking.origin)], limit=1)
                     if po:
-                        new_vals['purchase'] = po.id
-                        self.with_context(wmds_log_duplicating=True).create(new_vals)
+                        new_vals_purchase = new_vals.copy()
+                        new_vals_purchase['purchase'] = po.id
+                        self.with_context(wmds_log_duplicating=True).create(new_vals_purchase)
+            
+            # Record log into Batch Picking
+            if picking.batch_id:
+                new_vals_batch = new_vals.copy()
+                new_vals_batch['batch_pick'] = picking.batch_id.id
+                self.with_context(wmds_log_duplicating=True).create(new_vals_batch)
 
         elif log.batch_pick:
             batch = log.batch_pick
