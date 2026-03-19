@@ -6,17 +6,25 @@ import { patch } from "@web/core/utils/patch";
 
 patch(BarcodeModel.prototype, {
 
-    constructor(){
-        const result = super.constructor(...arguments);
-            
-            console.log(this.resId)
-            console.log(this)
-        return result
+    async onCustomAction(actionName) {
+        const recordId = this.resId;
+        const recordName = this.name || "";
+
+        if (!recordId || this.resModel !== 'stock.picking') return;
+
+        if (!recordName.includes('PACK')) return;
+
+        try {
+            const action = await this.orm.call('stock.picking', actionName, [[recordId]]);
+            if (action) {
+                await this.action.doAction(action);
+            }
+        } catch (error) {}
     },
     async _validate() {
         console.log(this)
-        /*this.onCustomAction('action_imprimir_guia')
-        this.onCustomAction('action_imprimir_tag')*/
+        this.onCustomAction('action_imprimir_guia')
+        this.onCustomAction('action_imprimir_tag')
         const isBatch = this.resModel === 'stock.picking.batch';
         const recordData = Object.assign({}, this.record);
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
