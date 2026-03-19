@@ -224,7 +224,10 @@ export default {
             this.scan_lockout = true;
             this.playBeep();
             
-            if (this.onScan) {
+            if (this.context) {
+                this.store.executeActionByContext(this.context, code, this.extra_data);
+            }
+            else if (this.onScan) {
                 this.onScan(code);
             }
 
