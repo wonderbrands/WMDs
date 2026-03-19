@@ -275,6 +275,36 @@ export const useGeneralStore = defineStore('general_store', {
     },
     executeActionByContext(context, data, extra) {
         const actionsMap = {
+            'bin_scan_so': async (scannedData, component) => {
+                if (component.so.includes(scannedData)) {
+                    component.restartScanner();
+                    return;
+                }
+                const response = await this.callOdoo("validate_attachment_guide", "", {
+                    attachment_id: scannedData,
+                });
+                if (response.valid) {
+                    component.so.push(scannedData);
+                }
+                component.restartScanner();
+            },
+            'dock_validate_bin': async (scannedData, component) => {
+                try {
+                    const parsedData = JSON.parse(scannedData);
+                    const binName = parsedData.name;
+                    const response = await this.callOdoo("validate_bin", "", { bin: binName });
+                    if (response.valid) {
+                        component.scannedBin = binName;
+                        component.packageCount = response.total_packages || 0;
+                    } else {
+                        this.toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
+                        component.scannerKey++;
+                    }
+                } catch (e) {
+                    this.toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'El código del bin no es válido.', life: 3000 });
+                    component.scannerKey++;
+                }
+            },
             'assign_pack_for_operator': async (qr, extra) => {
                 const operatorEmail = JSON.parse(qr).email;
 

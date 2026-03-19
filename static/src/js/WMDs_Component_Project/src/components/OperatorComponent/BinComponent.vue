@@ -5,9 +5,9 @@
             <div v-if="ready && !scan_bin && !showConfirmation" class="scanner-wrapper">
                 <BarcodeScannerComponent 
                     :key="scannerKey"
-                    context="scan_so"
+                    context="bin_scan_so"
+                    :extra_data="this"
                     instructions="Escanea la etiqueta de orden SO"
-                    :onScan="(data) => serachAndValidateSO(data)"
                 />
             </div>
             <div v-else-if="ready && scan_bin && !showConfirmation" class="scanner-wrapper">
@@ -108,31 +108,6 @@ export default {
         }, 500);
     },
     methods: {
-        async serachAndValidateSO(data) {
-            console.log("Action: serachAndValidateSO triggered with data:", data);
-            try {
-                if (this.so.includes(data)) {
-                    console.log("Action: Duplicate SO detected, restarting scanner");
-                    this.restartScanner();
-                    return;
-                }
-
-                console.log("Action: Calling Odoo validate_attachment_guide");
-                let response = await this.store.callOdoo("validate_attachment_guide", "", {
-                    attachment_id: data,
-                });
-
-                if (response.valid) {
-                    console.log("Action: Validation successful, pushing SO to array");
-                    this.so.push(data);
-                }
-                
-                this.restartScanner();
-            } catch (e) {
-                console.log("Action: Error in serachAndValidateSO", e);
-                this.restartScanner();
-            }
-        },
         restartScanner() {
             console.log("Action: restartScanner triggered");
             this.scannerKey++;

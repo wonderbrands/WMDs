@@ -5,8 +5,9 @@
             <div v-if="ready && !scannedBin && !showDockConfirmation" class="scanner-wrapper">
                 <QRScannerComponent 
                     :key="scannerKey"
+                    context="dock_validate_bin"
+                    :extra_data="this"
                     instructions="Escanea el BIN que vas a mover"
-                    :onScan="(data) => validateSourceBin(data)"
                 />
             </div>
             
@@ -121,34 +122,6 @@ export default {
         }, 500);
     },
     methods: {
-        async validateSourceBin(data) {
-            console.log("Action: validateSourceBin triggered with data:", data);
-            try {
-                let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-                let binName = parsedData.name;
-                
-                console.log("Action: Calling Odoo validate_bin with bin:", binName);
-                let response = await this.store.callOdoo("validate_bin", "", {
-                    bin: binName
-                });
-
-                if (response.valid) {
-                    console.log("Action: Source bin validation successful");
-                    this.scannedBin = binName;
-                    this.packageCount = response.total_packages || 0;
-                } else {
-                    console.log("Action: Source bin validation failed", response.error);
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
-                    this.scannerKey++;
-                }
-                
-            } catch (e) {
-                console.log("Action: Error in validateSourceBin", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Conexión', detail: 'No se pudo contactar al servidor.', life: 3000 });
-                this.scannerKey++; 
-            }
-        },
-
         validateDestDock(data) {
             console.log("Action: validateDestDock data received:", data);
             try {
