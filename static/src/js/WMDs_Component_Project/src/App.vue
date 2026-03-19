@@ -29,6 +29,7 @@ import RolePicker from "./components/RolePicker/RolePicker.vue"
 import ManagerComponent from "./components/ManagerComponent/ManagerComponent.vue"
 import OperatorComponent from "./components/OperatorComponent/OperatorComponent.vue"
 import QRScannerComponent from "./components/QRScannerComponent/QRScannerComponent.vue"
+import BarcodeScannerComponent from "./components/QRScannerComponent/BarcodeScannerComponent.vue"
 import LogoutComponent from "./components/RolePicker/LogoutComponent.vue"
 import BinComponent  from "./components/OperatorComponent/BinComponent.vue"
 import DockComponent  from "./components/OperatorComponent/DockComponent.vue"
@@ -45,6 +46,7 @@ export default {
     ManagerComponent,
     OperatorComponent,
     QRScannerComponent,
+    BarcodeScannerComponent,
     LogoutComponent,
     BinComponent,
     DockComponent,

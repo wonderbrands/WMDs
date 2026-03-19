@@ -276,8 +276,8 @@ export const useGeneralStore = defineStore('general_store', {
     executeActionByContext(context, data, extra) {
         const actionsMap = {
             'assign_pack_for_operator': async (qr, extra) => {
-
                 const operatorEmail = JSON.parse(qr).email;
+
                 const operatorPermissions = await this.callOdoo(
                     'get_user_role_permissions',
                     '',
@@ -288,10 +288,15 @@ export const useGeneralStore = defineStore('general_store', {
                     this.toast.add({ 
                         severity: 'error', 
                         summary: 'Permiso Denegado', 
-                        detail: 'El operador escaneado no tiene permisos de Packer.', 
-                        life: 4000 
+                        detail: 'El operador escaneado no tiene permisos de Packer. Escanee otro operador.', 
+                        life: 5000 
                     });
-                    this.mandatory_uncompleted.doneMandatory(); // Still need to finish the flow
+                    // Re-trigger the scanner by resetting the component in the mandatory_uncompleted state but keeping the context
+                    const currentProps = this.mandatory_uncompleted.component_props;
+                    this.mandatory_uncompleted.component = null; // Force re-mount
+                    await new Promise(resolve => setTimeout(resolve, 50)); // Allow Vue to process the change
+                    this.mandatory_uncompleted.component = 'BarcodeScannerComponent';
+                    this.mandatory_uncompleted.component_props = { ...currentProps }; // Re-assign props
                     return;
                 }
 
