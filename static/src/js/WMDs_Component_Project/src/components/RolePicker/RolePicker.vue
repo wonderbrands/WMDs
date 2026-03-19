@@ -1,12 +1,12 @@
 <template>
-    <div v-if="!store.loading" class="role_picker">
-        <template v-if="store.role.role === 'manager'">
+    <div class="role_picker">
+        <template v-if="!store.loading && store.role.role === 'manager'">
             <h1>¡Hola, {{ store.role.user }}!</h1>
             <h3>Elige el rol con el que usarás esta sesión</h3>
             <Button label="Manager" @click="store.setCurrentScreen('manager_screen')"/>
             <Button label="Operador" @click="store.setCurrentScreen('operator_screen')" />
         </template>
-        <template v-else-if="store.role.role === 'operator'">
+        <template v-else-if="!store.loading && store.role.role === 'operator'">
              <h1>Cargando...</h1>
         </template>
     </div>
