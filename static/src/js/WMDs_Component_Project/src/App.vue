@@ -102,24 +102,15 @@ export default {
       return screens[this.store.current_screen]
     }
   },
-  beforeMount() {
-    this.restorePersistedUser();
+  async beforeMount() {
+    this.restorePersistedUser()
+    await this.skipLogIfManager()
     this.store.mandatory_uncompleted.loadFromStorage(this.role);
 
     if (this.store.mandatory_uncompleted.screen) {
       this.store.setCurrentScreen(this.store.mandatory_uncompleted.screen);
     } else if (this.role.is_identified && !this.store.current_screen) {
       this.store.setCurrentScreen('role_picker');
-    }
-  },
-  async mounted() {
-    if (!this.role.is_identified) {
-        this.store.loading = true;
-        try {
-            await this.skipLogIfManager();
-        } finally {
-            this.store.loading = false;
-        }
     }
   },
   watch: {

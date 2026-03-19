@@ -1,11 +1,9 @@
 <template>
-    <div class="role_picker">
-        <template v-if="store.role.role === 'manager'">
-            <h1>¡Hola, {{ store.role.user }}!</h1>
-            <h3>Elige el rol con el que usarás esta sesión</h3>
-            <Button label="Manager" @click="store.setCurrentScreen('manager_screen')"/>
-            <Button label="Operador" @click="store.setCurrentScreen('operator_screen')" />
-        </template>
+    <div v-if="store.role.role === 'manager'" class="role_picker">
+        <h1>¡Hola, {{ store.role.user }}!</h1>
+        <h3>Elige el rol con el que usarás esta sesión</h3>
+        <Button label="Manager" @click="store.setCurrentScreen('manager_screen')"/>
+        <Button label="Operador" @click="store.setCurrentScreen('operator_screen')" />
     </div>
 </template>
 
@@ -24,7 +22,8 @@
             try {
                 await this.store.role.getRole();
                 await this.store.role.getPermissions();
-                if (this.store.role.role !== "manager") {
+                this.store.current_role = this.store.role.role;
+                if (this.store.current_role !== "manager") {
                     this.store.setCurrentScreen("operator_screen");
                 }
             } catch (e) {
@@ -38,4 +37,3 @@
         }
     }
 </script>
-
