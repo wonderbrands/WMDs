@@ -11,7 +11,6 @@ patch(BarcodeModel.prototype, {
         const recordName = this.name || "";
 
         if (!recordId || this.resModel !== 'stock.picking') return;
-
         if (!recordName.includes('PACK')) return;
 
         try {
@@ -21,10 +20,11 @@ patch(BarcodeModel.prototype, {
             }
         } catch (error) {}
     },
+    
     async _validate() {
         console.log(this)
-        this.onCustomAction('action_imprimir_guia')
-        this.onCustomAction('action_imprimir_tag')
+        await this.onCustomAction('action_imprimir_guia')
+        await this.onCustomAction('action_imprimir_tag')
         const isBatch = this.resModel === 'stock.picking.batch';
         const recordData = Object.assign({}, this.record);
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
@@ -154,18 +154,7 @@ patch(BarcodeModel.prototype, {
             }
         } catch (error) {}
     },
-    async onCustomAction(actionName) {
-        console.log(actionName)
-        console.log(this.env)
-        const recordId = this.env.model.record.id;
-        if (!recordId) return;
-        try {
-            const action = await this.env.services.orm.call('stock.picking', actionName, [[recordId]]);
-            if (action) {
-                await this.env.services.action.doAction(action);
-            }
-        } catch (error) {}
-    }
+    
 });
 
 patch(MainComponent.prototype, {
