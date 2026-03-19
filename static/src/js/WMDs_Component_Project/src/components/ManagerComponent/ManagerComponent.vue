@@ -24,14 +24,12 @@
             }
         },
         mounted (){
-            if(this.store.current_role != "manager") {
-                this.store.current_screen = "role_picker"
+            if(this.store.role.role != "manager") {
+                this.store.setCurrentScreen("role_picker")
             } else{
+                this.store.setMainManagerScreen('home')
                 this.store.currentScreenLoaded()
             }
-        },
-        beforeMount() {
-            this.store.setMainManagerScreen('home')
         },
         components: {
             Button,
