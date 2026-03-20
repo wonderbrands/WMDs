@@ -5,7 +5,7 @@
         <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
         
         <div class="cards-grid">
-            <Card v-for="task in filteredTasks" :key="task.id" class="task-card">
+            <Card v-for="task in filteredTasks" :key="task.id" class="task-card" @click="toggleTree(task.id)">
                 <template #title>{{ task.title }}</template> 
                 <template #subtitle>{{ task.description }}</template>
 
@@ -24,10 +24,12 @@
                         :value="task.assigned"
                         selectionMode="single"
                         v-model:selectionKeys="current_task[task.id]"
+                        v-model:expandedKeys="expandedKeys"
                         @node-select="(node) => openTask(node.pick, task.id, node.key)"
+                        @click.stop
                         class="full-width"
                     />
-                    <div v-else-if="task.view" class="custom-view-btn" @click="createView(task)">
+                    <div v-else-if="task.view" class="custom-view-btn" @click.stop="createView(task)">
                         {{ task.label }}
                     </div>
                     <div v-else class="empty-tasks">
@@ -59,6 +61,7 @@ export default {
         return {
             store: useGeneralStore(),
             current_task: {},
+            expandedKeys: {},
             taskDefinitions: [
                 { id: "ingresos", title: "Recepciones", description: "Validación de ingresos.", fetch: true, label: "Abiertas", permission: "WMDs Operator - Reception" },
                 { id: "acomodo", title: "Rackeo", description: "Acomodo de productos.", fetch: true, label: "Abiertos", permission: "WMDs Operator - Forklift operator" },
@@ -76,24 +79,22 @@ export default {
     computed: {
         filteredTasks() {
             const perms = this.store.role.permissions || [];
-            // Si es Manager ve todo, si no, filtramos por el campo 'permission'
             if (perms.includes('WMDs Manager')) return this.tasks;
             return this.tasks.filter(t => perms.includes(t.permission));
         }
     },
 
     async mounted() {
-        // 1. Obtener la zona horaria del navegador del cliente
         const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-        this.tasks = this.taskDefinitions.map(t => ({
-            ...t,
-            assigned: [{ key: `${t.id}-root`, label: t.label, selectable: false, children: [] }]
-        }));
+        this.tasks = this.taskDefinitions.map(t => ({
+            ...t,
+            assigned: [{ key: `${t.id}-root`, label: t.label, selectable: false, children: [] }]
+        }));
 
-        const fetchPromises = this.filteredTasks
-            .filter(t => t.fetch)
-            .map(async (task) => {
+        const fetchPromises = this.filteredTasks
+            .filter(t => t.fetch)
+            .map(async (task) => {
                 let data = null;
                 if(task.id==="cycle_count_assigned"){
                     data = await this.store.callOdoo(task.id, "" , { 
@@ -109,21 +110,29 @@ export default {
 
                 if (Array.isArray(data)) {
                     task.assigned[0].children = data.map((p, i) => ({
-                            key: `${task.id}-${i}`,
-                            label: p.label || p,
-                            data: p.data || p,
+                            key: `${task.id}-${i}`,
+                            label: p.label || p,
+                            data: p.data || p,
                             pick: p.pick || p,
-                            leaf: true
-                    }));
+                            leaf: true
+                    }));
                 } else {
                     task.assigned[0].children = [];
                 }
-                
-            });
-        await Promise.all(fetchPromises);
-    },
+                
+            });
+        await Promise.all(fetchPromises);
+    },
 
     methods: {
+        toggleTree(taskId) {
+            const rootKey = `${taskId}-root`;
+            if (this.expandedKeys[rootKey]) {
+                delete this.expandedKeys[rootKey];
+            } else {
+                this.expandedKeys[rootKey] = true;
+            }
+        },
         hasChildren(task) {
             return task.assigned?.[0]?.children?.length > 0;
         },
@@ -162,6 +171,11 @@ export default {
 .task-card {
     width: 25%;
     min-width: 280px;
+    cursor: pointer;
+    transition: box-shadow 0.2s;
+}
+.task-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 .logout-wrapper {
     display: flex;

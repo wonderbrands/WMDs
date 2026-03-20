@@ -1,7 +1,6 @@
 0<template>
     <div class="cycle-count-wrapper">
         <div class="cycle-count-modal">
-            <!-- WIZARD PARA CREAR NUEVO CONTEO -->
             <div v-if="isCreating">
                 <h2 class="modal-title">Nuevo Conteo Cíclico</h2>
                 <div class="wizard-stepper">
@@ -9,7 +8,6 @@
                     <div :class="['step-pill', { active: currentStep === 2 }]">2. Asignación</div>
                 </div>
 
-                <!-- PASO 1: UBICACIONES -->
                 <div v-if="currentStep === 1" class="fade-in">
                     <div class="filter-section card-background">
                         <div class="filter-group">
@@ -76,7 +74,6 @@
                     </div>
                 </div>
 
-                <!-- PASO 2: OPERADORES -->
                 <div v-if="currentStep === 2" class="fade-in">
                     <div class="card-background mb-medium">
                         <div class="flex-between">
@@ -106,9 +103,7 @@
                 </div>
             </div>
 
-            <!-- VISTA PARA GESTIONAR CONTEO EXISTENTE -->
             <div v-else class="fade-in">
-                <!-- VISTA PRINCIPAL (DETALLE DEL CICLO Y LISTA DE OLAS) -->
                 <div v-if="!detailView">
                     <div class="flex-between mb-medium">
                         <div>
@@ -157,7 +152,6 @@
                     </DataTable>
                 </div>
 
-                <!-- VISTA DE DETALLE DE UNA OLA -->
                 <div v-else-if="detailView === 'wave'">
                      <div class="flex-between mb-medium">
                         <div>
@@ -176,7 +170,6 @@
             </div>
         </div>
 
-        <!-- DIALOG PARA ASIGNAR/REASIGNAR OPERADOR -->
         <Dialog v-model:visible="operatorDialog.visible" :header="operatorDialog.title" modal class="p-fluid" style="width: 450px">
             <Listbox v-model="operatorDialog.selected" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" :multiple="operatorDialog.multiSelect" filter listStyle="max-height:250px" />
             <template #footer>
@@ -218,8 +211,7 @@ export default {
             cycleCountNotes: '',
             optionsCache: { operadores: [] },
             
-            // Master-detail view state
-            detailView: null, // null or 'wave'
+            detailView: null, 
             selectedWave: null,
             waveLines: [],
             waveLinesCols: [],
@@ -228,7 +220,7 @@ export default {
             operatorDialog: {
                 visible: false,
                 title: '',
-                mode: 'add', // 'add' or 'reassign'
+                mode: 'add', 
                 multiSelect: true,
                 selected: null
             }
