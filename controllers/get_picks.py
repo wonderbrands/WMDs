@@ -39,7 +39,7 @@ class GetPicks(http.Controller):
                 "sort_order": None if not kw.get('sort_order') else kw.get('sort_order'),
             }
 
-            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order']:
+            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order', 'tz']:
                 if popped_param in kw.keys():
                     kw.pop(popped_param)
 
@@ -492,7 +492,7 @@ class GetPicks(http.Controller):
                 "sort_order": kw.get('sort_order'),
             }
 
-            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order']:
+            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order', 'tz']:
                 if popped_param in kw:
                     kw.pop(popped_param)
 

@@ -228,14 +228,9 @@ export const useGeneralStore = defineStore('general_store', {
         const date = new Date(dateStr);
         return isNaN(date.getTime()) ? utcDate : date.toLocaleString();
     },
-    async callOdoo(context, term, params = {}) {
+    async callOdoo(context, term, params) {
         this.loading = true;
         try {
-            // Automatically add client timezone to params if not present
-            if (typeof params === 'object' && params !== null && !params.tz) {
-                params.tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            }
-
             const result = await this.odoo_middleware.getFromOdoo(context, term, params);
 
             if (result && result.error) {
