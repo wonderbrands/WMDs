@@ -71,8 +71,8 @@
             <span v-if="col.type === 'one2many'">
               {{ slotProps.data[col.field]?.name || '' }}
             </span>
-             <span v-else-if="col.type === 'date'">
-              {{ formatInTimeZone(slotProps.data[col.field]) }}
+             <span v-else-if="col.type === 'date' || col.field.includes('date')">
+              {{ store.formatDate(slotProps.data[col.field]) }}
             </span>
             <span v-else>
               {{ slotProps.data[col.field] }}
@@ -125,11 +125,6 @@ export default {
   },
 
   methods: {
-    formatInTimeZone(utcDate) {
-        if (!utcDate) return '';
-        const date = new Date(utcDate + 'Z'); 
-        return date.toLocaleString();
-    },
     cycleCountCreate(event, modal){
       event.data = event.data || {};
       

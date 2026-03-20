@@ -28,7 +28,7 @@
                         </div>
                         <div class="task-footer">
                             <span>{{ store.role.user }}</span>
-                            <span class="task-date">{{ task.date }}</span>
+                            <span class="task-date">{{ store.formatDate(task.date) }}</span>
                         </div>
                     </div>
                 </div>

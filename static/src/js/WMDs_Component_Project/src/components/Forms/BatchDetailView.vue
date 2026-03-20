@@ -56,7 +56,7 @@
             <h3 class="text-lg font-semibold mb-3">Línea de Tiempo (Logs)</h3>
             <Timeline :value="batch_data.logs" class="customized-timeline">
                 <template #opposite="slotProps">
-                    <small class="text-gray-500">{{ formatDate(slotProps.item.date) }}</small>
+                    <small class="text-gray-500">{{ store.formatDate(slotProps.item.date) }}</small>
                 </template>
                 <template #content="slotProps">
                     <div class="p-3 border-round surface-card shadow-1 mb-3">
@@ -146,11 +146,6 @@ export default {
                 // Log the reassignment locally or refresh data
                 await this.loadBatchData();
             }
-        },
-        formatDate(dateStr) {
-            if (!dateStr) return "";
-            const date = new Date(dateStr);
-            return date.toLocaleString();
         }
     },
     async mounted() {

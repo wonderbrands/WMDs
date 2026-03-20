@@ -213,9 +213,29 @@ export const useGeneralStore = defineStore('general_store', {
   getters: {
   },
   actions: {
-    async callOdoo(context, term, params) {
+    formatDate(utcDate) {
+        if (!utcDate) return '';
+        // If it's already a Date object, just return local string
+        if (utcDate instanceof Date) return utcDate.toLocaleString();
+        
+        let dateStr = String(utcDate);
+        // Odoo datetime strings are typically 'YYYY-MM-DD HH:MM:SS' in UTC
+        // We append 'Z' to ensure the browser treats it as UTC before converting to local
+        if (!dateStr.endsWith('Z') && !dateStr.includes('+')) {
+            dateStr += 'Z';
+        }
+        
+        const date = new Date(dateStr);
+        return isNaN(date.getTime()) ? utcDate : date.toLocaleString();
+    },
+    async callOdoo(context, term, params = {}) {
         this.loading = true;
         try {
+            // Automatically add client timezone to params if not present
+            if (typeof params === 'object' && params !== null && !params.tz) {
+                params.tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            }
+
             const result = await this.odoo_middleware.getFromOdoo(context, term, params);
 
             if (result && result.error) {

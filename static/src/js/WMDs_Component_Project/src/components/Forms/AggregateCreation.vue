@@ -190,7 +190,8 @@
             splitInput() {
                 const text = this.creation.create_by_aggregate.input_aggregate_data;
                 if (!text || text.trim().length === 0) return;
-                const rawValues = text.split(/[\r\n\t]+/).map(i => i.trim()).filter(i => i !== ''); 
+                // Split by newline, tab, or comma
+                const rawValues = text.split(/[\r\n\t,]+/).map(i => i.trim()).filter(i => i !== ''); 
 
                 rawValues.forEach(val => {
                     if (!this.aggregates.some(agg => agg.value === val) && !this.sentAggregates.some(agg => agg.value === val)) {

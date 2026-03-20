@@ -8,7 +8,9 @@
             <div v-for="col in merged_cols" :key="col.field" class="field">
                 
                 <FloatLabel v-if="!col.non_blocked_field">
-                    <InputText disabled :id="col.field" v-model="form_data[col.field]" :placeholder="col.label" />
+                    <InputText disabled :id="col.field" 
+                        :value="col.field.includes('date') ? store.formatDate(form_data[col.field]) : form_data[col.field]" 
+                        :placeholder="col.label" />
                     <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
                 
@@ -80,6 +82,14 @@
                         :key="col.field" 
                         :field="col.field" 
                         :header="col.name">
+                        <template #body="slotProps">
+                            <span v-if="col.field.includes('date')">
+                                {{ store.formatDate(slotProps.data[col.field]) }}
+                            </span>
+                            <span v-else>
+                                {{ slotProps.data[col.field] }}
+                            </span>
+                        </template>
                     </Column>
                 </DataTable>
             </div>
