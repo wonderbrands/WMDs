@@ -23,10 +23,32 @@
 
         <div class="mb-6">
             <h3 class="text-lg font-semibold mb-3">Órdenes que lo componen</h3>
-            <DataTable :value="batch_data.picks" stripedRows class="p-datatable-sm shadow-1 border-round overflow-hidden">
+            <DataTable 
+                :value="batch_data.picks" 
+                v-model:expandedRows="expandedRows"
+                dataKey="id"
+                @row-click="onRowClick"
+                stripedRows 
+                class="p-datatable-sm shadow-1 border-round overflow-hidden cursor-pointer"
+            >
+                <Column expander style="width: 3rem" />
                 <Column field="id" header="ID" style="width: 10%"></Column>
-                <Column field="name" header="Referencia" style="width: 45%"></Column>
-                <Column field="origin" header="Pedido (SO)" style="width: 45%"></Column>
+                <Column field="name" header="Referencia" style="width: 40%"></Column>
+                <Column field="origin" header="Pedido (SO)" style="width: 40%"></Column>
+                <template #expansion="slotProps">
+                    <div class="p-3 surface-100 border-round">
+                        <h5 class="mt-0 mb-3 text-blue-700">Productos para {{ slotProps.data.name }}</h5>
+                        <DataTable :value="products[slotProps.data.id]" v-if="products[slotProps.data.id]" class="p-datatable-sm shadow-1">
+                            <Column field="product_id" header="Producto"></Column>
+                            <Column field="sku" header="SKU"></Column>
+                            <Column field="product_uom_qty" header="Cant. Reservada" class="text-center"></Column>
+                            <Column field="product_uom" header="UM"></Column>
+                        </DataTable>
+                        <div v-else class="flex justify-content-center p-4">
+                            <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem"></i>
+                        </div>
+                    </div>
+                </template>
             </DataTable>
         </div>
 
@@ -67,10 +89,29 @@ export default {
             batch_data: null,
             operators: [],
             selected_operator: null,
-            debounceTimeout: null
+            debounceTimeout: null,
+            expandedRows: {},
+            products: {}
         }
     },
     methods: {
+        async onRowClick(event) {
+            const rowData = event.data;
+            if (this.expandedRows[rowData.id]) {
+                const newExpandedRows = { ...this.expandedRows };
+                delete newExpandedRows[rowData.id];
+                this.expandedRows = newExpandedRows;
+            } else {
+                this.expandedRows = { ...this.expandedRows, [rowData.id]: true };
+                
+                if (!this.products[rowData.id]) {
+                    const result = await this.store.callOdoo("pick_products", "", { id: rowData.id });
+                    if (!result.error) {
+                        this.products[rowData.id] = result.data;
+                    }
+                }
+            }
+        },
         async loadBatchData() {
             const batch_id = this.store.form_context.data.id;
             const result = await this.store.callOdoo("batch_details", "", { id: batch_id });
@@ -127,5 +168,8 @@ export default {
 }
 .customized-timeline {
     margin-top: 1rem;
+}
+.cursor-pointer {
+    cursor: pointer;
 }
 </style>

@@ -39,13 +39,24 @@ class PendingTasks(http.Controller):
 
             else:
                 search_domain = [
-                    ('picking_type_id.name', '=', map_task[task]),
                     ('state', '=', 'assigned'),
                 ]
 
+                if task == "acomodo":
+                    search_domain.append('|')
+                    search_domain.append(('picking_type_id.name', 'ilike', 'Storage'))
+                    search_domain.append(('picking_type_id.name', 'ilike', 'Rackeo'))
+                else:
+                    search_domain.append(('picking_type_id.name', 'ilike', map_task[task]))
+
                 if task not in ["acomodo", "ingresos"]:
                     search_domain.append(('operator.login', '=', email))
-
+                else:
+                    # For acomodos and ingresos, return all available (unassigned)
+                    # or assigned to the current user
+                    search_domain.append('|')
+                    search_domain.append(('operator', '=', False))
+                    search_domain.append(('operator.login', '=', email))
 
                 pending_tasks = env['stock.picking'].sudo().search(search_domain)
             
@@ -53,6 +64,7 @@ class PendingTasks(http.Controller):
             for record in pending_tasks:
                 batch_name = None
                 source_doc = getattr(record, 'origin', False)
+                carrier = None
                 
                 if source_doc:
                     label = f"{record.name} - {source_doc}"
@@ -63,18 +75,18 @@ class PendingTasks(http.Controller):
                 if record.scheduled_date:
                     scheduled_date_tz = fields.Datetime.context_timestamp(record, record.scheduled_date).strftime('%Y-%m-%d %H:%M:%S')
 
-                sale = env['sale.order'].sudo().search([
-                    ('name', '=', source_doc),
-                ])
-                carrier = None if not sale else sale.data_carrier_selection_relational.name
-
-                #manage if the movement is a pack
-                #if so, get the pick and get the batch it was part of 
+                # manage if the movement is a pack
+                # if so, get the pick and get the batch it was part of 
                 if task == "pack":
-                    pick = sale.picking_ids.filtered(lambda pick: "PICK" in pick.name)
-                    if len(pick)>0:
-                        batch = pick.batch_id
-                        batch_name = None if not batch else batch.name
+                    sale = env['sale.order'].sudo().search([
+                        ('name', '=', source_doc),
+                    ], limit=1)
+                    if sale:
+                        carrier = sale.data_carrier_selection_relational.name
+                        pick = sale.picking_ids.filtered(lambda p: "PICK" in p.name)
+                        if pick:
+                            batch = pick[0].batch_id
+                            batch_name = batch.name if batch else None
 
                 result.append({
                     "key": record.id,
@@ -84,7 +96,7 @@ class PendingTasks(http.Controller):
                     "origin": source_doc,
                     "date": scheduled_date_tz,
                     "carrier": carrier,
-                    "batch": None if not batch_name else batch_name
+                    "batch": batch_name
                 })
             
             return result

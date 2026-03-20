@@ -25,7 +25,43 @@ class StockWMDS(models.Model):
             not_assigned = self.env['wmds.stock.status'].search([('value', '=', 'not_assigned')], limit=1)
             if not_assigned:
                 res.wmds_status = not_assigned.id
+        else:
+            # Log initial assignment if operator is provided in create
+            self.env['wmds.log'].sudo().create({
+                'pick': res.id,
+                'log': f"Operador asignado: {res.operator.name}",
+                'user': self.env.user.id,
+            })
         return res
+
+    def write(self, vals):
+        if 'operator' in vals:
+            for record in self:
+                old_operator = record.operator
+                new_operator_id = vals.get('operator')
+                
+                if new_operator_id:
+                    new_operator = self.env['res.users'].sudo().browse(new_operator_id)
+                    if old_operator:
+                        if old_operator.id != new_operator.id:
+                            msg = f"Operador reasignado: de {old_operator.name} a {new_operator.name}"
+                        else:
+                            continue # No change
+                    else:
+                        msg = f"Operador asignado: {new_operator.name}"
+                else:
+                    if old_operator:
+                        msg = f"Operador desasignado: era {old_operator.name}"
+                    else:
+                        continue # No change
+                
+                self.env['wmds.log'].sudo().create({
+                    'pick': record.id,
+                    'log': msg,
+                    'user': self.env.user.id,
+                })
+
+        return super(StockWMDS, self).write(vals)
 
     def _get_stock_barcode_data(self):
         res = super()._get_stock_barcode_data()
@@ -75,6 +111,46 @@ class BatchWMDS(models.Model):
 
     operator = fields.Many2one('res.users', 'Operator')
     wmds_log = fields.One2many('wmds.log', 'batch_pick', string='WMDS Log')
+
+    @api.model
+    def create(self, vals):
+        res = super(BatchWMDS, self).create(vals)
+        if res.operator:
+            self.env['wmds.log'].sudo().create({
+                'batch_pick': res.id,
+                'log': f"Operador asignado al lote: {res.operator.name}",
+                'user': self.env.user.id,
+            })
+        return res
+
+    def write(self, vals):
+        if 'operator' in vals:
+            for record in self:
+                old_operator = record.operator
+                new_operator_id = vals.get('operator')
+                
+                if new_operator_id:
+                    new_operator = self.env['res.users'].sudo().browse(new_operator_id)
+                    if old_operator:
+                        if old_operator.id != new_operator.id:
+                            msg = f"Operador del lote reasignado: de {old_operator.name} a {new_operator.name}"
+                        else:
+                            continue
+                    else:
+                        msg = f"Operador asignado al lote: {new_operator.name}"
+                else:
+                    if old_operator:
+                        msg = f"Operador del lote desasignado: era {old_operator.name}"
+                    else:
+                        continue
+                
+                self.env['wmds.log'].sudo().create({
+                    'batch_pick': record.id,
+                    'log': msg,
+                    'user': self.env.user.id,
+                })
+
+        return super(BatchWMDS, self).write(vals)
 
     def _get_stock_barcode_data(self):
         res = super()._get_stock_barcode_data()
