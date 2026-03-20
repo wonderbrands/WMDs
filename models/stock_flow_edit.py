@@ -100,7 +100,7 @@ class StockWMDS(models.Model):
         if not sale_order:
             raise UserError("No se encontró un Pedido de Venta asociado a esta transferencia.")
 
-        report = self.env.ref('wb_printer_IoT.report_zpl_backup', raise_if_not_found=False)
+        report = self.env.ref('wb_printer_IoT.action_report_zpl_backup', raise_if_not_found=False)
         if not report:
             raise UserError("No se encontró el reporte wb_printer_IoT.action_report_custom_2x1.")
             
