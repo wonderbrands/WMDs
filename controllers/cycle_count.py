@@ -159,7 +159,7 @@ class CycleCount(http.Controller):
     @http.route('/wmds/v2/engine/get/cycle_count_details', type='json', auth='user', methods=['POST'])
     def get_cycle_count_details(self, **kw):
         try:
-            count = request.env['scheduled.cycle.count'].sudo().browse(kw.get('count_id'))
+            count = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).browse(kw.get('count_id'))
             return {
                 'ok': True,
                 'details': {
@@ -246,18 +246,16 @@ class CycleCount(http.Controller):
             if not count_id:
                 return {'ok': False, 'error': 'ID de ciclo requerido.'}
             
-            count = request.env['scheduled.cycle.count'].sudo().browse(count_id)
+            # Usar active_test=False para que las ubicaciones archivadas por el conteo sean visibles
+            count = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).browse(count_id)
             waves = count.wave_ids
             
-            # 1. Identificar todos los productos y ubicaciones involucrados
-            # Incluimos los planificados y los realmente contados
+            # Identificar todos los productos y ubicaciones involucrados
             planned_loc_ids = count.selected_location_ids.mapped('location_id.id')
             
             # Obtener todas las líneas de todas las olas
-            all_lines = request.env['cycle.count.line'].sudo().search([('wave_id', 'in', waves.ids)])
+            all_lines = request.env['cycle.count.line'].sudo().with_context(active_test=False).search([('wave_id', 'in', waves.ids)])
             
-            # Mapa para agrupar por (ubicacion, producto)
-            # key: (location_id, product_id)
             comparison_map = {}
             
             # Inicializar con lo contado
@@ -277,11 +275,8 @@ class CycleCount(http.Controller):
                     }
                 comparison_map[key]['wave_counts'][str(line.wave_id.id)] = line.qty
 
-            # 2. Obtener stock teórico de Odoo para estas combinaciones
-            # Y también para productos que estén en esas ubicaciones pero NO hayan sido contados (opcional, pero recomendado)
-            # Por ahora, solo comparamos lo que se contó o lo que se planificó y tiene stock
-            
-            quants = request.env['stock.quant'].sudo().search([
+            # Obtener stock teórico de Odoo (incluyendo ubicaciones inactivas)
+            quants = request.env['stock.quant'].sudo().with_context(active_test=False).search([
                 ('location_id', 'in', planned_loc_ids),
                 ('quantity', '>', 0)
             ])
@@ -347,32 +342,33 @@ class CycleCount(http.Controller):
             location_id = line_data.get('location_id')
             
             product = request.env['product.product'].sudo().browse(product_id)
-            location = request.env['stock.location'].sudo().browse(location_id)
+            # Usar active_test=False para ubicaciones archivadas
+            location = request.env['stock.location'].sudo().with_context(active_test=False).browse(location_id)
             
             if not product.exists() or not location.exists():
                 return {'ok': False, 'error': 'Producto o ubicación no válidos.'}
 
             # Realizar el ajuste de inventario vía stock.quant (Odoo 17+)
-            # Buscamos el quant existente o creamos uno
-            quant = request.env['stock.quant'].sudo().search([
+            # Buscamos el quant existente o creamos uno (incluyendo inactivos)
+            quant = request.env['stock.quant'].sudo().with_context(active_test=False).search([
                 ('product_id', '=', product.id),
                 ('location_id', '=', location.id),
-                ('lot_id', '=', False), # Asumimos sin lote por ahora, o podrías extenderlo
+                ('lot_id', '=', False),
                 ('package_id', '=', False),
                 ('owner_id', '=', False)
             ], limit=1)
             
             if not quant:
-                quant = request.env['stock.quant'].sudo().create({
+                quant = request.env['stock.quant'].sudo().with_context(active_test=False).create({
                     'product_id': product.id,
                     'location_id': location.id,
                     'inventory_quantity': new_qty,
                 })
             else:
-                quant.inventory_quantity = new_qty
+                quant.with_context(active_test=False).inventory_quantity = new_qty
             
             # Aplicar el inventario (esto genera los movimientos de stock)
-            quant.with_context(inventory_name=reason).action_apply_inventory()
+            quant.with_context(inventory_name=reason, active_test=False).action_apply_inventory()
             
             # Registrar en el log de WMDS si existe el modelo
             if hasattr(request.env['wmds.log'], 'log_action'):
