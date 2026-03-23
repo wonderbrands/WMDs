@@ -469,12 +469,16 @@ class CycleCount(http.Controller):
 
         result = []
         for wave in waves:
+            # Incluir hora en el label para que el operador la vea en el arbol de tareas
+            create_time = wave.create_date.strftime('%H:%M') if wave.create_date else ''
+            label = f"{wave.name} ({create_time})" if create_time else wave.name
+            
             result.append({
                     "key": wave.id,
-                    "label": wave.name,
+                    "label": label,
                     "data": wave.name,
                     "pick": wave.name,
-                    "date": None
+                    "date": wave.create_date.strftime('%Y-%m-%d %H:%M') if wave.create_date else None
                 })
         
         return result

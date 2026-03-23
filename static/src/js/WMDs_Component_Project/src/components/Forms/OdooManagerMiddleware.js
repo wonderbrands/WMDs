@@ -265,6 +265,48 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                     "locations":["WH/Stock"]
                 }
             
+            case "cycle_count_assigned":
+                return [
+                    { key: 1, label: "CC000001-WAVE0001 (10:00)", data: "CC000001-WAVE0001", pick: "CC000001-WAVE0001" },
+                    { key: 2, label: "CC000001-WAVE0002 (10:30)", data: "CC000001-WAVE0002", pick: "CC000001-WAVE0002" }
+                ]
+
+            case "get_cycle_count_comparison":
+                return {
+                    ok: true,
+                    waves: [
+                        { id: 1, name: "W001", operator: "Juan" },
+                        { id: 2, name: "W002", operator: "Pedro" }
+                    ],
+                    data: [
+                        { 
+                            product_id: 10, product_sku: "123", product_name: "Prod A", 
+                            location_id: 5, location_name: "Loc 1",
+                            wave_counts: { "1": 1, "2": 1 }, theoretical_qty: 4, has_discrepancy: true 
+                        },
+                        { 
+                            product_id: 11, product_sku: "456", product_name: "Prod B", 
+                            location_id: 5, location_name: "Loc 1",
+                            wave_counts: { "1": 2, "2": 2 }, theoretical_qty: 2, has_discrepancy: false 
+                        }
+                    ]
+                }
+            
+            case "adjust_cycle_count_stock":
+                return { ok: true }
+
+            case "validate_cycle_count_location":
+                return { ok: true, location_id: 5, location_name: params.location_name }
+            
+            case "validate_cycle_count_product":
+                return { ok: true, product_id: 10, product_name: "Prod Mock", product_sku: "SKU-MOCK" }
+
+            case "log_cycle_count_line":
+                return { ok: true }
+
+            case "get_cycle_count_details_minimal":
+                return { ok: true, name: "CC0001-WAVE001" }
+
             default:
                 break;
         }
@@ -311,6 +353,12 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_cycle_wave_lines: {url: '/wmds/v2/engine/get/cycle_wave_lines', method: 'POST'},
             create_waves_for_cycle: {url: '/wmds/v2/engine/create_waves_for_cycle', method: 'POST'},
             cycle_count_assigned: {url: '/wmds/v2/engine/cycle_count_assigned', method: 'POST'},
+            validate_cycle_count_location: {url: '/wmds/v2/engine/validate_cycle_count_location', method: 'POST'},
+            validate_cycle_count_product: {url: '/wmds/v2/engine/validate_cycle_count_product', method: 'POST'},
+            log_cycle_count_line: {url: '/wmds/v2/engine/log_cycle_count_line', method: 'POST'},
+            get_cycle_count_comparison: {url: '/wmds/v2/engine/get/cycle_count_comparison', method: 'POST'},
+            adjust_cycle_count_stock: {url: '/wmds/v2/engine/adjust_cycle_count_stock', method: 'POST'},
+            get_cycle_count_details_minimal: {url: '/wmds/v2/engine/get/cycle_count_details_minimal', method: 'POST'},
             get_user_role_permissions: {url: '/wmds/v2/engine/get/user_role_permissions', method: 'POST'},
         };
     }
