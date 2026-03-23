@@ -157,7 +157,10 @@
                                     <Button label="Finalizar" icon="pi pi-check" severity="success" class="p-button-text" @click.stop="finishWave(slotProps.data.id)" />
                                     <Button label="Cancelar" icon="pi pi-times" severity="danger" class="p-button-text" @click.stop="cancelWave(slotProps.data.id)" />
                                 </div>
-                                <span v-else-if="slotProps.data.state === 'done'" class="text-green-500 font-bold"><i class="pi pi-check-circle"></i> Lista</span>
+                                <div v-else-if="slotProps.data.state === 'done'" class="flex-row gap-small">
+                                    <span class="text-green-500 font-bold"><i class="pi pi-check-circle"></i> Lista</span>
+                                    <Button label="Reabrir" icon="pi pi-refresh" class="p-button-text p-button-sm" @click.stop="reopenWavePrompt(slotProps.data)" v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'" />
+                                </div>
                                 <span v-else-if="slotProps.data.state === 'cancelled'" class="text-red-500 font-bold"><i class="pi pi-ban"></i> Cancelada</span>
                                 <span v-else-if="cycleCountState === 'finalized' || cycleCountState === 'cancelled'" class="text-secondary italic">Sin acciones</span>
                             </template>
@@ -229,11 +232,12 @@
                              </template>
                         </Column>
                         
-                        <Column v-for="wave in comparisonWaves" :key="wave.id" :header="wave.name">
+                        <Column v-for="(wave, idx) in comparisonWaves" :key="wave.id">
                             <template #header>
-                                <div class="header-wave">
-                                    <span>{{ wave.name }}</span>
-                                    <small class="block">{{ wave.operator }}</small>
+                                <div class="header-wave" :title="`${wave.name} - ${wave.operator}`">
+                                    <span :class="['wave-state-indicator', wave.state]"></span>
+                                    <span class="block">W{{ idx + 1 }}</span>
+                                    <small class="block">{{ wave.operator.split(' ')[0] }}</small>
                                 </div>
                             </template>
                             <template #body="slotProps">
@@ -282,6 +286,10 @@
         <!-- Bulk Adjustment Dialog -->
         <Dialog v-model:visible="bulkAdjDialog.visible" header="Ajuste Masivo de Inventario" modal class="p-fluid" style="width: 500px">
              <div class="mb-3">
+                <div v-if="anyWaveOpen" class="warning-box mb-3">
+                    <i class="pi pi-exclamation-triangle"></i>
+                    <span>Hay olas que aún no han sido finalizadas. Se recomienda esperar a que todos los operadores terminen.</span>
+                </div>
                 <p>Estás por ajustar <strong>{{ comparisonSelection.length }}</strong> registros de inventario.</p>
                 <p class="text-danger font-bold">¡Esta acción es irreversible!</p>
             </div>
@@ -298,6 +306,10 @@
         <!-- Adjustment Dialog -->
         <Dialog v-model:visible="adjDialog.visible" header="Ajustar Stock Manualmente" modal class="p-fluid" style="width: 500px">
             <div v-if="adjDialog.line">
+                <div v-if="anyWaveOpen" class="warning-box mb-3">
+                    <i class="pi pi-exclamation-triangle"></i>
+                    <span>Hay olas abiertas. Los resultados podrían no ser definitivos.</span>
+                </div>
                 <div class="mb-3">
                     <p class="no-margin"><strong>Producto:</strong> {{ adjDialog.line.product_sku }} - {{ adjDialog.line.product_name }}</p>
                     <p class="no-margin"><strong>Ubicación:</strong> {{ adjDialog.line.location_name }}</p>
@@ -317,6 +329,17 @@
             <template #footer>
                 <Button label="Cancelar" icon="pi pi-times" @click="adjDialog.visible = false" class="p-button-text" />
                 <Button label="CONFIRMAR AJUSTE" icon="pi pi-check" severity="success" @click="confirmAdjustment" :loading="store.loading" :disabled="!adjDialog.reason" />
+            </template>
+        </Dialog>
+
+        <Dialog v-model:visible="reopenDialog.visible" header="Reabrir Ola de Conteo" modal class="p-fluid" style="width: 450px">
+            <div class="field">
+                <label class="font-bold">Motivo de Reapertura</label>
+                <InputText v-model="reopenDialog.reason" placeholder="Ej: Error en conteo de SKU..." autofocus />
+            </div>
+            <template #footer>
+                <Button label="Cancelar" icon="pi pi-times" @click="reopenDialog.visible = false" class="p-button-text" />
+                <Button label="REABRIR OLA" icon="pi pi-check" severity="warning" @click="confirmReopen" :loading="store.loading" :disabled="!reopenDialog.reason" />
             </template>
         </Dialog>
 
@@ -389,6 +412,11 @@ export default {
                 visible: false,
                 reason: ''
             },
+            reopenDialog: {
+                visible: false,
+                wave: null,
+                reason: ''
+            },
 
             // Operator dialog state
             operatorDialog: {
@@ -428,6 +456,9 @@ export default {
         },
         canBulkAdjust() {
             return this.comparisonSelection.length > 0;
+        },
+        anyWaveOpen() {
+            return this.comparisonWaves.some(w => w.state !== 'done' && w.state !== 'cancelled');
         },
         filteredSearchResults() {
             if (!this.debouncedSearchQueryResults) return this.searchResults;
@@ -574,6 +605,7 @@ export default {
         },
         async confirmBulkAdjustment() {
             if (!this.bulkAdjDialog.reason) return;
+            if (this.anyWaveOpen && !confirm("Hay olas abiertas. ¿Estás seguro de que quieres proceder con el ajuste masivo?")) return;
             this.store.loading = true;
             try {
                 let count = 0;
@@ -614,6 +646,7 @@ export default {
         },
         async confirmAdjustment() {
             if (!this.adjDialog.reason) return;
+            if (this.anyWaveOpen && !confirm("Hay olas abiertas. ¿Proceder con el ajuste?")) return;
             const res = await this.store.callOdoo("adjust_cycle_count_stock", "", {
                 line: this.adjDialog.line,
                 new_qty: this.adjDialog.qty,
@@ -642,6 +675,25 @@ export default {
                 this.operatorDialog.selected = null;
             }
             this.operatorDialog.visible = true;
+        },
+        reopenWavePrompt(wave) {
+            this.reopenDialog.wave = wave;
+            this.reopenDialog.reason = '';
+            this.reopenDialog.visible = true;
+        },
+        async confirmReopen() {
+            if (!this.reopenDialog.reason) return;
+            let res = await this.store.callOdoo("reopen_cycle_count_wave", "", {
+                wave_id: this.reopenDialog.wave.id,
+                reason: this.reopenDialog.reason
+            });
+            if (res.ok) {
+                this.reopenDialog.visible = false;
+                await this.loadExistingCountDetails();
+                if (this.detailView === 'comparison') {
+                    await this.showComparisonReport();
+                }
+            }
         },
         async handleOperatorSave() {
             if (this.operatorDialog.mode === 'add') {
@@ -723,4 +775,55 @@ export default {
 :deep(.input-center input) { text-align: center !important; }
 .text-danger { color: #dc3545; }
 .font-bold { font-weight: bold; }
+
+/* Custom Scrollbar Visibility */
+:deep(.p-datatable-wrapper), :deep(.p-datatable-scrollable-body) {
+    scrollbar-width: auto;
+    scrollbar-color: #3498db #f1f1f1;
+}
+
+:deep(::-webkit-scrollbar) {
+    width: 10px;
+    height: 10px;
+}
+
+:deep(::-webkit-scrollbar-track) {
+    background: #f1f1f1;
+    border-radius: 5px;
+}
+
+:deep(::-webkit-scrollbar-thumb) {
+    background: #3498db;
+    border-radius: 5px;
+    border: 2px solid #f1f1f1;
+}
+
+:deep(::-webkit-scrollbar-thumb:hover) {
+    background: #2980b9;
+}
+
+/* Wave State Indicators */
+.wave-state-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+}
+.wave-state-indicator.draft { background-color: #95a5a6; }
+.wave-state-indicator.ongoing { background-color: #f1c40f; }
+.wave-state-indicator.done { background-color: #2ecc71; }
+.wave-state-indicator.cancelled { background-color: #e74c3c; }
+
+.warning-box {
+    background: #fff3cd;
+    border: 1px solid #ffeeba;
+    color: #856404;
+    padding: 10px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.9rem;
+}
 </style>

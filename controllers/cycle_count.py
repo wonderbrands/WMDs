@@ -320,11 +320,35 @@ class CycleCount(http.Controller):
 
             return {
                 'ok': True,
-                'waves': [{'id': w.id, 'name': w.name, 'operator': w.operator_id.name} for w in waves],
+                'waves': [{'id': w.id, 'name': w.name, 'operator': w.operator_id.name, 'state': w.state} for w in waves],
                 'data': report_data
             }
         except Exception as e:
             _logger.error(f"Error en reporte de comparación: {e}")
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/reopen_cycle_count_wave', type='json', auth='user', methods=['POST'])
+    def reopen_cycle_count_wave(self, **kw):
+        try:
+            wave_id = kw.get('wave_id')
+            reason = kw.get('reason', 'Sin motivo especificado')
+            wave = request.env['cycle.count.wave'].sudo().browse(wave_id)
+            if not wave.exists():
+                return {'ok': False, 'error': 'Ola no encontrada.'}
+            
+            wave.write({'state': 'ongoing'})
+            
+            # Registrar en log
+            if hasattr(request.env['wmds.log'], 'log_action'):
+                request.env['wmds.log'].sudo().log_action(
+                    'wave_reopen',
+                    f"Ola {wave.name} reabierta. Motivo: {reason}",
+                    res_model='cycle.count.wave',
+                    res_id=wave.id
+                )
+            
+            return {'ok': True}
+        except Exception as e:
             return {'ok': False, 'error': str(e)}
 
     @http.route('/wmds/v2/engine/adjust_cycle_count_stock', type='json', auth='user', methods=['POST'])

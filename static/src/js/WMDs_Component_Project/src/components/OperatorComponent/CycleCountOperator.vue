@@ -19,6 +19,13 @@
                 </div>
             </div>
             <Button 
+                @click="finishWave"
+                class="p-button-text p-button-success p-button-sm mr-2" 
+                label="Finalizar" 
+                icon="pi pi-check-circle"
+                :loading="loading"
+            />
+            <Button 
                 @click="exitFlow"
                 class="p-button-text p-button-danger p-button-sm exit-btn" 
                 label="Salir" 
@@ -232,6 +239,24 @@ export default {
                 }
             } catch (e) {
                 this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar el conteo.', life: 3000 });
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async finishWave() {
+            if (!confirm("¿Estás seguro de que quieres finalizar esta ola? Ya no podrás registrar más productos.")) return;
+            this.loading = true;
+            try {
+                let res = await this.store.callOdoo("finish_cycle_count_wave", "", { wave_id: this.waveId });
+                if (res.ok) {
+                    this.$toast.add({ severity: 'success', summary: 'Finalizado', detail: 'Ola completada con éxito.', life: 3000 });
+                    this.store.mandatory_uncompleted.doneMandatory();
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 3000 });
+                }
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo finalizar la ola.', life: 3000 });
             } finally {
                 this.loading = false;
             }
