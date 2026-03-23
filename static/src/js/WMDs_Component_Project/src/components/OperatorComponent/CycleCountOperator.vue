@@ -1,220 +1,256 @@
 <template>
-    <div class="test-flow-container">
+    <div class="cycle-count-operator-container">
         
-        <div class="scanner-col">
-            <div v-if="ready && !scannedBin && !showDockConfirmation" class="scanner-wrapper">
-                <QRScannerComponent 
-                    :key="scannerKey"
-                    instructions="Escanea el BIN que vas a mover"
-                    :onScan="(data) => validateSourceBin(data)"
-                />
+        <!-- Header Info -->
+        <div class="operator-header">
+            <div class="wave-info">
+                <span class="label">OLA:</span>
+                <span class="value">{{ waveName }}</span>
             </div>
-            
-            <div v-else-if="ready && scannedBin && !showDockConfirmation" class="scanner-wrapper">
-                <Button 
-                    icon="pi pi-arrow-left" 
-                    @click="resetScan" 
-                    class="p-button-rounded p-button-secondary back-button" 
-                />
-                <QRScannerComponent 
-                    :key="scannerKey + 1"
-                    instructions="Escanea la ubicación DOCK"
-                    :onScan="(data) => validateDestDock(data)"
-                />
-            </div>
-
-            <div v-else-if="showDockConfirmation" class="confirmation-wrapper">
-                <div class="confirmation-content">
-                    <i class="pi pi-directions-alt confirmation-icon"></i>
-                    <h3>Confirmar Traslado a DOCK</h3>
-                    <div class="route-summary">
-                        <div class="route-point">
-                            <span class="label">ORIGEN</span>
-                            <span class="value">{{ scannedBin }}</span>
-                        </div>
-                        <i class="pi pi-arrow-right"></i>
-                        <div class="route-point">
-                            <span class="label">DESTINO</span>
-                            <span class="value">{{ targetDock }}</span>
-                        </div>
-                    </div>
-                    <p class="packages-alert">Se moverán <b>{{ packageCount }}</b> paquetes en total.</p>
-                    <div class="confirmation-buttons">
-                        <Button label="Confirmar Envío" icon="pi pi-check" class="p-button-success" @click="confirmDockMove" />
-                        <Button label="Corregir DOCK" icon="pi pi-refresh" class="p-button-secondary" @click="cancelDockConfirmation" />
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="buttons-col" v-if="!showDockConfirmation">
             <Button 
                 @click="exitFlow"
-                class="p-button-text p-button-danger p-button-sm" 
-                label="Salir / Finalizar" 
+                class="p-button-text p-button-danger p-button-sm exit-btn" 
+                label="Salir" 
                 icon="pi pi-times"
             />
         </div>
 
-        <div class="log-col">
-            <div class="log-header">
-                Traslado a DOCK
+        <!-- Main Workflow Area -->
+        <div class="workflow-area">
+            
+            <!-- Step 1: Scan Location -->
+            <div v-if="step === 'location'" class="step-container">
+                <div class="scanner-section">
+                    <BarcodeScannerComponent 
+                        :key="scannerKey"
+                        instructions="Escanea la UBICACIÓN a contar"
+                        :onScan="(data) => handleLocationScan(data)"
+                    />
+                </div>
             </div>
 
-            <div class="status-content">
-                <div v-if="!scannedBin" class="empty-status">
-                    <i class="pi pi-box status-icon"></i>
-                    Esperando escaneo del BIN origen...
+            <!-- Step 2: Scan Product -->
+            <div v-else-if="step === 'product'" class="step-container">
+                <div class="current-context">
+                    <div class="context-item">
+                        <i class="pi pi-map-marker"></i>
+                        <span>{{ current_location.name }}</span>
+                        <Button icon="pi pi-pencil" class="p-button-rounded p-button-text p-button-sm" @click="resetToLocation" />
+                    </div>
+                </div>
+                <div class="scanner-section">
+                    <BarcodeScannerComponent 
+                        :key="scannerKey"
+                        instructions="Escanea el PRODUCTO"
+                        :onScan="(data) => handleProductScan(data)"
+                    />
+                </div>
+            </div>
+
+            <!-- Step 3: Set Quantity -->
+            <div v-else-if="step === 'quantity'" class="step-container quantity-step">
+                <div class="current-context">
+                    <div class="context-item">
+                        <i class="pi pi-map-marker"></i>
+                        <span>{{ current_location.name }}</span>
+                    </div>
+                    <div class="context-item">
+                        <i class="pi pi-box"></i>
+                        <div class="product-info">
+                            <span class="product-name">{{ current_product.name }}</span>
+                            <span class="product-sku">{{ current_product.sku }}</span>
+                        </div>
+                    </div>
                 </div>
 
-                <div v-else class="active-status">
-                    <div class="bin-scanned">
-                        <i class="pi pi-box me-2"></i> {{ scannedBin }}
+                <div class="quantity-form">
+                    <label>Cantidad Contada</label>
+                    <div class="qty-input-wrapper">
+                        <Button icon="pi pi-minus" @click="quantity > 0 ? quantity-- : 0" class="p-button-outlined" />
+                        <InputNumber v-model="quantity" :min="0" class="qty-input" autofocus />
+                        <Button icon="pi pi-plus" @click="quantity++" class="p-button-outlined" />
                     </div>
-                    <div class="package-count">
-                        <i class="pi pi-check-circle me-1"></i> {{ packageCount }} paquetes detectados
-                    </div>
-                    
-                    <div v-if="!showDockConfirmation">
-                        <div class="status-instruction">
-                            Listo para mover. <br> Escanea el DOCK de destino.
-                        </div>
-                        <i class="pi pi-arrow-down bounce-icon"></i>
-                    </div>
-                    <div v-else class="status-confirmed">
-                        <i class="pi pi-spin pi-spinner me-2"></i> Esperando confirmación de despacho...
+                    <div class="form-actions">
+                        <Button label="CANCELAR" icon="pi pi-times" class="p-button-secondary p-button-text" @click="step = 'product'" />
+                        <Button label="CONFIRMAR" icon="pi pi-check" class="p-button-success" @click="confirmCount" :loading="loading" />
                     </div>
                 </div>
             </div>
         </div>
+
+        <!-- Session Log -->
+        <div class="session-log">
+            <div class="log-title">Conteo en esta sesión:</div>
+            <div class="log-items">
+                <div v-for="(item, idx) in session_log" :key="idx" class="log-item">
+                    <div class="log-details">
+                        <span class="log-loc">{{ item.location }}</span>
+                        <span class="log-prod">{{ item.product }}</span>
+                    </div>
+                    <div class="log-qty">{{ item.qty }}</div>
+                </div>
+                <div v-if="session_log.length === 0" class="empty-log">
+                    No has registrado productos aún.
+                </div>
+            </div>
+        </div>
+
     </div>
 </template>
 
 <script>
-import QRScannerComponent from '../QRScannerComponent/QRScannerComponent.vue';
+import BarcodeScannerComponent from '../QRScannerComponent/BarcodeScannerComponent.vue';
 import Button from 'primevue/button';
+import InputNumber from 'primevue/inputnumber';
 import { useGeneralStore } from "../../store/index";
 
 export default {
     name: "CycleCountOperator",
     components: {
-        QRScannerComponent,
-        Button
+        BarcodeScannerComponent,
+        Button,
+        InputNumber
     },
     data() {
         return {
             store: useGeneralStore(),
             ready: false,
+            loading: false,
             scannerKey: 0,
-            scannedBin: null,
-            packageCount: 0,
-            showDockConfirmation: false,
-            targetDock: null
+            step: 'location', // location, product, quantity
+            current_location: { id: null, name: '' },
+            current_product: { id: null, name: '', sku: '' },
+            quantity: 0,
+            session_log: [],
+            waveId: null,
+            waveName: 'Cargando...'
         }
     },
-    mounted() {
-        console.log("Action: Component mounted");
+    async mounted() {
+        this.waveId = this.store.mandatory_uncompleted.component_props?.cc_id;
+        if (!this.waveId) {
+            this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se encontró ID de ola.', life: 3000 });
+            this.exitFlow();
+            return;
+        }
+        
+        // Cargar nombre de la ola si es necesario, o usar el que viene
+        // Por ahora asumimos que el store o props lo tienen o lo recuperamos
+        this.waveName = "Cargando...";
+        await this.loadWaveInfo();
+        
         localStorage.removeItem("mandatory_uncompleted");
-        setTimeout(() => {
-            this.ready = true;
-            console.log("Action: Component ready state set to true");
-        }, 500);
+        this.ready = true;
     },
     methods: {
-        async validateSourceBin(data) {
-            console.log("Action: validateSourceBin triggered with data:", data);
-            try {
-                let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-                let binName = parsedData.name;
-                
-                console.log("Action: Calling Odoo validate_bin with bin:", binName);
-                let response = await this.store.callOdoo("validate_bin", "", {
-                    bin: binName
-                });
-
-                if (response.valid) {
-                    console.log("Action: Source bin validation successful");
-                    this.scannedBin = binName;
-                    this.packageCount = response.total_packages || 0;
-                } else {
-                    console.log("Action: Source bin validation failed", response.error);
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
-                    this.scannerKey++;
-                }
-                
-            } catch (e) {
-                console.log("Action: Error in validateSourceBin", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Conexión', detail: 'No se pudo contactar al servidor.', life: 3000 });
-                this.scannerKey++; 
+        async loadWaveInfo() {
+            // Podríamos llamar a un endpoint para obtener detalles de la ola
+            // Por simplicidad, si no tenemos el nombre lo dejamos así o lo buscamos
+            let res = await this.store.callOdoo("get_cycle_count_details_minimal", "", { wave_id: this.waveId });
+            if (res && res.ok) {
+                this.waveName = res.name;
             }
         },
 
-        validateDestDock(data) {
-            console.log("Action: validateDestDock data received:", data);
+        async handleLocationScan(data) {
+            console.log("Location Scanned:", data);
             try {
-                let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-                this.targetDock = parsedData.name;
-                this.showDockConfirmation = true;
-                console.log("Action: Showing confirmation screen for dock:", this.targetDock);
+                let res = await this.store.callOdoo("validate_cycle_count_location", "", {
+                    wave_id: this.waveId,
+                    location_name: data
+                });
+
+                if (res.ok) {
+                    this.current_location = {
+                        id: res.location_id,
+                        name: res.location_name
+                    };
+                    this.step = 'product';
+                    this.scannerKey++;
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Ubicación Inválida', detail: res.error, life: 3000 });
+                    this.scannerKey++;
+                }
             } catch (e) {
-                console.log("Action: Error parsing dock data", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'Código de DOCK no reconocido.', life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Error al validar ubicación.', life: 3000 });
                 this.scannerKey++;
             }
         },
 
-        async confirmDockMove() {
-            console.log("Action: confirmDockMove triggered");
+        async handleProductScan(data) {
+            console.log("Product Scanned:", data);
             try {
-                console.log("Action: Calling Odoo move_bin_to_dock with bin:", this.scannedBin, "and dock:", this.targetDock);
-                let response = await this.store.callOdoo("move_bin_to_dock", "", {
-                    bin: this.scannedBin,
-                    dock: this.targetDock,
-                    operator: this.store.role.email
+                let res = await this.store.callOdoo("validate_cycle_count_product", "", {
+                    barcode: data
                 });
 
-                if (response.ok) {
-                    console.log("Action: Move successful");
-                    this.$toast.add({ severity: 'success', summary: 'Éxito', detail: `Se movieron ${response.moved_packages} paquetes al DOCK ${this.targetDock}`, life: 3000 });
-                    this.resetScan();
-                    this.showDockConfirmation = false;
-                    this.targetDock = null;
+                if (res.ok) {
+                    this.current_product = {
+                        id: res.product_id,
+                        name: res.product_name,
+                        sku: res.product_sku
+                    };
+                    this.quantity = 1;
+                    this.step = 'quantity';
                 } else {
-                    console.log("Action: Move failed", response.error);
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
+                    this.$toast.add({ severity: 'error', summary: 'Producto no encontrado', detail: res.error, life: 3000 });
+                    this.scannerKey++;
                 }
-
             } catch (e) {
-                console.log("Action: Error in confirmDockMove", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Conexión', detail: 'No se pudo contactar al servidor.', life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Error al validar producto.', life: 3000 });
+                this.scannerKey++;
             }
         },
 
-        cancelDockConfirmation() {
-            console.log("Action: cancelDockConfirmation triggered");
-            this.showDockConfirmation = false;
-            this.targetDock = null;
-            this.scannerKey++;
+        async confirmCount() {
+            this.loading = true;
+            try {
+                let res = await this.store.callOdoo("log_cycle_count_line", "", {
+                    wave_id: this.waveId,
+                    location_id: this.current_location.id,
+                    product_id: this.current_product.id,
+                    qty: this.quantity,
+                    operator_email: this.store.role.email
+                });
+
+                if (res.ok) {
+                    this.$toast.add({ severity: 'success', summary: 'Registrado', detail: 'Conteo guardado con éxito.', life: 2000 });
+                    
+                    // Agregar al log local
+                    this.session_log.unshift({
+                        location: this.current_location.name,
+                        product: this.current_product.sku || this.current_product.name,
+                        qty: this.quantity
+                    });
+
+                    // Limpiar producto y volver a escanear producto (manteniendo ubicación)
+                    this.current_product = { id: null, name: '', sku: '' };
+                    this.quantity = 0;
+                    this.step = 'product';
+                    this.scannerKey++;
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 3000 });
+                }
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar el conteo.', life: 3000 });
+            } finally {
+                this.loading = false;
+            }
         },
 
-        resetScan() {
-            console.log("Action: resetScan triggered");
-            this.scannedBin = null;
-            this.packageCount = 0;
-            this.showDockConfirmation = false;
-            this.targetDock = null;
+        resetToLocation() {
+            this.current_location = { id: null, name: '' };
+            this.current_product = { id: null, name: '', sku: '' };
+            this.step = 'location';
             this.scannerKey++;
         },
 
         exitFlow() {
-            console.log("Action: exitFlow triggered");
-            if (this.scannedBin) {
-                if (!confirm("Tienes un movimiento a medias. ¿Seguro que quieres salir?")) {
-                    console.log("Action: exitFlow cancelled by user");
+            if (this.step !== 'location') {
+                if (!confirm("¿Estás seguro de que quieres salir? Se perderá el progreso de la ubicación actual si no has confirmado.")) {
                     return;
                 }
             }
-            console.log("Action: Finalizing flow");
             this.store.mandatory_uncompleted.doneMandatory();
         }
     }
@@ -222,179 +258,184 @@ export default {
 </script>
 
 <style scoped>
-.test-flow-container {
+.cycle-count-operator-container {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
     height: 90vh;
-    max-height: 90%;
     padding: 10px;
     box-sizing: border-box;
-}
-
-.scanner-col {
-    height: 35%;
-    display: flex;
+    background: #f4f7f6;
     gap: 10px;
 }
 
-.scanner-wrapper, .confirmation-wrapper {
-    flex: 1;
-    overflow: hidden;
-    position: relative;
-}
-
-.confirmation-wrapper {
+.operator-header {
     display: flex;
-    justify-content: center;
+    justify-content: space-between;
     align-items: center;
-    background: #ffffff;
+    background: #fff;
+    padding: 10px 15px;
     border-radius: 8px;
-    border: 2px solid #3498db;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.wave-info .label {
+    font-size: 0.7rem;
+    color: #888;
+    font-weight: bold;
+    display: block;
+}
+
+.wave-info .value {
+    font-size: 1rem;
+    font-weight: 800;
     color: #2c3e50;
-    padding: 15px;
 }
 
-.confirmation-content h3 {
-    margin: 10px 0;
-    color: #2980b9;
+.workflow-area {
+    flex: 2;
+    background: #fff;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
-.confirmation-icon {
-    font-size: 2.5rem;
+.step-container {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.scanner-section {
+    flex: 1;
+}
+
+.current-context {
+    background: #eef2f3;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border-bottom: 1px solid #ddd;
+}
+
+.context-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: bold;
+    color: #34495e;
+}
+
+.context-item i {
     color: #3498db;
 }
 
-.route-summary {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 20px;
-    margin: 15px 0;
-    padding: 10px;
-    background: #f8f9fa;
-    border-radius: 4px;
-}
-
-.route-point {
+.product-info {
     display: flex;
     flex-direction: column;
 }
 
-.route-point .label {
-    font-size: 0.7rem;
+.product-sku {
+    font-size: 0.8rem;
     color: #7f8c8d;
-    font-weight: bold;
 }
 
-.route-point .value {
-    font-size: 1.1rem;
-    font-weight: bold;
-    color: #2c3e50;
-}
-
-.packages-alert {
-    font-size: 0.9rem;
-    margin-bottom: 15px;
-}
-
-.confirmation-buttons {
-    display: flex;
-    gap: 10px;
+.quantity-step {
+    padding: 20px;
     justify-content: center;
 }
 
-.back-button {
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    z-index: 100;
-}
-
-.buttons-col {
-    height: 10%;
+.quantity-form {
     display: flex;
     flex-direction: column;
-    justify-content: center;
     align-items: center;
-    padding-bottom: 10px;
+    gap: 20px;
+    margin-top: 20px;
 }
 
-.log-col {
-    flex: 1;
+.quantity-form label {
+    font-weight: bold;
+    font-size: 1.2rem;
+}
+
+.qty-input-wrapper {
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+}
+
+.qty-input {
+    width: 120px;
+}
+
+:deep(.qty-input input) {
+    text-align: center;
+    font-size: 2rem;
+    font-weight: bold;
+}
+
+.form-actions {
+    display: flex;
+    gap: 20px;
+    width: 100%;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.session-log {
+    flex: 1;
     background: #2c3e50;
+    color: #ecf0f1;
     border-radius: 8px;
     padding: 15px;
-    color: #ecf0f1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.log-title {
+    font-weight: bold;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #555;
+    padding-bottom: 5px;
+}
+
+.log-items {
+    flex: 1;
     overflow-y: auto;
 }
 
-.log-header {
-    text-align: center;
-    margin-bottom: 20px;
-    font-size: 1.2rem;
-    font-weight: bold;
-    border-bottom: 1px solid #5d6d7e;
-    padding-bottom: 10px;
+.log-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid #3e4f5f;
+    font-size: 0.9rem;
 }
 
-.status-content {
-    flex: 1;
+.log-details {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    gap: 20px;
 }
 
-.empty-status {
-    text-align: center;
-    color: #7f8c8d;
-}
-
-.status-icon {
-    font-size: 3rem;
-    display: block;
-    margin-bottom: 15px;
-}
-
-.active-status {
-    text-align: center;
-}
-
-.bin-scanned {
-    font-size: 1.5rem;
-    color: #f39c12;
-    margin-bottom: 5px;
-}
-
-.package-count {
-    font-size: 1rem;
-    color: #2ecc71;
-    margin-bottom: 15px;
-}
-
-.status-instruction {
-    color: #ecf0f1;
-    margin-bottom: 20px;
-}
-
-.status-confirmed {
-    color: #3498db;
+.log-loc {
     font-weight: bold;
-}
-
-.bounce-icon {
-    font-size: 2rem;
     color: #3498db;
-    animation: bounce 2s infinite;
+    font-size: 0.8rem;
 }
 
-@keyframes bounce {
-  0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
-  40% {transform: translateY(-15px);}
-  60% {transform: translateY(-7px);}
+.log-qty {
+    font-weight: bold;
+    font-size: 1.2rem;
+    color: #2ecc71;
+}
+
+.empty-log {
+    text-align: center;
+    color: #95a5a6;
+    margin-top: 20px;
+    font-style: italic;
 }
 </style>

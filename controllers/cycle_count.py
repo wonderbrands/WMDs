@@ -239,6 +239,166 @@ class CycleCount(http.Controller):
         except Exception as e:
             return {'ok': False, 'error': str(e)}
 
+    @http.route('/wmds/v2/engine/get/cycle_count_comparison', type='json', auth='user', methods=['POST'])
+    def get_cycle_count_comparison(self, **kw):
+        try:
+            count_id = kw.get('count_id')
+            if not count_id:
+                return {'ok': False, 'error': 'ID de ciclo requerido.'}
+            
+            count = request.env['scheduled.cycle.count'].sudo().browse(count_id)
+            waves = count.wave_ids
+            
+            # 1. Identificar todos los productos y ubicaciones involucrados
+            # Incluimos los planificados y los realmente contados
+            planned_loc_ids = count.selected_location_ids.mapped('location_id.id')
+            
+            # Obtener todas las líneas de todas las olas
+            all_lines = request.env['cycle.count.line'].sudo().search([('wave_id', 'in', waves.ids)])
+            
+            # Mapa para agrupar por (ubicacion, producto)
+            # key: (location_id, product_id)
+            comparison_map = {}
+            
+            # Inicializar con lo contado
+            for line in all_lines:
+                if not line.product_id or not line.stock_location_id:
+                    continue
+                key = (line.stock_location_id.id, line.product_id.id)
+                if key not in comparison_map:
+                    comparison_map[key] = {
+                        'location_id': line.stock_location_id.id,
+                        'location_name': line.stock_location_id.complete_name,
+                        'product_id': line.product_id.id,
+                        'product_sku': line.product_id.default_code or 'N/A',
+                        'product_name': line.product_id.name,
+                        'wave_counts': {str(w.id): '-' for w in waves},
+                        'theoretical_qty': 0,
+                    }
+                comparison_map[key]['wave_counts'][str(line.wave_id.id)] = line.qty
+
+            # 2. Obtener stock teórico de Odoo para estas combinaciones
+            # Y también para productos que estén en esas ubicaciones pero NO hayan sido contados (opcional, pero recomendado)
+            # Por ahora, solo comparamos lo que se contó o lo que se planificó y tiene stock
+            
+            quants = request.env['stock.quant'].sudo().search([
+                ('location_id', 'in', planned_loc_ids),
+                ('quantity', '>', 0)
+            ])
+            
+            for q in quants:
+                key = (q.location_id.id, q.product_id.id)
+                if key not in comparison_map:
+                    comparison_map[key] = {
+                        'location_id': q.location_id.id,
+                        'location_name': q.location_id.complete_name,
+                        'product_id': q.product_id.id,
+                        'product_sku': q.product_id.default_code or 'N/A',
+                        'product_name': q.product_id.name,
+                        'wave_counts': {str(w.id): '-' for w in waves},
+                        'theoretical_qty': 0,
+                    }
+                comparison_map[key]['theoretical_qty'] += q.quantity
+
+            # 3. Formatear data final y detectar discrepancias
+            report_data = []
+            for entry in comparison_map.values():
+                # Calculamos si hay discrepancia
+                # Una discrepancia ocurre si algun conteo de ola difiere del teorico
+                # o si las olas difieren entre sí.
+                counts = [v for v in entry['wave_counts'].values() if v != '-']
+                theo = entry['theoretical_qty']
+                
+                has_discrepancy = False
+                if not counts and theo > 0:
+                    has_discrepancy = True
+                else:
+                    for c in counts:
+                        if c != theo:
+                            has_discrepancy = True
+                            break
+                    if len(set(counts)) > 1:
+                        has_discrepancy = True
+                
+                entry['has_discrepancy'] = has_discrepancy
+                report_data.append(entry)
+
+            return {
+                'ok': True,
+                'waves': [{'id': w.id, 'name': w.name, 'operator': w.operator_id.name} for w in waves],
+                'data': report_data
+            }
+        except Exception as e:
+            _logger.error(f"Error en reporte de comparación: {e}")
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/adjust_cycle_count_stock', type='json', auth='user', methods=['POST'])
+    def adjust_cycle_count_stock(self, **kw):
+        try:
+            line_data = kw.get('line')
+            new_qty = float(kw.get('new_qty', 0))
+            reason = kw.get('reason', '')
+            count_name = kw.get('count_name', '')
+            
+            if not line_data or not reason:
+                return {'ok': False, 'error': 'Datos insuficientes para el ajuste.'}
+            
+            product_id = line_data.get('product_id')
+            location_id = line_data.get('location_id')
+            
+            product = request.env['product.product'].sudo().browse(product_id)
+            location = request.env['stock.location'].sudo().browse(location_id)
+            
+            if not product.exists() or not location.exists():
+                return {'ok': False, 'error': 'Producto o ubicación no válidos.'}
+
+            # Realizar el ajuste de inventario vía stock.quant (Odoo 17+)
+            # Buscamos el quant existente o creamos uno
+            quant = request.env['stock.quant'].sudo().search([
+                ('product_id', '=', product.id),
+                ('location_id', '=', location.id),
+                ('lot_id', '=', False), # Asumimos sin lote por ahora, o podrías extenderlo
+                ('package_id', '=', False),
+                ('owner_id', '=', False)
+            ], limit=1)
+            
+            if not quant:
+                quant = request.env['stock.quant'].sudo().create({
+                    'product_id': product.id,
+                    'location_id': location.id,
+                    'inventory_quantity': new_qty,
+                })
+            else:
+                quant.inventory_quantity = new_qty
+            
+            # Aplicar el inventario (esto genera los movimientos de stock)
+            quant.with_context(inventory_name=reason).action_apply_inventory()
+            
+            # Registrar en el log de WMDS si existe el modelo
+            if hasattr(request.env['wmds.log'], 'log_action'):
+                request.env['wmds.log'].sudo().log_action(
+                    'stock_adjustment',
+                    f"Ajuste manual desde conteo {count_name}. Motivo: {reason}. Nueva cantidad: {new_qty}",
+                    res_model='product.product',
+                    res_id=product.id
+                )
+
+            return {'ok': True}
+        except Exception as e:
+            _logger.error(f"Error ajustando stock: {e}")
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/get/cycle_count_details_minimal', type='json', auth='user', methods=['POST'])
+    def get_cycle_count_details_minimal(self, **kw):
+        try:
+            wave_id = kw.get('wave_id')
+            wave = request.env['cycle.count.wave'].sudo().browse(wave_id)
+            if wave.exists():
+                return {'ok': True, 'name': wave.name}
+            return {'ok': False, 'error': 'Ola no encontrada.'}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
     @http.route('/wmds/v2/engine/get/cycle_wave_lines', type='json', auth='user', methods=['POST'])
     def get_cycle_wave_lines(self, **kw):
         try:
@@ -257,11 +417,11 @@ class CycleCount(http.Controller):
             
             data = [{
                 'id': line.id,
-                'product_name': line.product_id.display_name,
-                'product_sku': line.product_id.default_code,
+                'product_name': line.product_id.display_name if line.product_id else '---',
+                'product_sku': line.product_id.default_code if line.product_id else '---',
                 'location_name': line.stock_location_id.complete_name,
                 'qty': line.qty,
-            } for line in lines]
+            } for line in lines if line.product_id]
             
             return {'ok': True, 'map_cols': map_cols, 'data': data, 'total_count': len(lines)}
         except Exception as e:
@@ -318,4 +478,117 @@ class CycleCount(http.Controller):
                 })
         
         return result
-    
+
+    @http.route('/wmds/v2/engine/validate_cycle_count_location', type='json', auth='user', methods=['POST'])
+    def validate_cycle_count_location(self, **kw):
+        try:
+            wave_id = kw.get('wave_id')
+            location_name = kw.get('location_name')
+            
+            if not wave_id or not location_name:
+                return {'ok': False, 'error': 'Faltan parámetros.'}
+            
+            wave = request.env['cycle.count.wave'].sudo().browse(wave_id)
+            if not wave.exists():
+                return {'ok': False, 'error': 'Ola no encontrada.'}
+            
+            location = request.env['stock.location'].sudo().with_context(active_test=False).search([
+                ('complete_name', '=', location_name)
+            ], limit=1)
+            
+            if not location:
+                return {'ok': False, 'error': 'Ubicación no encontrada.'}
+            
+            # Verificar si la ubicación está en la ola
+            planned_location = wave.line_ids.filtered(lambda l: l.stock_location_id.id == location.id)
+            if not planned_location:
+                return {'ok': False, 'error': 'Esta ubicación no está asignada a esta ola de conteo.'}
+            
+            if wave.state == 'draft':
+                wave.write({'state': 'ongoing'})
+            
+            return {
+                'ok': True,
+                'location_id': location.id,
+                'location_name': location.complete_name
+            }
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/validate_cycle_count_product', type='json', auth='user', methods=['POST'])
+    def validate_cycle_count_product(self, **kw):
+        try:
+            barcode = kw.get('barcode')
+            if not barcode:
+                return {'ok': False, 'error': 'Se requiere código de barras.'}
+            
+            product = request.env['product.product'].sudo().search([
+                '|', ('barcode', '=', barcode), ('default_code', '=', barcode)
+            ], limit=1)
+            
+            if not product:
+                return {'ok': False, 'error': 'Producto no encontrado.'}
+            
+            return {
+                'ok': True,
+                'product_id': product.id,
+                'product_name': product.display_name,
+                'product_sku': product.default_code
+            }
+        except Exception as e:
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/log_cycle_count_line', type='json', auth='user', methods=['POST'])
+    def log_cycle_count_line(self, **kw):
+        try:
+            wave_id = kw.get('wave_id')
+            location_id = kw.get('location_id')
+            product_id = kw.get('product_id')
+            qty = float(kw.get('qty', 0))
+            operator_email = kw.get('operator_email')
+            
+            if not all([wave_id, location_id, product_id, operator_email]):
+                return {'ok': False, 'error': 'Faltan datos para registrar el conteo.'}
+            
+            wave = request.env['cycle.count.wave'].sudo().browse(wave_id)
+            operator = request.env['res.users'].sudo().search([('login', '=', operator_email)], limit=1)
+            
+            if not wave.exists():
+                return {'ok': False, 'error': 'Ola no encontrada.'}
+            
+            # Buscar si ya existe una línea para este producto en esta ubicación para esta ola
+            # pero SOLO si ya tiene producto. Las líneas iniciales no tienen producto.
+            existing_line = request.env['cycle.count.line'].sudo().search([
+                ('wave_id', '=', wave.id),
+                ('stock_location_id', '=', location_id),
+                ('product_id', '=', product_id)
+            ], limit=1)
+            
+            if existing_line:
+                # Si ya existe, actualizamos la cantidad (asumimos que es un re-conteo o suma?)
+                # El usuario dijo "set a quantity", así que probablemente sobreescribir.
+                existing_line.write({
+                    'qty': qty,
+                    'counted_by_id': operator.id if operator else False,
+                    'counted_at': fields.Datetime.now()
+                })
+            else:
+                # Si no existe, buscamos una línea de "ubicación vacía" (sin producto) para aprovecharla?
+                # No, mejor crear una nueva y si al final quedan líneas sin producto, son las que no se contaron o estaban vacías.
+                request.env['cycle.count.line'].sudo().create({
+                    'wave_id': wave.id,
+                    'stock_location_id': location_id,
+                    'product_id': product_id,
+                    'qty': qty,
+                    'counted_by_id': operator.id if operator else False,
+                    'counted_at': fields.Datetime.now()
+                })
+            
+            # Si el estado era draft, pasar a ongoing
+            if wave.state == 'draft':
+                wave.write({'state': 'ongoing'})
+                
+            return {'ok': True}
+        except Exception as e:
+            _logger.error(f"Error logging cycle count line: {e}")
+            return {'ok': False, 'error': str(e)}

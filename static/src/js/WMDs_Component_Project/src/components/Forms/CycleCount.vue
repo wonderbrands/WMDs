@@ -112,6 +112,7 @@
                             <span class="sub-title">Creado por: {{ created_by }}</span>
                         </div>
                         <div v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'">
+                            <Button label="Comparar Conteos" icon="pi pi-chart-bar" severity="help" class="mr-2" @click="showComparisonReport" />
                             <Button label="Añadir Ola" icon="pi pi-plus" class="p-button-outlined mr-2" @click="showOperatorDialog('add')" />
                             <Button label="Finalizar Ciclo" icon="pi pi-check-square" severity="success" class="mr-2" @click="closeEntireCount" :loading="store.loading" />
                             <Button label="Cancelar Ciclo" icon="pi pi-ban" severity="danger" class="p-button-outlined" @click="cancelEntireCount" :loading="store.loading" />
@@ -167,8 +168,70 @@
                         <template #empty>No se encontraron productos contados para esta ola.</template>
                     </DataTable>
                 </div>
+                <div v-else-if="detailView === 'comparison'">
+                    <div class="flex-between mb-medium">
+                        <div>
+                            <Button icon="pi pi-arrow-left" label="Volver" @click="detailView = null" class="p-button-text" />
+                            <h3 class="modal-title no-margin mt-2">Reporte de Comparación: {{ modalData?.name }}</h3>
+                        </div>
+                        <div class="flex-row gap-small">
+                            <Button label="Todo" :class="comparisonFilter === 'all' ? 'p-button-primary' : 'p-button-outlined'" @click="comparisonFilter = 'all'" />
+                            <Button label="Discrepancias" :class="comparisonFilter === 'diff' ? 'p-button-danger' : 'p-button-outlined p-button-danger'" @click="comparisonFilter = 'diff'" />
+                            <Button label="Coincidencias" :class="comparisonFilter === 'match' ? 'p-button-success' : 'p-button-outlined p-button-success'" @click="comparisonFilter = 'match'" />
+                        </div>
+                    </div>
+
+                    <DataTable :value="filteredComparison" class="p-datatable-sm custom-border" responsiveLayout="scroll">
+                        <Column field="product_sku" header="SKU" sortable></Column>
+                        <Column field="product_name" header="Producto" sortable></Column>
+                        <Column v-for="wave in comparisonWaves" :key="wave.id" :header="`${wave.name} (${wave.operator})`">
+                            <template #body="slotProps">
+                                <span :class="{'text-bold': slotProps.data.wave_counts[wave.id] !== '-'}">
+                                    {{ slotProps.data.wave_counts[wave.id] }}
+                                </span>
+                            </template>
+                        </Column>
+                        <Column field="theoretical_qty" header="Odoo Stock" sortable>
+                            <template #body="slotProps">
+                                <span class="text-blue-500 font-bold">{{ slotProps.data.theoretical_qty }}</span>
+                            </template>
+                        </Column>
+                        <Column header="Ubicación" field="location_name" sortable></Column>
+                        <Column header="Acciones" v-if="cycleCountState !== 'finalized'">
+                            <template #body="slotProps">
+                                <Button v-if="slotProps.data.has_discrepancy" icon="pi pi-cog" label="Ajustar" class="p-button-sm p-button-warning" @click="prepareAdjustment(slotProps.data)" />
+                                <span v-else class="text-green-500"><i class="pi pi-check"></i> Ok</span>
+                            </template>
+                        </Column>
+                    </DataTable>
+                </div>
             </div>
         </div>
+
+        <!-- Adjustment Dialog -->
+        <Dialog v-model:visible="adjDialog.visible" header="Ajustar Stock Manualmente" modal class="p-fluid" style="width: 500px">
+            <div v-if="adjDialog.line">
+                <div class="mb-3">
+                    <p class="no-margin"><strong>Producto:</strong> {{ adjDialog.line.product_sku }} - {{ adjDialog.line.product_name }}</p>
+                    <p class="no-margin"><strong>Ubicación:</strong> {{ adjDialog.line.location_name }}</p>
+                </div>
+                <div class="field mb-3">
+                    <label class="font-bold">Nueva Cantidad</label>
+                    <InputNumber v-model="adjDialog.qty" :min="0" showButtons autofocus />
+                </div>
+                <div class="field">
+                    <label class="font-bold">Motivo del Ajuste</label>
+                    <InputText v-model="adjDialog.reason" placeholder="Ej: Conteo ciclo CC... olas N y M..." />
+                </div>
+                <small class="text-secondary block mt-2">
+                    * El motivo se registrará en el historial del movimiento.
+                </small>
+            </div>
+            <template #footer>
+                <Button label="Cancelar" icon="pi pi-times" @click="adjDialog.visible = false" class="p-button-text" />
+                <Button label="CONFIRMAR AJUSTE" icon="pi pi-check" severity="success" @click="confirmAdjustment" :loading="store.loading" :disabled="!adjDialog.reason" />
+            </template>
+        </Dialog>
 
         <Dialog v-model:visible="operatorDialog.visible" :header="operatorDialog.title" modal class="p-fluid" style="width: 450px">
             <Listbox v-model="operatorDialog.selected" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" :multiple="operatorDialog.multiSelect" filter listStyle="max-height:250px" />
@@ -216,6 +279,16 @@ export default {
             waveLines: [],
             waveLinesCols: [],
 
+            comparisonData: [],
+            comparisonWaves: [],
+            comparisonFilter: 'all', // all, diff, match
+            adjDialog: {
+                visible: false,
+                line: null,
+                qty: 0,
+                reason: ''
+            },
+
             // Operator dialog state
             operatorDialog: {
                 visible: false,
@@ -236,6 +309,11 @@ export default {
         },
         isSaveDisabled() {
             return !this.newCount.ref || this.assignedOperators.some(op => !op.operator_id) || !this.selectedLocations.length;
+        },
+        filteredComparison() {
+            if (this.comparisonFilter === 'diff') return this.comparisonData.filter(d => d.has_discrepancy);
+            if (this.comparisonFilter === 'match') return this.comparisonData.filter(d => !d.has_discrepancy);
+            return this.comparisonData;
         }
     },
     async mounted() {
@@ -316,6 +394,42 @@ export default {
                 this.waveLines = res.data;
                 this.waveLinesCols = res.map_cols;
                 this.detailView = 'wave';
+            }
+        },
+        async showComparisonReport() {
+            const res = await this.store.callOdoo("get_cycle_count_comparison", "", { count_id: this.modalData.id });
+            if (res.ok) {
+                this.comparisonData = res.data;
+                this.comparisonWaves = res.waves;
+                this.detailView = 'comparison';
+            }
+        },
+        prepareAdjustment(line) {
+            this.adjDialog.line = line;
+            // Pre-llenar con una sugerencia de cantidad (ej: el primer conteo disponible)
+            const firstCount = Object.values(line.wave_counts).find(c => c !== '-');
+            this.adjDialog.qty = firstCount !== undefined ? firstCount : line.theoretical_qty;
+            
+            // Sugerencia de motivo
+            const waveNames = this.comparisonWaves.map(w => w.name).join(', ');
+            this.adjDialog.reason = `Ajuste Ciclo ${this.modalData.name}. Olas: ${waveNames}.`;
+            this.adjDialog.visible = true;
+        },
+        async confirmAdjustment() {
+            if (!this.adjDialog.reason) return;
+            const res = await this.store.callOdoo("adjust_cycle_count_stock", "", {
+                line: this.adjDialog.line,
+                new_qty: this.adjDialog.qty,
+                reason: this.adjDialog.reason,
+                count_name: this.modalData.name
+            });
+
+            if (res.ok) {
+                this.$toast.add({ severity: 'success', summary: 'Éxito', detail: 'Stock ajustado correctamente.', life: 3000 });
+                this.adjDialog.visible = false;
+                await this.showComparisonReport(); // Refrescar reporte
+            } else {
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 3000 });
             }
         },
         showOperatorDialog(mode, wave = null) {

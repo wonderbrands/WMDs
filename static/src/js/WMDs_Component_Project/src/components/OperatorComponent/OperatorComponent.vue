@@ -6,19 +6,19 @@
         
         <div class="cards-grid">
             <Card v-for="task in filteredTasks" :key="task.id" class="task-card" @click="toggleTree(task.id)">
-                <template #title>{{ task.title }}</template> 
-                <template #subtitle>{{ task.description }}</template>
+                <template #title  @click="toggleTree(task.id)">{{ task.title }}</template> 
+                <template #subtitle  @click="toggleTree(task.id)">{{ task.description }}</template>
 
-                <template #content v-if="task.assigned.length > 0 && !task.view">
+                <template #content v-if="task.assigned.length > 0 && !task.view"  @click="toggleTree(task.id)">
                     <span class="pending-badge">
                         {{ task.assigned[0].children.length }} pendientes
                     </span>
                 </template>
-                <template #content v-else-if="task.assigned.length === 0 && !task.view">
+                <template #content v-else-if="task.assigned.length === 0 && !task.view"  @click="toggleTree(task.id)">
                     <span class="pending-badge">Sin pendientes</span>
                 </template>
 
-                <template #footer>
+                <template #footer  @click="toggleTree(task.id)">
                     <Tree
                         v-if="hasChildren(task)"
                         :value="task.assigned"
@@ -29,7 +29,7 @@
                         @click.stop
                         class="full-width"
                     />
-                    <div v-else-if="task.view" class="custom-view-btn" @click.stop="createView(task)">
+                    <div v-else-if="task.view" class="custom-view-btn" @click.stop="createView(task)"  @click="toggleTree(task.id)">
                         {{ task.label }}
                     </div>
                     <div v-else class="empty-tasks">
@@ -110,13 +110,14 @@ export default {
 
                 if (Array.isArray(data)) {
                     task.assigned[0].children = data.map((p, i) => ({
-                            key: `${task.id}-${i}`,
+                            key: p.key || `${task.id}-${i}`,
                             label: p.label || p,
                             data: p.data || p,
                             pick: p.pick || p,
                             leaf: true
                     }));
-                } else {
+                }
+ else {
                     task.assigned[0].children = [];
                 }
                 
