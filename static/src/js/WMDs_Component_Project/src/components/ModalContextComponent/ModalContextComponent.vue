@@ -2,7 +2,14 @@
     <div class="modal_context">
         <section class="modal_box">
             <div class="close_modal_button">
-                <Button label="X" @click="store.closeModal()" rounded/>
+                <Button 
+                    icon="pi pi-times" 
+                    @click="store.closeModal()" 
+                    rounded 
+                    severity="danger" 
+                    outlined
+                    class="close-btn-styled"
+                />
             </div>
             <div style="width: 100%; height: 100%;"
             v-if="store.form_context.data.create_by_aggregate">
@@ -42,6 +49,19 @@
                 store: useGeneralStore()
             }
         },
+        mounted() {
+            window.addEventListener('keydown', this.handleKeydown);
+        },
+        beforeUnmount() {
+            window.removeEventListener('keydown', this.handleKeydown);
+        },
+        methods: {
+            handleKeydown(event) {
+                if (event.key === 'Escape') {
+                    this.store.closeModal();
+                }
+            }
+        },
         components: {
             Button,
             IngresoComponent, 
@@ -52,3 +72,16 @@
         }
     }
 </script>
+
+<style scoped>
+.close-btn-styled {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    background: white !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.close-btn-styled:hover {
+    background: #f8d7da !important;
+}
+</style>

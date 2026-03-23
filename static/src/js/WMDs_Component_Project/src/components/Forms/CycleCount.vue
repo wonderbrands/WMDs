@@ -184,41 +184,116 @@
                     <div class="flex-between mb-medium">
                         <div>
                             <Button icon="pi pi-arrow-left" label="Volver" @click="detailView = null" class="p-button-text" />
-                            <h3 class="modal-title no-margin mt-2">Reporte de Comparación: {{ modalData?.name }}</h3>
+                            <h3 class="modal-title no-margin mt-2">Consolidación de Conteos: {{ modalData?.name }}</h3>
                         </div>
+                        <div class="flex-row gap-small">
+                            <span class="p-input-icon-left mr-2">
+                                <i class="pi pi-search" />
+                                <InputText v-model="comparisonSearchQuery" placeholder="Buscar SKU/Producto..." class="p-inputtext-sm" />
+                            </span>
+                            <span class="p-input-icon-left mr-2">
+                                <i class="pi pi-map-marker" />
+                                <InputText v-model="comparisonLocationQuery" placeholder="Filtrar Ubicación..." class="p-inputtext-sm" />
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="card-background mb-small flex-between bg-white shadow-sm border-blue">
                         <div class="flex-row gap-small">
                             <Button label="Todo" :class="comparisonFilter === 'all' ? 'p-button-primary' : 'p-button-outlined'" @click="comparisonFilter = 'all'" />
                             <Button label="Discrepancias" :class="comparisonFilter === 'diff' ? 'p-button-danger' : 'p-button-outlined p-button-danger'" @click="comparisonFilter = 'diff'" />
                             <Button label="Coincidencias" :class="comparisonFilter === 'match' ? 'p-button-success' : 'p-button-outlined p-button-success'" @click="comparisonFilter = 'match'" />
+                            <Divider layout="vertical" />
+                            <Button label="Seleccionar Discrepancias" icon="pi pi-check-circle" class="p-button-text p-button-sm" @click="selectAllDiscrepancies" />
+                            <Button label="Seleccionar Coincidencias" icon="pi pi-circle" class="p-button-text p-button-sm" @click="selectAllMatches" />
+                        </div>
+                        <div>
+                            <Button label="AJUSTAR SELECCIONADOS" icon="pi pi-bolt" severity="success" :disabled="!canBulkAdjust" @click="prepareBulkAdjustment" :loading="store.loading" />
                         </div>
                     </div>
 
-                    <DataTable :value="filteredComparison" class="p-datatable-sm custom-border" responsiveLayout="scroll">
+                    <DataTable :value="filteredComparison" v-model:selection="comparisonSelection" dataKey="__uid" class="p-datatable-sm custom-border mt-3" responsiveLayout="scroll" paginator :rows="10">
+                        <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
+                        <Column header="Ubicación" field="location_name" sortable style="min-width: 150px">
+                             <template #body="slotProps">
+                                <span class="font-bold text-primary">{{ slotProps.data.location_name }}</span>
+                             </template>
+                        </Column>
                         <Column field="product_sku" header="SKU" sortable></Column>
-                        <Column field="product_name" header="Producto" sortable></Column>
-                        <Column v-for="wave in comparisonWaves" :key="wave.id" :header="`${wave.name} (${wave.operator})`">
+                        <Column field="product_name" header="Producto" sortable style="min-width: 200px">
+                             <template #body="slotProps">
+                                <div class="product-cell">
+                                    <span class="block">{{ slotProps.data.product_name }}</span>
+                                    <small class="text-secondary">{{ slotProps.data.product_sku }}</small>
+                                </div>
+                             </template>
+                        </Column>
+                        
+                        <Column v-for="wave in comparisonWaves" :key="wave.id" :header="wave.name">
+                            <template #header>
+                                <div class="header-wave">
+                                    <span>{{ wave.name }}</span>
+                                    <small class="block">{{ wave.operator }}</small>
+                                </div>
+                            </template>
                             <template #body="slotProps">
-                                <span :class="{'text-bold': slotProps.data.wave_counts[wave.id] !== '-'}">
-                                    {{ slotProps.data.wave_counts[wave.id] }}
+                                <div class="wave-count-cell" v-if="slotProps.data.wave_counts[wave.id] !== '-'">
+                                    <Button 
+                                        :label="String(slotProps.data.wave_counts[wave.id])" 
+                                        :class="['p-button-sm', proposedQuantities[slotProps.data.__uid] === slotProps.data.wave_counts[wave.id] ? 'p-button-info' : 'p-button-outlined p-button-secondary']"
+                                        @click="selectTruth(slotProps.data, slotProps.data.wave_counts[wave.id], wave.id)" 
+                                    />
+                                </div>
+                                <span v-else class="text-secondary">-</span>
+                            </template>
+                        </Column>
+                        
+                        <Column field="theoretical_qty" header="Odoo" sortable>
+                            <template #body="slotProps">
+                                <Button 
+                                    :label="String(slotProps.data.theoretical_qty)" 
+                                    :class="['p-button-sm', proposedQuantities[slotProps.data.__uid] === slotProps.data.theoretical_qty ? 'p-button-info' : 'p-button-outlined p-button-secondary']"
+                                    @click="selectTruth(slotProps.data, slotProps.data.theoretical_qty)" 
+                                />
+                            </template>
+                        </Column>
+
+                        <Column header="Propuesto" headerStyle="width: 8rem">
+                            <template #body="slotProps">
+                                <InputNumber v-model="proposedQuantities[slotProps.data.__uid]" :min="0" inputClass="input-center font-bold p-inputtext-sm" />
+                            </template>
+                        </Column>
+
+                        <Column header="Estado">
+                            <template #body="slotProps">
+                                <span v-if="slotProps.data.theoretical_qty === proposedQuantities[slotProps.data.__uid]" class="text-green-500 font-bold">
+                                    <i class="pi pi-check"></i> OK
                                 </span>
-                            </template>
-                        </Column>
-                        <Column field="theoretical_qty" header="Odoo Stock" sortable>
-                            <template #body="slotProps">
-                                <span class="text-blue-500 font-bold">{{ slotProps.data.theoretical_qty }}</span>
-                            </template>
-                        </Column>
-                        <Column header="Ubicación" field="location_name" sortable></Column>
-                        <Column header="Acciones" v-if="cycleCountState !== 'finalized'">
-                            <template #body="slotProps">
-                                <Button v-if="slotProps.data.has_discrepancy" icon="pi pi-cog" label="Ajustar" class="p-button-sm p-button-warning" @click="prepareAdjustment(slotProps.data)" />
-                                <span v-else class="text-green-500"><i class="pi pi-check"></i> Ok</span>
+                                <span v-else class="text-red-500 font-bold">
+                                    <i class="pi pi-exclamation-triangle"></i> DIF
+                                </span>
                             </template>
                         </Column>
                     </DataTable>
                 </div>
             </div>
         </div>
+
+        <!-- Bulk Adjustment Dialog -->
+        <Dialog v-model:visible="bulkAdjDialog.visible" header="Ajuste Masivo de Inventario" modal class="p-fluid" style="width: 500px">
+             <div class="mb-3">
+                <p>Estás por ajustar <strong>{{ comparisonSelection.length }}</strong> registros de inventario.</p>
+                <p class="text-danger font-bold">¡Esta acción es irreversible!</p>
+            </div>
+            <div class="field">
+                <label class="font-bold">Motivo del Ajuste Masivo</label>
+                <InputText v-model="bulkAdjDialog.reason" placeholder="Ej: Consolidación Auditoría Anual..." />
+            </div>
+            <template #footer>
+                <Button label="Cancelar" icon="pi pi-times" @click="bulkAdjDialog.visible = false" class="p-button-text" />
+                <Button label="CONFIRMAR TODO" icon="pi pi-check" severity="success" @click="confirmBulkAdjustment" :loading="store.loading" />
+            </template>
+        </Dialog>
 
         <!-- Adjustment Dialog -->
         <Dialog v-model:visible="adjDialog.visible" header="Ajustar Stock Manualmente" modal class="p-fluid" style="width: 500px">
@@ -265,10 +340,11 @@ import Column from "primevue/column";
 import Dropdown from "primevue/dropdown";
 import Dialog from 'primevue/dialog';
 import Listbox from 'primevue/listbox';
+import Divider from 'primevue/divider';
 
 export default {
     name: "CycleCountModal",
-    components: { InputText, InputNumber, Button, DataTable, Column, Dropdown, Dialog, Listbox },
+    components: { InputText, InputNumber, Button, DataTable, Column, Dropdown, Dialog, Listbox, Divider },
     data() {
         return {
             store: useGeneralStore(),
@@ -298,10 +374,19 @@ export default {
             comparisonData: [],
             comparisonWaves: [],
             comparisonFilter: 'all', // all, diff, match
+            comparisonSearchQuery: '',
+            comparisonLocationQuery: '',
+            comparisonSelection: [],
+            proposedQuantities: {}, // { 'locId_prodId': qty }
+            
             adjDialog: {
                 visible: false,
                 line: null,
                 qty: 0,
+                reason: ''
+            },
+            bulkAdjDialog: {
+                visible: false,
                 reason: ''
             },
 
@@ -327,9 +412,22 @@ export default {
             return !this.newCount.ref || this.assignedOperators.some(op => !op.operator_id) || !this.selectedLocations.length;
         },
         filteredComparison() {
-            if (this.comparisonFilter === 'diff') return this.comparisonData.filter(d => d.has_discrepancy);
-            if (this.comparisonFilter === 'match') return this.comparisonData.filter(d => !d.has_discrepancy);
-            return this.comparisonData;
+            let base = this.comparisonData;
+            if (this.comparisonFilter === 'diff') base = base.filter(d => d.has_discrepancy);
+            if (this.comparisonFilter === 'match') base = base.filter(d => !d.has_discrepancy);
+            
+            if (this.comparisonSearchQuery) {
+                const q = this.comparisonSearchQuery.toLowerCase();
+                base = base.filter(d => d.product_sku.toLowerCase().includes(q) || d.product_name.toLowerCase().includes(q));
+            }
+            if (this.comparisonLocationQuery) {
+                const q = this.comparisonLocationQuery.toLowerCase();
+                base = base.filter(d => d.location_name.toLowerCase().includes(q));
+            }
+            return base;
+        },
+        canBulkAdjust() {
+            return this.comparisonSelection.length > 0;
         },
         filteredSearchResults() {
             if (!this.debouncedSearchQueryResults) return this.searchResults;
@@ -439,9 +537,68 @@ export default {
         async showComparisonReport() {
             const res = await this.store.callOdoo("get_cycle_count_comparison", "", { count_id: this.modalData.id });
             if (res.ok) {
-                this.comparisonData = res.data;
+                this.comparisonData = res.data.map(row => ({
+                    ...row,
+                    __uid: `${row.location_id}_${row.product_id}`
+                }));
                 this.comparisonWaves = res.waves;
                 this.detailView = 'comparison';
+                this.comparisonSelection = [];
+                // Initialize proposed quantities with odoo stock as default
+                this.proposedQuantities = {};
+                this.comparisonData.forEach(row => {
+                    this.proposedQuantities[row.__uid] = row.theoretical_qty;
+                });
+            }
+        },
+        rowKey(row) {
+            return row.__uid;
+        },
+        getProposedQty(row) {
+            return this.proposedQuantities[this.rowKey(row)];
+        },
+        selectTruth(row, qty, waveId = null) {
+            const key = this.rowKey(row);
+            this.proposedQuantities[key] = qty;
+        },
+        selectAllDiscrepancies() {
+            this.comparisonSelection = this.comparisonData.filter(d => d.has_discrepancy);
+        },
+        selectAllMatches() {
+            this.comparisonSelection = this.comparisonData.filter(d => !d.has_discrepancy);
+        },
+        prepareBulkAdjustment() {
+            const waveNames = this.comparisonWaves.map(w => w.name).join(', ');
+            this.bulkAdjDialog.reason = `Ajuste Masivo Ciclo ${this.modalData.name}. Olas: ${waveNames}.`;
+            this.bulkAdjDialog.visible = true;
+        },
+        async confirmBulkAdjustment() {
+            if (!this.bulkAdjDialog.reason) return;
+            this.store.loading = true;
+            try {
+                let count = 0;
+                for (const row of this.comparisonSelection) {
+                    const key = this.rowKey(row);
+                    const new_qty = this.proposedQuantities[key];
+                    
+                    // Solo ajustar si hay discrepancia real con lo propuesto
+                    // o si el usuario explícitamente lo quiere.
+                    // Para simplificar, ajustamos todos los seleccionados con su 'truth'.
+                    let res = await this.store.callOdoo("adjust_cycle_count_stock", "", {
+                        line: row,
+                        new_qty: new_qty,
+                        reason: this.bulkAdjDialog.reason,
+                        count_name: this.modalData.name
+                    });
+                    if (res.ok) count++;
+                }
+                this.$toast.add({ severity: 'success', summary: 'Masivo Finalizado', detail: `${count} ajustes realizados.`, life: 3000 });
+                this.bulkAdjDialog.visible = false;
+                await this.showComparisonReport();
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error Masivo', detail: 'Hubo un error en el procesamiento masivo.', life: 3000 });
+            } finally {
+                this.store.loading = false;
             }
         },
         prepareAdjustment(line) {
@@ -556,4 +713,14 @@ export default {
 :deep(.p-input-icon-left > .p-inputtext) { padding-left: 2.5rem; }
 .mb-small { margin-bottom: 0.5rem; }
 .ml-auto { margin-left: auto; }
+.border-blue { border: 1px solid #3498db; }
+.bg-white { background: #fff !important; }
+.shadow-sm { box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.product-cell { line-height: 1.2; }
+.header-wave { line-height: 1; text-align: center; }
+.header-wave small { font-size: 0.7rem; color: #666; font-weight: normal; }
+.wave-count-cell { text-align: center; }
+:deep(.input-center input) { text-align: center !important; }
+.text-danger { color: #dc3545; }
+.font-bold { font-weight: bold; }
 </style>
