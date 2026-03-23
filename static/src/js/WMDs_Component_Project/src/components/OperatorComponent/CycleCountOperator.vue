@@ -35,7 +35,7 @@
                     <div class="context-item">
                         <i class="pi pi-map-marker"></i>
                         <span>{{ current_location.name }}</span>
-                        <Button icon="pi pi-pencil" class="p-button-rounded p-button-text p-button-sm" @click="resetToLocation" />
+                        <Button icon="pi pi-pencil" class="p-button-rounded p-button-warning p-button-sm ml-auto" @click="resetToLocation" label="Cambiar" />
                     </div>
                 </div>
                 <div class="scanner-section">
@@ -53,6 +53,7 @@
                     <div class="context-item">
                         <i class="pi pi-map-marker"></i>
                         <span>{{ current_location.name }}</span>
+                        <Button icon="pi pi-pencil" class="p-button-rounded p-button-warning p-button-sm ml-auto" @click="resetToLocation" label="Cambiar" />
                     </div>
                     <div class="context-item">
                         <i class="pi pi-box"></i>
@@ -63,16 +64,18 @@
                     </div>
                 </div>
 
-                <div class="quantity-form">
-                    <label>Cantidad Contada</label>
-                    <div class="qty-input-wrapper">
-                        <Button icon="pi pi-minus" @click="quantity > 0 ? quantity-- : 0" class="p-button-outlined" />
-                        <InputNumber v-model="quantity" :min="0" class="qty-input" autofocus />
-                        <Button icon="pi pi-plus" @click="quantity++" class="p-button-outlined" />
-                    </div>
-                    <div class="form-actions">
-                        <Button label="CANCELAR" icon="pi pi-times" class="p-button-secondary p-button-text" @click="step = 'product'" />
-                        <Button label="CONFIRMAR" icon="pi pi-check" class="p-button-success" @click="confirmCount" :loading="loading" />
+                <div class="quantity-form-wrapper">
+                    <div class="quantity-form">
+                        <label>Cantidad Contada</label>
+                        <div class="qty-input-wrapper">
+                            <Button label="-" @click="quantity > 0 ? quantity-- : 0" class="p-button-outlined qty-btn" />
+                            <InputNumber v-model="quantity" :min="0" class="qty-input" autofocus />
+                            <Button label="+" @click="quantity++" class="p-button-outlined qty-btn" />
+                        </div>
+                        <div class="form-actions">
+                            <Button label="CANCELAR" icon="pi pi-times" class="p-button-secondary p-button-text" @click="step = 'product'" />
+                            <Button label="CONFIRMAR" icon="pi pi-check" class="p-button-success" @click="confirmCount" :loading="loading" />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -261,7 +264,7 @@ export default {
 .cycle-count-operator-container {
     display: flex;
     flex-direction: column;
-    height: 90vh;
+    height: 80vh;
     padding: 10px;
     box-sizing: border-box;
     background: #f4f7f6;
@@ -342,31 +345,46 @@ export default {
 }
 
 .quantity-step {
-    padding: 20px;
-    justify-content: center;
+    padding: 10px;
+    justify-content: flex-start;
+}
+
+.quantity-form-wrapper {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 20px;
 }
 
 .quantity-form {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 20px;
-    margin-top: 20px;
+    gap: 15px;
+    margin-top: 10px;
 }
 
 .quantity-form label {
     font-weight: bold;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
 }
 
 .qty-input-wrapper {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 10px;
+}
+
+.qty-btn {
+    width: 50px;
+    height: 50px;
+    font-size: 1.5rem !important;
+    font-weight: bold !important;
 }
 
 .qty-input {
-    width: 120px;
+    width: 100px;
 }
 
 :deep(.qty-input input) {

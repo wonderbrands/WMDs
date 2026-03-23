@@ -483,17 +483,18 @@ class CycleCount(http.Controller):
     def validate_cycle_count_location(self, **kw):
         try:
             wave_id = kw.get('wave_id')
-            location_name = kw.get('location_name')
+            location_data = kw.get('location_name') # This could be name or barcode
             
-            if not wave_id or not location_name:
+            if not wave_id or not location_data:
                 return {'ok': False, 'error': 'Faltan parámetros.'}
             
             wave = request.env['cycle.count.wave'].sudo().browse(wave_id)
             if not wave.exists():
                 return {'ok': False, 'error': 'Ola no encontrada.'}
             
+            # Buscar por nombre o por código de barras
             location = request.env['stock.location'].sudo().with_context(active_test=False).search([
-                ('complete_name', '=', location_name)
+                '|', ('complete_name', '=', location_data), ('barcode', '=', location_data)
             ], limit=1)
             
             if not location:

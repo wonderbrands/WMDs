@@ -45,10 +45,16 @@
 
                     <div class="tables-container">
                         <div class="table-half">
-                            <DataTable v-model:selection="tempSelection" :value="searchResults" paginator :rows="5" class="p-datatable-sm custom-border" :rowClass="rowClass" dataKey="id">
+                            <div class="search-bar-container mb-small">
+                                <span class="p-input-icon-left input-full">
+                                    <i class="pi pi-search" />
+                                    <InputText v-model="rawSearchQueryResults" placeholder="Filtrar resultados..." class="input-full p-inputtext-sm" />
+                                </span>
+                            </div>
+                            <DataTable v-model:selection="tempSelection" :value="filteredSearchResults" paginator :rows="5" class="p-datatable-sm custom-border" :rowClass="rowClass" dataKey="id">
                                 <template #header>
                                     <div class="flex-between">
-                                        <span class="font-bold">Resultados ({{ searchResults.length }})</span>
+                                        <span class="font-bold">Resultados ({{ filteredSearchResults.length }})</span>
                                         <Button label="Añadir" icon="pi pi-plus" class="p-button-sm p-button-success" @click="addSelected" :disabled="!tempSelection.length" />
                                     </div>
                                 </template>
@@ -57,10 +63,16 @@
                             </DataTable>
                         </div>
                         <div class="table-half">
-                            <DataTable v-model:selection="finalSelection" :value="selectedLocations" paginator :rows="5" class="p-datatable-sm custom-border" dataKey="id">
+                            <div class="search-bar-container mb-small">
+                                <span class="p-input-icon-left input-full">
+                                    <i class="pi pi-search" />
+                                    <InputText v-model="rawSearchQuerySelected" placeholder="Filtrar seleccionadas..." class="input-full p-inputtext-sm" />
+                                </span>
+                            </div>
+                            <DataTable v-model:selection="finalSelection" :value="filteredSelectedLocations" paginator :rows="5" class="p-datatable-sm custom-border" dataKey="id">
                                 <template #header>
                                     <div class="flex-between">
-                                        <span class="font-bold text-primary">Seleccionadas ({{ selectedLocations.length }})</span>
+                                        <span class="font-bold text-primary">Seleccionadas ({{ filteredSelectedLocations.length }})</span>
                                         <Button label="Quitar" icon="pi pi-trash" class="p-button-sm p-button-danger p-button-outlined" @click="removeSelected" :disabled="!finalSelection.length" />
                                     </div>
                                 </template>
@@ -266,6 +278,10 @@ export default {
             selectedLocations: [],
             tempSelection: [],
             finalSelection: [],
+            rawSearchQueryResults: "",
+            debouncedSearchQueryResults: "",
+            rawSearchQuerySelected: "",
+            debouncedSearchQuerySelected: "",
             assignedOperators: [{ operator_id: null }],
             newCount: { ref: "" },
             waves: [],
@@ -314,6 +330,16 @@ export default {
             if (this.comparisonFilter === 'diff') return this.comparisonData.filter(d => d.has_discrepancy);
             if (this.comparisonFilter === 'match') return this.comparisonData.filter(d => !d.has_discrepancy);
             return this.comparisonData;
+        },
+        filteredSearchResults() {
+            if (!this.debouncedSearchQueryResults) return this.searchResults;
+            const q = this.debouncedSearchQueryResults.toLowerCase();
+            return this.searchResults.filter(l => l.complete_name.toLowerCase().includes(q));
+        },
+        filteredSelectedLocations() {
+            if (!this.debouncedSearchQuerySelected) return this.selectedLocations;
+            const q = this.debouncedSearchQuerySelected.toLowerCase();
+            return this.selectedLocations.filter(l => l.complete_name.toLowerCase().includes(q));
         }
     },
     async mounted() {
@@ -321,6 +347,20 @@ export default {
         if (!this.isCreating && this.modalData.id) {
             this.created_by = this.modalData.create_uid;
             await this.loadExistingCountDetails();
+        }
+    },
+    watch: {
+        rawSearchQueryResults(newVal) {
+            if (this.searchTimeoutResults) clearTimeout(this.searchTimeoutResults);
+            this.searchTimeoutResults = setTimeout(() => {
+                this.debouncedSearchQueryResults = newVal;
+            }, 300);
+        },
+        rawSearchQuerySelected(newVal) {
+            if (this.searchTimeoutSelected) clearTimeout(this.searchTimeoutSelected);
+            this.searchTimeoutSelected = setTimeout(() => {
+                this.debouncedSearchQuerySelected = newVal;
+            }, 300);
         }
     },
     methods: {
@@ -511,7 +551,9 @@ export default {
 .italic { font-style: italic; }
 .state-badge { padding: 0.4rem 0.8rem; border-radius: 4px; font-weight: 800; font-size: 0.9rem; letter-spacing: 0.5px; }
 .state-badge.finalized { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
-.state-badge.cancelled { background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; }
-
-@keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+.search-bar-container { position: relative; }
+:deep(.p-input-icon-left > i) { left: 0.75rem; color: #999; }
+:deep(.p-input-icon-left > .p-inputtext) { padding-left: 2.5rem; }
+.mb-small { margin-bottom: 0.5rem; }
+.ml-auto { margin-left: auto; }
 </style>
