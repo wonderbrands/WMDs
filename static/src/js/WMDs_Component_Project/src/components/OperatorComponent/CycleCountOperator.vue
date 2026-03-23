@@ -3,9 +3,20 @@
         
         <!-- Header Info -->
         <div class="operator-header">
-            <div class="wave-info">
+            <div v-if="step !== 'quantity'" class="wave-info">
                 <span class="label">OLA:</span>
                 <span class="value">{{ waveName }}</span>
+            </div>
+            <div v-else class="context-info-header">
+                <div class="header-item">
+                    <i class="pi pi-map-marker"></i>
+                    <span class="header-val">{{ current_location.name }}</span>
+                    <i class="pi pi-pencil edit-icon" @click="resetToLocation"></i>
+                </div>
+                <div class="header-item">
+                    <i class="pi pi-box"></i>
+                    <span class="header-val">{{ current_product.sku || current_product.name }}</span>
+                </div>
             </div>
             <Button 
                 @click="exitFlow"
@@ -49,21 +60,6 @@
 
             <!-- Step 3: Set Quantity -->
             <div v-else-if="step === 'quantity'" class="step-container quantity-step">
-                <div class="current-context">
-                    <div class="context-item">
-                        <i class="pi pi-map-marker"></i>
-                        <span>{{ current_location.name }}</span>
-                        <Button icon="pi pi-pencil" class="p-button-rounded p-button-warning p-button-sm ml-auto" @click="resetToLocation" label="Cambiar" />
-                    </div>
-                    <div class="context-item">
-                        <i class="pi pi-box"></i>
-                        <div class="product-info">
-                            <span class="product-name">{{ current_product.name }}</span>
-                            <span class="product-sku">{{ current_product.sku }}</span>
-                        </div>
-                    </div>
-                </div>
-
                 <div class="quantity-form-wrapper">
                     <div class="quantity-form">
                         <label>Cantidad Contada</label>
@@ -292,6 +288,39 @@ export default {
     font-size: 1rem;
     font-weight: 800;
     color: #2c3e50;
+}
+
+.context-info-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.header-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.header-item i {
+    color: #3498db;
+    font-size: 0.8rem;
+}
+
+.header-val {
+    max-width: 150px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.edit-icon {
+    cursor: pointer;
+    color: #f39c12 !important;
+    margin-left: 5px;
 }
 
 .workflow-area {
