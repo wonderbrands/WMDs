@@ -305,6 +305,8 @@ export const useGeneralStore = defineStore('general_store', {
                         total: response.total,
                         current: response.current
                     });
+                } else {
+                    this.toast.add({ severity: 'error', summary: 'Guía Inválida', detail: 'La guía no es válida o ya fue procesada.', life: 3000 });
                 }
                 component.restartScanner();
             },

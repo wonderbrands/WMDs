@@ -109,3 +109,17 @@ class IrAttachment(models.Model):
                 'user': self.env.user.id,
                 'date': fields.Datetime.now(),
             })
+
+
+class SaleOrderEI(models.Model):
+    _inherit = 'sale.order.ei'
+
+    display_name_custom = fields.Char(string='Custom Name', compute='_compute_display_name_custom', store=True)
+
+    @api.depends('so_id.name', 'sequence_number')
+    def _compute_display_name_custom(self):
+        for record in self:
+            if record.so_id and record.sequence_number:
+                record.display_name_custom = f"{record.so_id.name}/{record.sequence_number}"
+            else:
+                record.display_name_custom = False
