@@ -92,7 +92,7 @@ export default {
                 if (!summaryMap[item.so_name]) {
                     summaryMap[item.so_name] = { 
                         so_name: item.so_name, 
-                        scanned: item.processed_count || 0, 
+                        scanned: item.dispatched_count || 0, 
                         total: item.total,
                         newly_scanned: 0
                     };
@@ -150,7 +150,7 @@ export default {
                             so_name: response.so,
                             total: response.total,
                             current: response.current,
-                            processed_count: response.processed_count || 0
+                            dispatched_count: response.dispatched_count || 0
                         });
                     }
                 } else {

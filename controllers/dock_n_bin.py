@@ -27,6 +27,12 @@ class DockNBin(http.Controller):
                     '|', '|', ('on_bin', '=', True), ('on_dock', '=', True), ('dispatched', '=', True)
                 ])
 
+                # Contar específicamente los ya despachados
+                dispatched_count = request.env["sale.order.ei"].sudo().search_count([
+                    ('so_id', '=', ei_tag.so_id.id),
+                    ('dispatched', '=', True)
+                ])
+
                 return {
                     "valid": True,
                     "so": ei_tag.so_id.name,
@@ -34,6 +40,7 @@ class DockNBin(http.Controller):
                     "total": ei_tag.so_id.ei_total,
                     "current": ei_tag.sequence_number,
                     "processed_count": already_processed_count,
+                    "dispatched_count": dispatched_count,
                     "state": {
                         "on_bin": ei_tag.on_bin,
                         "bin_name": ei_tag.bin_id.name if ei_tag.bin_id else False,
@@ -57,6 +64,12 @@ class DockNBin(http.Controller):
                                 ('so_id', '=', so.id),
                                 '|', '|', ('on_bin', '=', True), ('on_dock', '=', True), ('dispatched', '=', True)
                             ])
+                            
+                            # Contar específicamente los ya despachados
+                            dispatched_count = request.env["sale.order.ei"].sudo().search_count([
+                                ('so_id', '=', so.id),
+                                ('dispatched', '=', True)
+                            ])
 
                             return {
                                 "valid": True,
@@ -65,6 +78,7 @@ class DockNBin(http.Controller):
                                 "total": so.ei_total,
                                 "current": seq,
                                 "processed_count": already_processed_count,
+                                "dispatched_count": dispatched_count,
                                 "state": {
                                     "on_bin": False,
                                     "on_dock": False,
