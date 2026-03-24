@@ -10,4 +10,3 @@ access_bin_log_manager,bin.log.manager,model_bin_log,group_wmds_manager,1,0,0,0
 access_dock_log_manager,dock.log.manager,model_dock_log,group_wmds_manager,1,0,0,0
 access_log_line_manager,log.line.manager,model_log_line,group_wmds_manager,1,0,0,0
 
-access_sale_order_ei_user,sale.order.ei.user,WB_data_sale_order.model_sale_order_ei,base.group_user,1,0,0,0
