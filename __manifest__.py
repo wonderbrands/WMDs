@@ -23,6 +23,7 @@ Planned replacement for the current WMS
         "stock",
         "stock_barcode",
         "purchase",
+        "WB_data_sale_order"
     ],
 
      'external_dependencies': {
