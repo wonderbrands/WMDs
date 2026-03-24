@@ -299,12 +299,21 @@ export const useGeneralStore = defineStore('general_store', {
                     attachment_id: scannedData,
                 });
                 if (response.valid) {
-                    component.so.push({
-                        name: response.name,
-                        so_name: response.so,
-                        total: response.total,
-                        current: response.current
-                    });
+                    const state = response.state;
+                    if (state.dispatched) {
+                        this.toast.add({ severity: 'error', summary: 'Error', detail: 'Esta guía ya ha sido despachada.', life: 3000 });
+                    } else if (state.on_bin) {
+                        this.toast.add({ severity: 'error', summary: 'Error', detail: `Esta guía ya está en el BIN ${state.bin_name}.`, life: 3000 });
+                    } else if (state.on_dock) {
+                        this.toast.add({ severity: 'error', summary: 'Error', detail: `Esta guía ya está en el DOCK ${state.dock_name}.`, life: 3000 });
+                    } else {
+                        component.so.push({
+                            name: response.name,
+                            so_name: response.so,
+                            total: response.total,
+                            current: response.current
+                        });
+                    }
                 } else {
                     this.toast.add({ severity: 'error', summary: 'Guía Inválida', detail: 'La guía no es válida o ya fue procesada.', life: 3000 });
                 }

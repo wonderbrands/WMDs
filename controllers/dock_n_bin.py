@@ -26,7 +26,14 @@ class DockNBin(http.Controller):
                     "so": ei_tag.so_id.name,
                     "name": ei_tag.display_name_custom,
                     "total": ei_tag.so_id.ei_total,
-                    "current": ei_tag.sequence_number
+                    "current": ei_tag.sequence_number,
+                    "state": {
+                        "on_bin": ei_tag.on_bin,
+                        "bin_name": ei_tag.bin_id.name if ei_tag.bin_id else False,
+                        "on_dock": ei_tag.on_dock,
+                        "dock_name": ei_tag.dock_id.name if ei_tag.dock_id else False,
+                        "dispatched": ei_tag.dispatched
+                    }
                 }
 
             # Si no existe, validar si es un formato SOXXXX/N válido según ei_total
@@ -43,7 +50,12 @@ class DockNBin(http.Controller):
                                 "so": so.name,
                                 "name": attachment_id,
                                 "total": so.ei_total,
-                                "current": seq
+                                "current": seq,
+                                "state": {
+                                    "on_bin": False,
+                                    "on_dock": False,
+                                    "dispatched": False
+                                }
                             }
                     except ValueError:
                         pass

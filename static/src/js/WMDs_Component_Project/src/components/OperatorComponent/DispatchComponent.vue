@@ -121,13 +121,20 @@ export default {
                 });
 
                 if (response.valid) {
-                    console.log("Action: Validation successful, pushing to array");
-                    this.so.push({
-                        name: response.name,
-                        so_name: response.so,
-                        total: response.total,
-                        current: response.current
-                    });
+                    if (response.state && response.state.dispatched) {
+                        console.log("Action: Guide already dispatched");
+                        if(this.$toast) {
+                            this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Esta guía ya ha sido despachada.', life: 3000 });
+                        }
+                    } else {
+                        console.log("Action: Validation successful, pushing to array");
+                        this.so.push({
+                            name: response.name,
+                            so_name: response.so,
+                            total: response.total,
+                            current: response.current
+                        });
+                    }
                 } else {
                     console.log("Action: Validation failed");
                     if(this.$toast) {
