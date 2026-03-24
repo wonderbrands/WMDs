@@ -311,7 +311,8 @@ export const useGeneralStore = defineStore('general_store', {
                             name: response.name,
                             so_name: response.so,
                             total: response.total,
-                            current: response.current
+                            current: response.current,
+                            processed_count: response.processed_count || 0
                         });
                     }
                 } else {
@@ -327,6 +328,7 @@ export const useGeneralStore = defineStore('general_store', {
                     if (response.valid) {
                         component.scannedBin = binName;
                         component.packageCount = response.total_packages || 0;
+                        component.packageDetails = response.package_details || [];
                     } else {
                         this.toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
                         component.scannerKey++;

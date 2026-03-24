@@ -335,6 +335,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             validate_attachment_guide: {url: '/wmds/v2/engine/post/validate_attachment_guide', method: 'POST'},
             move_to_bin: {url: '/wmds/v2/engine/post/move_to_bin', method: 'POST'},
             validate_bin: {url: '/wmds/v2/engine/post/validate_bin', method: 'POST'},
+            validate_dock: {url: '/wmds/v2/engine/post/validate_dock', method: 'POST'},
             move_bin_to_dock: {url: '/wmds/v2/engine/post/move_bin_to_dock', method: 'POST'},
             pack: {url: '/wmds/v2/engine/get/pack', method: 'POST'},
             assign_pack: {url: '/wmds/v2/engine/post/pick_assign_operator', method: 'POST'},

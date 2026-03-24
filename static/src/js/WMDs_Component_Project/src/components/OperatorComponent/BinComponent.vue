@@ -63,9 +63,9 @@
                 <div v-for="item in scanSummary" :key="item.so_name" class="summary-card">
                     <div class="summary-so">{{ item.so_name }}</div>
                     <div class="summary-progress">
-                        <div class="progress-text">{{ item.scanned }} / {{ item.total }}</div>
+                        <div class="progress-text">{{ item.total_scanned }} / {{ item.total }}</div>
                         <div class="progress-bar">
-                            <div class="progress-fill" :style="{ width: (item.scanned / item.total * 100) + '%' }"></div>
+                            <div class="progress-fill" :style="{ width: (item.total_scanned / item.total * 100) + '%' }"></div>
                         </div>
                     </div>
                 </div>
@@ -118,11 +118,25 @@ export default {
             const summaryMap = {};
             this.so.forEach(item => {
                 if (!summaryMap[item.so_name]) {
-                    summaryMap[item.so_name] = { so_name: item.so_name, scanned: 0, total: item.total };
+                    // Start from the count already processed in Odoo
+                    summaryMap[item.so_name] = { 
+                        so_name: item.so_name, 
+                        scanned: item.processed_count || 0, 
+                        total: item.total,
+                        newly_scanned: 0
+                    };
                 }
-                summaryMap[item.so_name].scanned++;
+                summaryMap[item.so_name].newly_scanned++;
             });
-            return Object.values(summaryMap);
+            
+            // Final count is what's in Odoo + what we scanned in this session
+            const result = Object.values(summaryMap).map(item => {
+                return {
+                    ...item,
+                    total_scanned: item.scanned + item.newly_scanned
+                };
+            });
+            return result;
         }
     },
     mounted() {

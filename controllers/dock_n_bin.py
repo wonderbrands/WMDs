@@ -21,12 +21,19 @@ class DockNBin(http.Controller):
                 ], limit=1)
 
             if ei_tag:
+                # Contar cuántos paquetes del mismo SO ya están en proceso (en bin, dock o despachados)
+                already_processed_count = request.env["sale.order.ei"].sudo().search_count([
+                    ('so_id', '=', ei_tag.so_id.id),
+                    '|', '|', ('on_bin', '=', True), ('on_dock', '=', True), ('dispatched', '=', True)
+                ])
+
                 return {
                     "valid": True,
                     "so": ei_tag.so_id.name,
                     "name": ei_tag.display_name_custom,
                     "total": ei_tag.so_id.ei_total,
                     "current": ei_tag.sequence_number,
+                    "processed_count": already_processed_count,
                     "state": {
                         "on_bin": ei_tag.on_bin,
                         "bin_name": ei_tag.bin_id.name if ei_tag.bin_id else False,
@@ -45,12 +52,19 @@ class DockNBin(http.Controller):
                         seq = int(seq_str)
                         so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
                         if so and 0 < seq <= so.ei_total:
+                            # Contar cuántos paquetes del mismo SO ya están en proceso
+                            already_processed_count = request.env["sale.order.ei"].sudo().search_count([
+                                ('so_id', '=', so.id),
+                                '|', '|', ('on_bin', '=', True), ('on_dock', '=', True), ('dispatched', '=', True)
+                            ])
+
                             return {
                                 "valid": True,
                                 "so": so.name,
                                 "name": attachment_id,
                                 "total": so.ei_total,
                                 "current": seq,
+                                "processed_count": already_processed_count,
                                 "state": {
                                     "on_bin": False,
                                     "on_dock": False,
@@ -151,11 +165,32 @@ class DockNBin(http.Controller):
             ])
 
             packages = [tag.display_name_custom for tag in ei_tags]
+            package_details = [{"name": tag.display_name_custom, "so": tag.so_id.name} for tag in ei_tags]
             return {
                 "valid": True,
                 "bin": bin_storage.name,
                 "packages": packages,
+                "package_details": package_details,
                 "total_packages": len(packages)
+            }
+        except Exception as e:
+            return {"error": str(e), "valid": False}
+
+
+    @http.route('/wmds/v2/engine/post/validate_dock', type='json', auth='user', methods=['POST'], csrf=True)
+    def validate_dock(self, **kw):
+        try:
+            dock_name = kw.get("dock")
+            if not dock_name:
+                return {'error': 'El nombre del DOCK es requerido', 'valid': False}
+
+            dock_storage = request.env["dock.storage"].sudo().search([('name', '=', dock_name)], limit=1)
+            if not dock_storage:
+                return {'error': f'El DOCK {dock_name} no existe', 'valid': False}
+
+            return {
+                "valid": True,
+                "dock": dock_storage.name
             }
         except Exception as e:
             return {"error": str(e), "valid": False}

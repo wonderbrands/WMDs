@@ -76,6 +76,12 @@
                         <i class="pi pi-check-circle me-1"></i> {{ packageCount }} paquetes detectados
                     </div>
                     
+                    <div class="package-list-dock" v-if="packageDetails.length > 0">
+                        <div v-for="pkg in packageDetails" :key="pkg.name" class="package-item-dock">
+                            <i class="pi pi-barcode me-2"></i> {{ pkg.name }} <small>({{ pkg.so }})</small>
+                        </div>
+                    </div>
+                    
                     <div v-if="!showDockConfirmation">
                         <div class="status-instruction">
                             Listo para mover. <br> Escanea el DOCK de destino.
@@ -109,6 +115,7 @@ export default {
             scannerKey: 0,
             scannedBin: null,
             packageCount: 0,
+            packageDetails: [],
             showDockConfirmation: false,
             targetDock: null
         }
@@ -122,13 +129,24 @@ export default {
         }, 500);
     },
     methods: {
-        validateDestDock(data) {
+        async validateDestDock(data) {
             console.log("Action: validateDestDock data received:", data);
             try {
                 let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-                this.targetDock = parsedData.name;
-                this.showDockConfirmation = true;
-                console.log("Action: Showing confirmation screen for dock:", this.targetDock);
+                const dockName = parsedData.name;
+                
+                let response = await this.store.callOdoo("validate_dock", "", {
+                    dock: dockName
+                });
+
+                if (response.valid) {
+                    this.targetDock = dockName;
+                    this.showDockConfirmation = true;
+                    console.log("Action: Showing confirmation screen for dock:", this.targetDock);
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Error de DOCK', detail: response.error || 'DOCK no válido.', life: 3000 });
+                    this.scannerKey++;
+                }
             } catch (e) {
                 console.log("Action: Error parsing dock data", e);
                 this.$toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'Código de DOCK no reconocido.', life: 3000 });
@@ -174,6 +192,7 @@ export default {
             console.log("Action: resetScan triggered");
             this.scannedBin = null;
             this.packageCount = 0;
+            this.packageDetails = [];
             this.showDockConfirmation = false;
             this.targetDock = null;
             this.scannerKey++;
@@ -347,7 +366,33 @@ export default {
 .package-count {
     font-size: 1rem;
     color: #2ecc71;
+    margin-bottom: 10px;
+}
+
+.package-list-dock {
+    max-height: 150px;
+    overflow-y: auto;
+    background: #34495e;
+    border-radius: 4px;
+    padding: 8px;
     margin-bottom: 15px;
+    width: 100%;
+    text-align: left;
+}
+
+.package-item-dock {
+    font-size: 0.9rem;
+    padding: 4px 0;
+    border-bottom: 1px solid #455a64;
+    font-family: monospace;
+}
+
+.package-item-dock:last-child {
+    border-bottom: none;
+}
+
+.package-item-dock small {
+    color: #bdc3c7;
 }
 
 .status-instruction {
