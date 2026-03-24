@@ -166,7 +166,7 @@ export default {
             this.showConfirmation = false;
             this.store.mandatory_uncompleted.doneMandatory();
         },
-        validateBin(data) {
+        async validateBin(data) {
             console.log("Action: validateBin data received:", data);
             if (this.so.length === 0) {
                 console.log("Action: No SOs to move, returning");
@@ -175,9 +175,19 @@ export default {
             
             try {
                 let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
-                this.targetBin = parsedData.name;
-                this.showConfirmation = true;
-                console.log("Action: Confirmation screen displayed for bin:", this.targetBin);
+                const binName = parsedData.name;
+                
+                let response = await this.store.callOdoo("validate_bin", "", {
+                    bin: binName
+                });
+
+                if (response.valid) {
+                    this.targetBin = binName;
+                    this.showConfirmation = true;
+                    console.log("Action: Confirmation screen displayed for bin:", this.targetBin);
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Error de BIN', detail: response.error || 'BIN no válido.', life: 3000 });
+                }
             } catch (e) {
                 console.log("Action: Error parsing bin data", e);
                 this.$toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'El código del bin no es válido.', life: 3000 });

@@ -26,8 +26,12 @@ class Dispatch(http.Controller):
                 ('display_name_custom', 'in', packs_ids)
             ])
             
-            ei_tags.write({'dispatched': True})
-            _logger.info("EI tags actualizados a dispatched")
+            ei_tags.write({
+                'dispatched': True,
+                'on_dock': False,
+                'dock_id': False
+            })
+            _logger.info("EI tags actualizados a dispatched y removidos de DOCK")
             
             for tag in ei_tags:
                 request.env['wmds.log'].sudo().create({

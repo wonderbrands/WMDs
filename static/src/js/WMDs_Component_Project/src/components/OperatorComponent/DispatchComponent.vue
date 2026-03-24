@@ -138,6 +138,11 @@ export default {
                         if(this.$toast) {
                             this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Esta guía ya ha sido despachada.', life: 3000 });
                         }
+                    } else if (response.state && !response.state.on_dock) {
+                        console.log("Action: Guide not on dock");
+                        if(this.$toast) {
+                            this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Esta guía no está en un DOCK.', life: 3000 });
+                        }
                     } else {
                         console.log("Action: Validation successful, pushing to array");
                         this.so.push({

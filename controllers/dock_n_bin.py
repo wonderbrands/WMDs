@@ -82,18 +82,23 @@ class DockNBin(http.Controller):
 
     @http.route('/wmds/v2/engine/post/move_to_bin', type='json', auth='user', methods=['POST'], csrf=True)
     def move_to_bin(self, **kw):
+        _logger.info(f"Iniciando move_to_bin con datos: {kw}")
         try:
             bin_name = kw.get("bin")
             operator_login = kw.get("operator")
             orders = kw.get("orders")
 
             if not bin_name or not operator_login or not orders:
+                _logger.error("Faltan datos en move_to_bin")
                 return {'error': 'Missing data'}
 
             operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            if not operator_orm:
+                _logger.warning(f"Operador {operator_login} no encontrado")
 
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             if not bin_storage:
+                _logger.error(f"Bin {bin_name} no encontrado")
                 return {'error': 'Bin not found'}
 
             bin_log = request.env["bin.log"].sudo().search([('bin_id', '=', bin_storage.id)], limit=1)
@@ -101,30 +106,40 @@ class DockNBin(http.Controller):
                 bin_log = request.env["bin.log"].sudo().create({'bin_id': bin_storage.id})
 
             for so_custom_name in orders:
+                _logger.info(f"Procesando etiqueta: {so_custom_name}")
                 # Intentar buscar o crear la etiqueta EI
                 ei_tag = request.env["sale.order.ei"].sudo().search([
                     ('display_name_custom', '=', so_custom_name)
                 ], limit=1)
 
                 if not ei_tag and '/' in so_custom_name:
-                    so_name, seq_str = so_custom_name.split('/')
-                    so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
-                    if so:
-                        try:
-                            seq = int(seq_str)
-                            if 0 < seq <= so.ei_total:
-                                ei_tag = request.env["sale.order.ei"].sudo().create({
-                                    'so_id': so.id,
-                                    'sequence_number': seq
-                                })
-                        except ValueError:
-                            pass
+                    parts = so_custom_name.split('/')
+                    if len(parts) == 2:
+                        so_name, seq_str = parts
+                        so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
+                        if so:
+                            try:
+                                seq = int(seq_str)
+                                if 0 < seq <= so.ei_total:
+                                    ei_tag = request.env["sale.order.ei"].sudo().create({
+                                        'so_id': so.id,
+                                        'sequence_number': seq
+                                    })
+                                    _logger.info(f"Etiqueta {so_custom_name} creada")
+                            except ValueError:
+                                pass
 
                 if ei_tag:
-                    ei_tag.on_bin = True
-                    ei_tag.bin_id = bin_storage.id
+                    _logger.info(f"Actualizando estado de ei_tag {ei_tag.id}")
+                    ei_tag.write({
+                        'on_bin': True,
+                        'bin_id': bin_storage.id,
+                        'on_dock': False,
+                        'dock_id': False,
+                        'dispatched': False
+                    })
+                    
                     operator_name = operator_orm.name if operator_orm else "Desconocido"
-
                     log_msg = f"El operador {operator_name} puso el paquete {so_custom_name} en el bin {bin_storage.name}"
 
                     request.env["log.line"].sudo().create({
@@ -140,12 +155,14 @@ class DockNBin(http.Controller):
                             "log": log_msg,
                             "user": operator_orm.id if operator_orm else False,
                         })
+                else:
+                    _logger.warning(f"No se pudo encontrar ni crear ei_tag para {so_custom_name}")
 
             return {"ok": True}
 
         except Exception as e:
             request.env.cr.rollback()
-            _logger.error(f"Error en move_to_bin: {str(e)}")
+            _logger.error(f"Error grave en move_to_bin: {str(e)}\n{traceback.format_exc()}")
             return {"error": str(e)}
 
     @http.route('/wmds/v2/engine/post/validate_bin', type='json', auth='user', methods=['POST'], csrf=True)

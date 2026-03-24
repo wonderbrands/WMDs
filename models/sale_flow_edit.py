@@ -113,6 +113,7 @@ class IrAttachment(models.Model):
 
 class SaleOrderEI(models.Model):
     _inherit = 'sale.order.ei'
+    _description = 'Sale Order EI Extension'
 
     display_name_custom = fields.Char(string='Custom Name', compute='_compute_display_name_custom', store=True)
 
