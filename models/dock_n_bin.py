@@ -8,6 +8,7 @@ class BinCartStorage(models.Model):
     _name = "bin.storage"
 
     name = fields.Char(string="Nombre de BIN", required=True)
+    ei = fields.One2many("sale.order.ei", "bin_id", string="Paquetes en BIN")
 
     qr_code_structure = fields.Char(
         string='QR Code',
@@ -53,6 +54,7 @@ class DockStorage(models.Model):
     _name = "dock.storage"
 
     name = fields.Char(string="Nombre de DOCK", required=True)
+    ei = fields.One2many("sale.order.ei", "dock_id", string="Paquetes en DOCK")
 
     qr_code_structure = fields.Char(
         string='QR Code',

@@ -22,31 +22,45 @@ class Dispatch(http.Controller):
             user_id = operator.id if operator else request.env.user.id
             _logger.info(f"Usuario asignado: {user_id}")
 
-            attachments = request.env["sale.order.attachment"].sudo().search([
+            ei_tags = request.env["sale.order.ei"].sudo().search([
                 ('display_name_custom', 'in', packs_ids)
             ])
             
-            attachments.write({'dispatched': True})
-            _logger.info("Attachments actualizados a dispatched")
+            ei_tags.write({'dispatched': True})
+            _logger.info("EI tags actualizados a dispatched")
             
-            for attachment in attachments:
+            for tag in ei_tags:
                 request.env['wmds.log'].sudo().create({
-                    'sale': attachment.so_id.id,
-                    'log': f"Paquete {attachment.display_name_custom} entregado a paquetería por {operator_login}.",
+                    'sale': tag.so_id.id,
+                    'log': f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}.",
                     'user': user_id,
                     'date': fields.Datetime.now(),
                 })
-                _logger.info(f"Log creado para paquete {attachment.display_name_custom}")
+                _logger.info(f"Log creado para paquete {tag.display_name_custom}")
 
-            sale_orders = attachments.mapped('so_id')
+            sale_orders = ei_tags.mapped('so_id')
             missing_packs_global = []
 
             for so in sale_orders:
-                pending = so.attachments.filtered(lambda a: not a.dispatched)
-                if pending:
-                    missing_packs_global.extend(pending.mapped('display_name_custom'))
+                # Verificar si faltan etiquetas por despachar según ei_total
+                total_ei = so.ei_total
+                dispatched_ei_count = request.env['sale.order.ei'].sudo().search_count([
+                    ('so_id', '=', so.id),
+                    ('dispatched', '=', True)
+                ])
+                
+                if dispatched_ei_count < total_ei:
+                    # Encontrar cuáles faltan (secuencias)
+                    existing_seqs = request.env['sale.order.ei'].sudo().search([
+                        ('so_id', '=', so.id),
+                        ('dispatched', '=', True)
+                    ]).mapped('sequence_number')
+                    
+                    missing_seqs = [str(i) for i in range(1, total_ei + 1) if i not in existing_seqs]
+                    missing_packs_global.append(f"{so.name} (Faltan: {', '.join(missing_seqs)})")
                     _logger.info(f"Faltan paquetes para SO {so.id}")
                 else:
+                    # Si ya están todos, procesar pickings
                     pickings = request.env['stock.picking'].sudo().search([
                         ('sale_id', '=', so.id),
                         ('picking_type_id.name', '=', 'Órdenes de entrega'),

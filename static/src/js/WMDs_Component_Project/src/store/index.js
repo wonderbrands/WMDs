@@ -291,7 +291,7 @@ export const useGeneralStore = defineStore('general_store', {
     executeActionByContext(context, data, extra) {
         const actionsMap = {
             'bin_scan_so': async (scannedData, component) => {
-                if (component.so.includes(scannedData)) {
+                if (component.so.some(o => o.name === scannedData)) {
                     component.restartScanner();
                     return;
                 }
@@ -299,7 +299,12 @@ export const useGeneralStore = defineStore('general_store', {
                     attachment_id: scannedData,
                 });
                 if (response.valid) {
-                    component.so.push(scannedData);
+                    component.so.push({
+                        name: response.name,
+                        so_name: response.so,
+                        total: response.total,
+                        current: response.current
+                    });
                 }
                 component.restartScanner();
             },

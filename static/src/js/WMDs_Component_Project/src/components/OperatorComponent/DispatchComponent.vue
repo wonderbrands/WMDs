@@ -29,8 +29,21 @@
         <div class="log-col">
             <div class="log-header">
                 <div class="log-header-info">
-                    <span class="log-title">Guías listas para entrega: {{ so.length }}</span>
+                    <span class="log-title">Resumen de Despacho</span>
                     <Button icon="pi pi-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0"/>
+                </div>
+            </div>
+
+            <!-- Visualization of n/total -->
+            <div class="scan-summary-grid" v-if="scanSummary.length > 0">
+                <div v-for="item in scanSummary" :key="item.so_name" class="summary-card">
+                    <div class="summary-so">{{ item.so_name }}</div>
+                    <div class="summary-progress">
+                        <div class="progress-text">{{ item.scanned }} / {{ item.total }}</div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" :style="{ width: (item.scanned / item.total * 100) + '%' }"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -38,14 +51,15 @@
                 <div v-for="(order, index) in so" :key="index" class="log-item">
                     <div>
                         <i class="pi pi-barcode barcode-icon"></i>
-                        {{ order }}
+                        {{ order.name }}
+                        <small class="text-info ml-2">({{ order.current }}/{{ order.total }})</small>
                     </div>
                     <Button icon="pi pi-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
                 </div>
                 
                 <div v-if="so.length === 0" class="empty-log">
                     <i class="pi pi-box search-icon"></i>
-                    Esperando escaneo de guía...
+                    Esperando escaneo de etiqueta EI (SOXXXX/N)...
                 </div>
             </div>
         </div>
@@ -66,9 +80,21 @@ export default {
     data() {
         return {
             store: useGeneralStore(),
-            so: [],
+            so: [], // Array of objects: { name, so_name, total, current }
             ready: false,
             scannerKey: 0
+        }
+    },
+    computed: {
+        scanSummary() {
+            const summaryMap = {};
+            this.so.forEach(item => {
+                if (!summaryMap[item.so_name]) {
+                    summaryMap[item.so_name] = { so_name: item.so_name, scanned: 0, total: item.total };
+                }
+                summaryMap[item.so_name].scanned++;
+            });
+            return Object.values(summaryMap);
         }
     },
     mounted() {
@@ -83,7 +109,7 @@ export default {
         async searchAndValidateSO(data) {
             console.log("Action: searchAndValidateSO triggered with data:", data);
             try {
-                if (this.so.includes(data)) {
+                if (this.so.some(o => o.name === data)) {
                     console.log("Action: Duplicate guide detected, restarting scanner");
                     this.restartScanner();
                     return;
@@ -96,7 +122,12 @@ export default {
 
                 if (response.valid) {
                     console.log("Action: Validation successful, pushing to array");
-                    this.so.push(data);
+                    this.so.push({
+                        name: response.name,
+                        so_name: response.so,
+                        total: response.total,
+                        current: response.current
+                    });
                 } else {
                     console.log("Action: Validation failed");
                     if(this.$toast) {
@@ -122,10 +153,11 @@ export default {
             }
             
             try {
-                console.log("Action: Calling Odoo dispatch_orders with picks_ids:", this.so);
+                const picks_ids = this.so.map(o => o.name);
+                console.log("Action: Calling Odoo dispatch_orders with picks_ids:", picks_ids);
                 let response = await this.store.callOdoo("dispatch_orders", "", {
                     operator_login: this.store.role.email,
-                    picks_ids: this.so 
+                    picks_ids: picks_ids 
                 });
 
                 if (response.status === "success") {
@@ -249,6 +281,52 @@ export default {
 
 .log-title {
     font-weight: bold;
+}
+
+.scan-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 5px;
+}
+
+.summary-card {
+    background: #34495e;
+    padding: 8px;
+    border-radius: 6px;
+    border-left: 4px solid #3498db;
+}
+
+.summary-so {
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #bdc3c7;
+}
+
+.summary-progress {
+    margin-top: 4px;
+}
+
+.progress-text {
+    font-size: 0.9rem;
+    font-weight: 800;
+    text-align: right;
+    color: #ecf0f1;
+}
+
+.progress-bar {
+    height: 4px;
+    background: #2c3e50;
+    border-radius: 2px;
+    margin-top: 2px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #2ecc71;
+    transition: width 0.3s ease;
 }
 
 .log-list {

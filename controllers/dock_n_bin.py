@@ -13,34 +13,47 @@ class DockNBin(http.Controller):
         try:
             attachment_id = kw.get("attachment_id")
             if not attachment_id:
-                return {
-                    'error': 'Not found',
-                    'message': 'Attachment_id is required'
-                }
+                return {'error': 'Not found', 'message': 'ID is required'}
 
-            attachment = request.env["sale.order.attachment"].sudo().search([
-                    ('display_name_custom', '=', attachment_id),
-                    ("on_bin", "=", False)
-                ], limit =1)
+            # Buscar si ya existe
+            ei_tag = request.env["sale.order.ei"].sudo().search([
+                    ('display_name_custom', '=', attachment_id)
+                ], limit=1)
 
-            if attachment:
+            if ei_tag:
                 return {
                     "valid": True,
-                    "so": attachment.so_id.name,
-                    "name": attachment.display_name_custom
+                    "so": ei_tag.so_id.name,
+                    "name": ei_tag.display_name_custom,
+                    "total": ei_tag.so_id.ei_total,
+                    "current": ei_tag.sequence_number
                 }
-            
-            else:
-                return {
-                    "valid": False,
-                }
-            
-        except Exception as e:
-            return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
 
-    
+            # Si no existe, validar si es un formato SOXXXX/N válido según ei_total
+            if '/' in attachment_id:
+                parts = attachment_id.split('/')
+                if len(parts) == 2:
+                    so_name, seq_str = parts
+                    try:
+                        seq = int(seq_str)
+                        so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
+                        if so and 0 < seq <= so.ei_total:
+                            return {
+                                "valid": True,
+                                "so": so.name,
+                                "name": attachment_id,
+                                "total": so.ei_total,
+                                "current": seq
+                            }
+                    except ValueError:
+                        pass
+
+            return {"valid": False}
+
+        except Exception as e:
+            return {"error": f"{str(e)}\n{traceback.format_exc()}"}
+
+
     @http.route('/wmds/v2/engine/post/move_to_bin', type='json', auth='user', methods=['POST'], csrf=True)
     def move_to_bin(self, **kw):
         try:
@@ -52,7 +65,7 @@ class DockNBin(http.Controller):
                 return {'error': 'Missing data'}
 
             operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
-            
+
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             if not bin_storage:
                 return {'error': 'Bin not found'}
@@ -62,15 +75,30 @@ class DockNBin(http.Controller):
                 bin_log = request.env["bin.log"].sudo().create({'bin_id': bin_storage.id})
 
             for so_custom_name in orders:
-                so_attach = request.env["sale.order.attachment"].sudo().search([
+                # Intentar buscar o crear la etiqueta EI
+                ei_tag = request.env["sale.order.ei"].sudo().search([
                     ('display_name_custom', '=', so_custom_name)
                 ], limit=1)
-                
-                if so_attach:
-                    so_attach.on_bin = True
-                    so_attach.bin_id = bin_storage.id
+
+                if not ei_tag and '/' in so_custom_name:
+                    so_name, seq_str = so_custom_name.split('/')
+                    so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
+                    if so:
+                        try:
+                            seq = int(seq_str)
+                            if 0 < seq <= so.ei_total:
+                                ei_tag = request.env["sale.order.ei"].sudo().create({
+                                    'so_id': so.id,
+                                    'sequence_number': seq
+                                })
+                        except ValueError:
+                            pass
+
+                if ei_tag:
+                    ei_tag.on_bin = True
+                    ei_tag.bin_id = bin_storage.id
                     operator_name = operator_orm.name if operator_orm else "Desconocido"
-                    
+
                     log_msg = f"El operador {operator_name} puso el paquete {so_custom_name} en el bin {bin_storage.name}"
 
                     request.env["log.line"].sudo().create({
@@ -80,13 +108,13 @@ class DockNBin(http.Controller):
                         "bin_log_id": bin_log.id
                     })
 
-                    if so_attach.so_id:
+                    if ei_tag.so_id:
                         request.env["wmds.log"].sudo().create({
-                            "sale": so_attach.so_id.id,
+                            "sale": ei_tag.so_id.id,
                             "log": log_msg,
                             "user": operator_orm.id if operator_orm else False,
                         })
-            
+
             return {"ok": True}
 
         except Exception as e:
@@ -97,92 +125,72 @@ class DockNBin(http.Controller):
     @http.route('/wmds/v2/engine/post/validate_bin', type='json', auth='user', methods=['POST'], csrf=True)
     def validate_bin(self, **kw):
         try:
-            _logger.info("Iniciando validate_bin")
             bin_name = kw.get("bin")
-            
             if not bin_name:
-                _logger.info("Error: Nombre de BIN no proporcionado")
                 return {'error': 'El nombre del BIN es requerido', 'valid': False}
 
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
-            
             if not bin_storage:
-                _logger.info(f"Error: El BIN {bin_name} no existe")
                 return {'error': f'El BIN {bin_name} no existe', 'valid': False}
 
-            _logger.info(f"BIN encontrado: {bin_storage.name}, buscando paquetes...")
-            attachments = request.env["sale.order.attachment"].sudo().search([
+            ei_tags = request.env["sale.order.ei"].sudo().search([
                 ('bin_id', '=', bin_storage.id),
                 ('on_bin', '=', True)
             ])
 
-            packages = [attach.display_name_custom for attach in attachments]
-            _logger.info(f"Paquetes encontrados en BIN: {len(packages)}")
-
+            packages = [tag.display_name_custom for tag in ei_tags]
             return {
                 "valid": True,
                 "bin": bin_storage.name,
                 "packages": packages,
                 "total_packages": len(packages)
             }
-
         except Exception as e:
-            _logger.error(f"Excepcion en validate_bin: {str(e)}")
             return {"error": str(e), "valid": False}
 
 
     @http.route('/wmds/v2/engine/post/move_bin_to_dock', type='json', auth='user', methods=['POST'], csrf=True)
     def move_bin_to_dock(self, **kw):
         try:
-            _logger.info("Iniciando move_bin_to_dock")
             bin_name = kw.get("bin")
             dock_name = kw.get("dock")
             operator_login = kw.get("operator")
 
             if not bin_name or not dock_name or not operator_login:
-                _logger.info("Error: Faltan datos requeridos (bin, dock, operator)")
                 return {'error': 'Faltan datos: bin, dock u operator', 'ok': False}
 
             operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             dock_storage = request.env["dock.storage"].sudo().search([('name', '=', dock_name)], limit=1)
 
-            if not dock_storage:
-                _logger.info(f"Error: El DOCK {dock_name} no existe")
-                return {'error': f'El DOCK {dock_name} no existe', 'ok': False}
-                
-            if not bin_storage:
-                _logger.info(f"Error: El BIN {bin_name} no existe")
-                return {'error': f'El BIN {bin_name} no existe', 'ok': False}
+            if not dock_storage or not bin_storage:
+                return {'error': 'Bin o Dock no existe', 'ok': False}
 
-            _logger.info("Buscando o creando dock.log...")
             dock_log = request.env["dock.log"].sudo().search([
                 ('dock_id', '=', dock_storage.id), 
                 ('bin_id', '=', bin_storage.id)
             ], limit=1)
-            
+
             if not dock_log:
                 dock_log = request.env["dock.log"].sudo().create({
                     'dock_id': dock_storage.id,
                     'bin_id': bin_storage.id
                 })
 
-            _logger.info("Buscando paquetes asignados al BIN...")
-            attachments = request.env["sale.order.attachment"].sudo().search([
+            ei_tags = request.env["sale.order.ei"].sudo().search([
                 ('bin_id', '=', bin_storage.id),
                 ('on_bin', '=', True)
             ])
 
             operator_name = operator_orm.name if operator_orm else "Desconocido"
 
-            _logger.info(f"Moviendo {len(attachments)} paquetes al DOCK {dock_storage.name}")
-            for attach in attachments:
-                attach.on_bin = False
-                attach.bin_id = False
-                attach.on_dock = True
-                attach.dock_id = dock_storage.id
-                
-                log_msg = f"El operador {operator_name} movió el paquete {attach.display_name_custom} del {bin_storage.name} al DOCK {dock_storage.name}"
+            for tag in ei_tags:
+                tag.on_bin = False
+                tag.bin_id = False
+                tag.on_dock = True
+                tag.dock_id = dock_storage.id
+
+                log_msg = f"El operador {operator_name} movió el paquete {tag.display_name_custom} del {bin_storage.name} al DOCK {dock_storage.name}"
 
                 request.env["log.line"].sudo().create({
                     "operator_id": operator_orm.id if operator_orm else False,
@@ -191,17 +199,15 @@ class DockNBin(http.Controller):
                     "dock_log_id": dock_log.id
                 })
 
-                if attach.so_id:
+                if tag.so_id:
                     request.env["wmds.log"].sudo().create({
-                        "sale": attach.so_id.id,
+                        "sale": tag.so_id.id,
                         "log": log_msg,
                         "user": operator_orm.id if operator_orm else False,
                     })
-                    
-            _logger.info("Movimiento finalizado con exito")
-            return {"ok": True, "moved_packages": len(attachments)}
+
+            return {"ok": True, "moved_packages": len(ei_tags)}
 
         except Exception as e:
             request.env.cr.rollback()
-            _logger.error(f"Excepcion en move_bin_to_dock: {str(e)}")
             return {"error": str(e), "ok": False}
