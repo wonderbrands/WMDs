@@ -74,7 +74,7 @@ class CycleCount(http.Controller):
         return parent
 
     def _move_stock_to_quarantine(self, src_loc, dest_loc, reason):
-        quants = request.env['stock.quant'].sudo().search([('location_id', '=', src_loc.id), ('quantity', '>', 0)])
+        quants = request.env['stock.quant'].sudo().search([('location_id', '=', src_loc.id), ('quantity', '!=', 0)])
         for q in quants:
             qty = q.quantity
             dest_quant = request.env['stock.quant'].sudo().with_context(active_test=False).search([
@@ -84,6 +84,7 @@ class CycleCount(http.Controller):
                 ('package_id', '=', q.package_id.id),
                 ('owner_id', '=', q.owner_id.id)
             ], limit=1)
+            
             if not dest_quant:
                 dest_quant = request.env['stock.quant'].sudo().create({
                     'product_id': q.product_id.id,
@@ -91,17 +92,18 @@ class CycleCount(http.Controller):
                     'lot_id': q.lot_id.id,
                     'package_id': q.package_id.id,
                     'owner_id': q.owner_id.id,
-                    'inventory_quantity': qty
                 })
-            else:
-                dest_quant.with_context(active_test=False).inventory_quantity += qty
+                
+            dest_quant.inventory_quantity = dest_quant.quantity + qty
+            dest_quant.inventory_quantity_set = True
             dest_quant.with_context(inventory_name=f"Hacia Cuarentena: {reason}", active_test=False).action_apply_inventory()
 
-            q.with_context(active_test=False).inventory_quantity = 0
+            q.inventory_quantity = 0
+            q.inventory_quantity_set = True
             q.with_context(inventory_name=f"Vaciado para Conteo: {reason}", active_test=False).action_apply_inventory()
 
     def _move_stock_back_from_quarantine(self, quar_loc, orig_loc, reason):
-        quants = request.env['stock.quant'].sudo().search([('location_id', '=', quar_loc.id), ('quantity', '>', 0)])
+        quants = request.env['stock.quant'].sudo().search([('location_id', '=', quar_loc.id), ('quantity', '!=', 0)])
         for q in quants:
             qty = q.quantity
             orig_quant = request.env['stock.quant'].sudo().with_context(active_test=False).search([
@@ -111,6 +113,7 @@ class CycleCount(http.Controller):
                 ('package_id', '=', q.package_id.id),
                 ('owner_id', '=', q.owner_id.id)
             ], limit=1)
+            
             if not orig_quant:
                 orig_quant = request.env['stock.quant'].sudo().create({
                     'product_id': q.product_id.id,
@@ -118,13 +121,14 @@ class CycleCount(http.Controller):
                     'lot_id': q.lot_id.id,
                     'package_id': q.package_id.id,
                     'owner_id': q.owner_id.id,
-                    'inventory_quantity': qty
                 })
-            else:
-                orig_quant.with_context(active_test=False).inventory_quantity += qty
+                
+            orig_quant.inventory_quantity = orig_quant.quantity + qty
+            orig_quant.inventory_quantity_set = True
             orig_quant.with_context(inventory_name=f"Retorno de Cuarentena: {reason}", active_test=False).action_apply_inventory()
 
-            q.with_context(active_test=False).inventory_quantity = 0
+            q.inventory_quantity = 0
+            q.inventory_quantity_set = True
             q.with_context(inventory_name=f"Vaciado Cuarentena: {reason}", active_test=False).action_apply_inventory()
 
     @http.route('/wmds/v2/engine/get/cycle_counts', type='json', auth='user', methods=['POST'])
