@@ -102,7 +102,7 @@
                         <div v-for="(op, index) in assignedOperators" :key="op.id" class="operator-card card-background">
                             <div class="flex-between mb-small">
                                 <span class="wave-number">Ola #{{ index + 1 }}</span>
-                                <Button icon="pi pi-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOperatorField(index)" />
+                                <Button icon="pi pi-times"  severity="danger" @click="removeOperatorField(index)" label="X" />
                             </div>
                             <label class="small-label">Responsable</label>
                             <Dropdown v-model="op.operator_id" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" placeholder="Seleccionar..." class="input-full" filter />
