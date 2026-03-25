@@ -233,7 +233,7 @@ class CycleCount(http.Controller):
     @http.route('/wmds/v2/engine/create_full_cycle_count', type='json', auth='user', methods=['POST'])
     def create_full_cycle_count(self, **kw):
         try:
-            location_ids = kw.get('location_ids', [])
+            location_ids = [int(lid) for lid in kw.get('location_ids', [])]
             operators = kw.get('operators', [])
             user_notes = kw.get('name')
 
@@ -246,7 +246,7 @@ class CycleCount(http.Controller):
             for loc in locations:
                 quar_loc = self._get_or_create_quarantine_location(loc)
                 self._move_stock_to_quarantine(loc, quar_loc, user_notes or 'Conteo Ciclo')
-                loc_mapping[loc.id] = quar_loc.id
+                loc_mapping[int(loc.id)] = quar_loc.id
 
             # 2. Crear el maestro
             count_obj = request.env['scheduled.cycle.count'].sudo().create({
