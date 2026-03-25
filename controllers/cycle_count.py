@@ -18,6 +18,115 @@ def convert_value_in_label(map_cols, value, key):
 
 class CycleCount(http.Controller):
 
+    def _get_or_create_quarantine_location(self, location):
+        orig_name = location.complete_name
+        if 'Cuarentena' in orig_name:
+            return location
+            
+        quar_name = orig_name.replace('Stock/Almacenaje', 'Cuarentena')
+        if quar_name == orig_name:
+            quar_name = orig_name.replace('Stock/Pickeable', 'Cuarentena')
+        if quar_name == orig_name:
+            quar_name = orig_name.replace('Stock', 'Cuarentena')
+            
+        quar_loc = request.env['stock.location'].sudo().with_context(active_test=False).search([('complete_name', '=', quar_name)], limit=1)
+        if quar_loc:
+            if not quar_loc.active:
+                quar_loc.write({'active': True})
+            return quar_loc
+            
+        wh_quar = request.env['stock.location'].sudo().with_context(active_test=False).search([('complete_name', '=', 'WH/Cuarentena')], limit=1)
+        if not wh_quar:
+             wh = request.env['stock.location'].sudo().search([('complete_name', '=', 'WH')], limit=1)
+             wh_quar = request.env['stock.location'].sudo().create({
+                 'name': 'Cuarentena',
+                 'location_id': wh.id if wh else False,
+                 'usage': 'internal'
+             })
+        elif not wh_quar.active:
+            wh_quar.write({'active': True})
+             
+        parts = orig_name.split('/')
+        parent = wh_quar
+        if 'Stock/Almacenaje' in orig_name:
+             start_idx = 3
+        elif 'Stock/Pickeable' in orig_name:
+             start_idx = 3
+        else:
+             start_idx = 2
+             
+        for part in parts[start_idx:]:
+            child = request.env['stock.location'].sudo().with_context(active_test=False).search([
+                ('name', '=', part),
+                ('location_id', '=', parent.id)
+            ], limit=1)
+            if not child:
+                child = request.env['stock.location'].sudo().create({
+                    'name': part,
+                    'location_id': parent.id,
+                    'usage': 'internal'
+                })
+            else:
+                if not child.active:
+                    child.write({'active': True})
+            parent = child
+            
+        return parent
+
+    def _move_stock_to_quarantine(self, src_loc, dest_loc, reason):
+        quants = request.env['stock.quant'].sudo().search([('location_id', '=', src_loc.id), ('quantity', '>', 0)])
+        for q in quants:
+            qty = q.quantity
+            dest_quant = request.env['stock.quant'].sudo().with_context(active_test=False).search([
+                ('product_id', '=', q.product_id.id),
+                ('location_id', '=', dest_loc.id),
+                ('lot_id', '=', q.lot_id.id),
+                ('package_id', '=', q.package_id.id),
+                ('owner_id', '=', q.owner_id.id)
+            ], limit=1)
+            if not dest_quant:
+                dest_quant = request.env['stock.quant'].sudo().create({
+                    'product_id': q.product_id.id,
+                    'location_id': dest_loc.id,
+                    'lot_id': q.lot_id.id,
+                    'package_id': q.package_id.id,
+                    'owner_id': q.owner_id.id,
+                    'inventory_quantity': qty
+                })
+            else:
+                dest_quant.with_context(active_test=False).inventory_quantity += qty
+            dest_quant.with_context(inventory_name=f"Hacia Cuarentena: {reason}", active_test=False).action_apply_inventory()
+
+            q.with_context(active_test=False).inventory_quantity = 0
+            q.with_context(inventory_name=f"Vaciado para Conteo: {reason}", active_test=False).action_apply_inventory()
+
+    def _move_stock_back_from_quarantine(self, quar_loc, orig_loc, reason):
+        quants = request.env['stock.quant'].sudo().search([('location_id', '=', quar_loc.id), ('quantity', '>', 0)])
+        for q in quants:
+            qty = q.quantity
+            orig_quant = request.env['stock.quant'].sudo().with_context(active_test=False).search([
+                ('product_id', '=', q.product_id.id),
+                ('location_id', '=', orig_loc.id),
+                ('lot_id', '=', q.lot_id.id),
+                ('package_id', '=', q.package_id.id),
+                ('owner_id', '=', q.owner_id.id)
+            ], limit=1)
+            if not orig_quant:
+                orig_quant = request.env['stock.quant'].sudo().create({
+                    'product_id': q.product_id.id,
+                    'location_id': orig_loc.id,
+                    'lot_id': q.lot_id.id,
+                    'package_id': q.package_id.id,
+                    'owner_id': q.owner_id.id,
+                    'inventory_quantity': qty
+                })
+            else:
+                orig_quant.with_context(active_test=False).inventory_quantity += qty
+            orig_quant.with_context(inventory_name=f"Retorno de Cuarentena: {reason}", active_test=False).action_apply_inventory()
+
+            q.with_context(active_test=False).inventory_quantity = 0
+            q.with_context(inventory_name=f"Vaciado Cuarentena: {reason}", active_test=False).action_apply_inventory()
+
     @http.route('/wmds/v2/engine/get/cycle_counts', type='json', auth='user', methods=['POST'])
     def get_cycle_counts(self, **kw):
         try:
@@ -131,24 +240,35 @@ class CycleCount(http.Controller):
             if not location_ids or not operators:
                 return {'ok': False, 'error': 'Faltan ubicaciones u operadores.'}
 
-            # 1. Crear el maestro
+            # 1. Mapear a cuarentena y mover stock
+            loc_mapping = {}
+            locations = request.env['stock.location'].sudo().browse(location_ids)
+            for loc in locations:
+                quar_loc = self._get_or_create_quarantine_location(loc)
+                self._move_stock_to_quarantine(loc, quar_loc, user_notes or 'Conteo Ciclo')
+                loc_mapping[loc.id] = quar_loc.id
+
+            # 2. Crear el maestro
             count_obj = request.env['scheduled.cycle.count'].sudo().create({
                 'notes': user_notes,
-                'selected_location_ids': [(0, 0, {'location_id': lid}) for lid in location_ids]
+                'selected_location_ids': [(0, 0, {
+                    'location_id': lid,
+                    'quarantine_location_id': loc_mapping[lid]
+                }) for lid in location_ids]
             })
 
-            # 2. Crear las olas (El nombre se computa solo en el modelo)
+            # 3. Crear las olas (El nombre se computa solo en el modelo)
             for op_id in operators:
                 wave_obj = request.env['cycle.count.wave'].sudo().create({
                     'cycle_count_id': count_obj.id,
                     'operator_id': op_id,
                     'state': 'draft'
                 })
-                line_vals = [(0, 0, {'stock_location_id': lid}) for lid in location_ids]
+                # Las líneas de la ola deben apuntar a la ubicación de CUARENTENA
+                line_vals = [(0, 0, {'stock_location_id': loc_mapping[lid]}) for lid in location_ids]
                 wave_obj.write({'line_ids': line_vals})
 
-            # 3. Archive the locations so they aren't used in sales/other operations
-            locations = request.env['stock.location'].sudo().browse(location_ids)
+            # 4. Archive the locations so they aren't used in sales/other operations
             locations.write({'active': False})
 
             return {'ok': True, 'id': count_obj.id, 'name': count_obj.name}
@@ -190,14 +310,15 @@ class CycleCount(http.Controller):
     @http.route('/wmds/v2/engine/close_cycle_count', type='json', auth='user', methods=['POST'])
     def close_cycle_count(self, **kw):
         try:
-            count = request.env['scheduled.cycle.count'].sudo().browse(kw.get('count_id'))
+            count = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).browse(kw.get('count_id'))
             count.write({'state': 'finalized'})
             
-            # Unarchive the locations
-            location_ids = count.selected_location_ids.mapped('location_id.id')
-            if location_ids:
-                locations = request.env['stock.location'].sudo().with_context(active_test=False).browse(location_ids)
-                locations.write({'active': True})
+            # Unarchive the locations and move stock back
+            for sl in count.selected_location_ids:
+                if sl.location_id:
+                    sl.location_id.write({'active': True})
+                    if sl.quarantine_location_id:
+                        self._move_stock_back_from_quarantine(sl.quarantine_location_id, sl.location_id, count.name)
                 
             return {'ok': True}
         except Exception as e:
@@ -206,16 +327,17 @@ class CycleCount(http.Controller):
     @http.route('/wmds/v2/engine/cancel_cycle_count', type='json', auth='user', methods=['POST'])
     def cancel_cycle_count(self, **kw):
         try:
-            count = request.env['scheduled.cycle.count'].sudo().browse(kw.get('count_id'))
+            count = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).browse(kw.get('count_id'))
             count.write({'state': 'cancelled'})
             # Cancelar olas no terminadas
             count.wave_ids.filtered(lambda w: w.state not in ['done', 'cancelled']).write({'state': 'cancelled'})
             
-            # Unarchive the locations
-            location_ids = count.selected_location_ids.mapped('location_id.id')
-            if location_ids:
-                locations = request.env['stock.location'].sudo().with_context(active_test=False).browse(location_ids)
-                locations.write({'active': True})
+            # Unarchive the locations and move stock back
+            for sl in count.selected_location_ids:
+                if sl.location_id:
+                    sl.location_id.write({'active': True})
+                    if sl.quarantine_location_id:
+                        self._move_stock_back_from_quarantine(sl.quarantine_location_id, sl.location_id, count.name)
                 
             return {'ok': True}
         except Exception as e:
@@ -246,14 +368,14 @@ class CycleCount(http.Controller):
             if not count_id:
                 return {'ok': False, 'error': 'ID de ciclo requerido.'}
             
-            # Usar active_test=False para que las ubicaciones archivadas por el conteo sean visibles
             count = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).browse(count_id)
             waves = count.wave_ids
             
-            # Identificar todos los productos y ubicaciones involucrados
-            planned_loc_ids = count.selected_location_ids.mapped('location_id.id')
+            # Mapeo para mostrar nombre de ubicación original en el reporte
+            quar_to_orig_name = {sl.quarantine_location_id.id: sl.location_id.complete_name for sl in count.selected_location_ids if sl.quarantine_location_id}
+            quar_loc_ids = [k for k in quar_to_orig_name.keys()]
             
-            # Obtener todas las líneas de todas las olas
+            # Obtener todas las líneas de todas las olas (ya están en cuarentena)
             all_lines = request.env['cycle.count.line'].sudo().with_context(active_test=False).search([('wave_id', 'in', waves.ids)])
             
             comparison_map = {}
@@ -266,7 +388,7 @@ class CycleCount(http.Controller):
                 if key not in comparison_map:
                     comparison_map[key] = {
                         'location_id': line.stock_location_id.id,
-                        'location_name': line.stock_location_id.complete_name,
+                        'location_name': quar_to_orig_name.get(line.stock_location_id.id, line.stock_location_id.complete_name),
                         'product_id': line.product_id.id,
                         'product_sku': line.product_id.default_code or 'N/A',
                         'product_name': line.product_id.name,
@@ -275,9 +397,9 @@ class CycleCount(http.Controller):
                     }
                 comparison_map[key]['wave_counts'][str(line.wave_id.id)] = line.qty
 
-            # Obtener stock teórico de Odoo (incluyendo ubicaciones inactivas)
+            # Obtener stock teórico de CUARENTENA
             quants = request.env['stock.quant'].sudo().with_context(active_test=False).search([
-                ('location_id', 'in', planned_loc_ids),
+                ('location_id', 'in', quar_loc_ids),
                 ('quantity', '>', 0)
             ])
             
@@ -286,7 +408,7 @@ class CycleCount(http.Controller):
                 if key not in comparison_map:
                     comparison_map[key] = {
                         'location_id': q.location_id.id,
-                        'location_name': q.location_id.complete_name,
+                        'location_name': quar_to_orig_name.get(q.location_id.id, q.location_id.complete_name),
                         'product_id': q.product_id.id,
                         'product_sku': q.product_id.default_code or 'N/A',
                         'product_name': q.product_id.name,
@@ -362,18 +484,24 @@ class CycleCount(http.Controller):
             if not line_data or not reason:
                 return {'ok': False, 'error': 'Datos insuficientes para el ajuste.'}
             
+            # 1. Verificar que todas las olas estén cerradas/canceladas
+            count = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).search([('name', '=', count_name)], limit=1)
+            if count:
+                open_waves = count.wave_ids.filtered(lambda w: w.state not in ['done', 'cancelled'])
+                if open_waves:
+                    return {'ok': False, 'error': f"Existen {len(open_waves)} olas abiertas. Finalícelas antes de ajustar."}
+
             product_id = line_data.get('product_id')
             location_id = line_data.get('location_id')
             
             product = request.env['product.product'].sudo().browse(product_id)
-            # Usar active_test=False para ubicaciones archivadas
+            # El ajuste se realiza en CUARENTENA
             location = request.env['stock.location'].sudo().with_context(active_test=False).browse(location_id)
             
             if not product.exists() or not location.exists():
                 return {'ok': False, 'error': 'Producto o ubicación no válidos.'}
 
-            # Realizar el ajuste de inventario vía stock.quant (Odoo 17+)
-            # Buscamos el quant existente o creamos uno (incluyendo inactivos)
+            # Realizar el ajuste de inventario vía stock.quant
             quant = request.env['stock.quant'].sudo().with_context(active_test=False).search([
                 ('product_id', '=', product.id),
                 ('location_id', '=', location.id),
@@ -391,14 +519,14 @@ class CycleCount(http.Controller):
             else:
                 quant.with_context(active_test=False).inventory_quantity = new_qty
             
-            # Aplicar el inventario (esto genera los movimientos de stock)
-            quant.with_context(inventory_name=reason, active_test=False).action_apply_inventory()
+            # Aplicar el inventario
+            quant.with_context(inventory_name=f"Ajuste Conteo {count_name}: {reason}", active_test=False).action_apply_inventory()
             
             # Registrar en el log de WMDS si existe el modelo
             if hasattr(request.env['wmds.log'], 'log_action'):
                 request.env['wmds.log'].sudo().log_action(
                     'stock_adjustment',
-                    f"Ajuste manual desde conteo {count_name}. Motivo: {reason}. Nueva cantidad: {new_qty}",
+                    f"Ajuste manual desde conteo {count_name}. Motivo: {reason}. Nueva cantidad: {new_qty} en {location.complete_name}",
                     res_model='product.product',
                     res_id=product.id
                 )
@@ -458,13 +586,18 @@ class CycleCount(http.Controller):
             if not location_ids or not operators or not cycle_count_id:
                 return {'ok': False, 'error': 'Faltan ubicaciones, operadores o id del ciclo.'}
 
+            count_obj = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).browse(cycle_count_id)
+            # Mapear de ID original a ID de cuarentena guardado en el maestro
+            mapping = {sl.location_id.id: sl.quarantine_location_id.id for sl in count_obj.selected_location_ids}
+
             for op_id in operators:
                 wave_obj = request.env['cycle.count.wave'].sudo().create({
                     'cycle_count_id': cycle_count_id,
                     'operator_id': op_id,
                     'state': 'draft'
                 })
-                line_vals = [(0, 0, {'stock_location_id': lid}) for lid in location_ids]
+                # Usar la de cuarentena si existe, si no fallback a original
+                line_vals = [(0, 0, {'stock_location_id': mapping.get(lid, lid)}) for lid in location_ids]
                 wave_obj.write({'line_ids': line_vals})
 
             return {'ok': True}
@@ -516,26 +649,37 @@ class CycleCount(http.Controller):
             if not wave.exists():
                 return {'ok': False, 'error': 'Ola no encontrada.'}
             
-            # Buscar por nombre o por código de barras
-            location = request.env['stock.location'].sudo().with_context(active_test=False).search([
+            # Buscar la ubicación escaneada (puede ser la original o la de cuarentena)
+            scanned_location = request.env['stock.location'].sudo().with_context(active_test=False).search([
                 '|', ('complete_name', '=', location_data), ('barcode', '=', location_data)
             ], limit=1)
             
-            if not location:
+            if not scanned_location:
                 return {'ok': False, 'error': 'Ubicación no encontrada.'}
             
-            # Verificar si la ubicación está en la ola
-            planned_location = wave.line_ids.filtered(lambda l: l.stock_location_id.id == location.id)
+            # Buscar en el maestro cuál es la de cuarentena correspondiente
+            count = wave.cycle_count_id
+            sl_entry = count.selected_location_ids.filtered(
+                lambda sl: sl.location_id.id == scanned_location.id or sl.quarantine_location_id.id == scanned_location.id
+            )
+            
+            if not sl_entry:
+                return {'ok': False, 'error': 'Esta ubicación no está asignada a este ciclo de conteo.'}
+            
+            target_location = sl_entry.quarantine_location_id or sl_entry.location_id
+            
+            # Verificar si esta ubicación (la de destino) está en la ola
+            planned_location = wave.line_ids.filtered(lambda l: l.stock_location_id.id == target_location.id)
             if not planned_location:
-                return {'ok': False, 'error': 'Esta ubicación no está asignada a esta ola de conteo.'}
+                return {'ok': False, 'error': 'Esta ubicación no está en su ola de trabajo.'}
             
             if wave.state == 'draft':
                 wave.write({'state': 'ongoing'})
             
             return {
                 'ok': True,
-                'location_id': location.id,
-                'location_name': location.complete_name
+                'location_id': target_location.id,
+                'location_name': target_location.complete_name
             }
         except Exception as e:
             return {'ok': False, 'error': str(e)}

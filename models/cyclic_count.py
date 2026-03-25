@@ -28,6 +28,7 @@ class CycleCountSelectedLocation(models.Model):
     _name = "cycle.count.selected.location"
     cycle_count_id = fields.Many2one("scheduled.cycle.count", ondelete="cascade")
     location_id = fields.Many2one("stock.location", string="Ubicación", required=True)
+    quarantine_location_id = fields.Many2one("stock.location", string="Ubicación Cuarentena")
 
 class CycleCountWave(models.Model):
     _name = "cycle.count.wave"

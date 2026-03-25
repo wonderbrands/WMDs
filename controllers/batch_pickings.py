@@ -26,6 +26,10 @@ class BatchPickController(http.Controller):
             if not pick_odoo:
                 return None, f"La SO {ref_cap} no tiene un pick de tipo 'Pick' válido."
 
+            #verificar si la orden esta lista para recolectar
+            if not so.data_ready_to_pick:
+                return None, f"La SO {ref_cap} no esta lista para recolectar (le hace falta guía y/o carrier)"
+
         elif ref_cap.startswith("WH/PICK"):
             pick_odoo = request.env['stock.picking'].sudo().search([
                 ("name", "=", ref_cap),
@@ -34,6 +38,14 @@ class BatchPickController(http.Controller):
             
             if not pick_odoo:
                 return None, f"El pick {ref_cap} no existe."
+
+            so = request.env['sale.order'].sudo().search([
+                ("name", "=", pick_odoo.origin),
+            ], limit=1)
+
+            if not so.data_ready_to_pick:
+                return None, f"La SO {ref_cap} no esta lista para recolectar (le hace falta guía y/o carrier)"
+
         else:
             return None, f"Formato no reconocido: {ref_cap}. Use SO... o WH/PICK..."
 

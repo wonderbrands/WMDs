@@ -111,6 +111,30 @@ class BatchWMDS(models.Model):
 
     operator = fields.Many2one('res.users', 'Operator')
     wmds_log = fields.One2many('wmds.log', 'batch_pick', string='WMDS Log')
+    pick_type = fields.Selection(selection = [
+        ('sale', 'Pedido'), 
+        ('full', 'Full'),
+        ('mix', "Mixto")
+    ],
+        compute='_establish_pick_type',
+        store=True)
+
+
+    @api.depends("picking_ids")
+    def _establish_pick_type(self):
+        for record in self:
+            total_operations = len(record.picking_ids)
+            #si todos los traslados son de tipo pick, el batch es de tipo sale
+            total_picks = len(record.picking_ids.filter(lambda pick: pick.picking_type_id.name=="Pick"))
+            if total_picks == total_operations:
+                record.pick_type = "sale"
+                return True
+            #si todos son de tipo full, es de tipo full
+            total_full = len(record.picking_ids.filter(lambda pick: pick.picking_type_id.name==""))
+            #si no concuerdan, son mixtos
+            record.pick_type = "mix"
+
+            
 
     @api.model
     def create(self, vals):
