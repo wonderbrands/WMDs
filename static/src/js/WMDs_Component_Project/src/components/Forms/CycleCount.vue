@@ -223,6 +223,7 @@
                              </template>
                         </Column>
                         <Column field="product_sku" header="SKU" sortable></Column>
+                        <Column field="barcode" header="Código Barras" sortable></Column>
                         <Column field="product_name" header="Producto" sortable style="min-width: 200px">
                              <template #body="slotProps">
                                 <div class="product-cell">

@@ -2,6 +2,7 @@ from odoo import http, fields
 from odoo.http import request
 import logging
 import re
+import pytz
 
 _logger = logging.getLogger(__name__)
 
@@ -396,6 +397,7 @@ class CycleCount(http.Controller):
                         'product_id': line.product_id.id,
                         'product_sku': line.product_id.default_code or 'N/A',
                         'product_name': line.product_id.name,
+                        'barcode': line.product_id.barcode or 'N/A',
                         'wave_counts': {str(w.id): '-' for w in waves},
                         'theoretical_qty': 0,
                     }
@@ -416,6 +418,7 @@ class CycleCount(http.Controller):
                         'product_id': q.product_id.id,
                         'product_sku': q.product_id.default_code or 'N/A',
                         'product_name': q.product_id.name,
+                        'barcode': q.product_id.barcode or 'N/A',
                         'wave_counts': {str(w.id): '-' for w in waves},
                         'theoretical_qty': 0,
                     }
@@ -514,6 +517,8 @@ class CycleCount(http.Controller):
                 ('owner_id', '=', False)
             ], limit=1)
             
+            old_qty = quant.quantity if quant else 0
+            
             if not quant:
                 quant = request.env['stock.quant'].sudo().with_context(active_test=False).create({
                     'product_id': product.id,
@@ -526,14 +531,19 @@ class CycleCount(http.Controller):
             # Aplicar el inventario
             quant.with_context(inventory_name=f"Ajuste Conteo {count_name}: {reason}", active_test=False).action_apply_inventory()
             
+            # Mapeo a nombre original para el log
+            quar_to_orig = {sl.quarantine_location_id.id: sl.location_id.complete_name for sl in count.selected_location_ids if sl.quarantine_location_id}
+            loc_name = quar_to_orig.get(location.id, location.complete_name)
+            
             # Registrar en el log de WMDS si existe el modelo
+            log_msg = f"Se hizo un ajuste de {new_qty} unidades, antes tenía {old_qty} unidades en la ubicación {loc_name}"
             if hasattr(request.env['wmds.log'], 'log_action'):
-                request.env['wmds.log'].sudo().log_action(
-                    'stock_adjustment',
-                    f"Ajuste manual desde conteo {count_name}. Motivo: {reason}. Nueva cantidad: {new_qty} en {location.complete_name}",
-                    res_model='product.product',
-                    res_id=product.id
-                )
+                request.env['wmds.log'].sudo().create({
+                    'cycle_count': count.id if count else False,
+                    'log': log_msg,
+                    'user': request.env.user.id,
+                    'date': fields.Datetime.now()
+                })
 
             return {'ok': True}
         except Exception as e:
@@ -566,6 +576,7 @@ class CycleCount(http.Controller):
             map_cols = [
                 {'name': 'Producto', 'field': 'product_name'},
                 {'name': 'SKU', 'field': 'product_sku'},
+                {'name': 'Código de Barras', 'field': 'barcode'},
                 {'name': 'Ubicación', 'field': 'location_name'},
                 {'name': 'Cantidad Contada', 'field': 'qty'},
             ]
@@ -574,6 +585,7 @@ class CycleCount(http.Controller):
                 'id': line.id,
                 'product_name': line.product_id.display_name if line.product_id else '---',
                 'product_sku': line.product_id.default_code if line.product_id else '---',
+                'barcode': line.product_id.barcode if line.product_id and line.product_id.barcode else '---',
                 'location_name': quar_to_orig_name.get(line.stock_location_id.id, line.stock_location_id.complete_name),
                 'qty': line.qty,
             } for line in lines if line.product_id]
@@ -764,6 +776,29 @@ class CycleCount(http.Controller):
             # Si el estado era draft, pasar a ongoing
             if wave.state == 'draft':
                 wave.write({'state': 'ongoing'})
+                
+            # Logging the action in wmds.log
+            user_tz = request.env.user.tz or operator.tz or 'UTC'
+            tz = pytz.timezone(user_tz)
+            local_time = fields.Datetime.now().replace(tzinfo=pytz.utc).astimezone(tz)
+            time_str = local_time.strftime('%H:%M:%S (%Z)')
+            
+            count = wave.cycle_count_id
+            quar_to_orig = {sl.quarantine_location_id.id: sl.location_id.complete_name for sl in count.selected_location_ids if sl.quarantine_location_id}
+            loc_name = quar_to_orig.get(location_id, request.env['stock.location'].sudo().browse(location_id).complete_name)
+            
+            product = request.env['product.product'].sudo().browse(product_id)
+            operator_name = operator.name if operator else operator_email
+            
+            log_msg = f"Operador {operator_name} contó {qty} productos en ubicación {loc_name}, a la hora {time_str}"
+            
+            if hasattr(request.env['wmds.log'], 'log_action'):
+                request.env['wmds.log'].sudo().create({
+                    'cycle_count': count.id,
+                    'log': log_msg,
+                    'user': operator.id if operator else False,
+                    'date': fields.Datetime.now()
+                })
                 
             return {'ok': True}
         except Exception as e:

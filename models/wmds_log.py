@@ -16,6 +16,7 @@ class WMDSLog(models.Model):
     purchase = fields.Many2one('purchase.order', 'Purchase Order')
     sale = fields.Many2one('sale.order', "Sale order")
     batch_pick = fields.Many2one('stock.picking.batch', 'Lote de picks')
+    cycle_count = fields.Many2one('scheduled.cycle.count', 'Conteo Cíclico')
 
     log = fields.Text('Log')
     date = fields.Datetime('Date', default=fields.Datetime.now) # Default automático
