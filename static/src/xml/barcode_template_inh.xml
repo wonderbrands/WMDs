@@ -2,6 +2,7 @@
 <templates xml:space="preserve">
     <t t-inherit="stock_barcode.MainComponent" t-inherit-mode="extension">
 
+        <!-- Operador: mantener display custom -->
         <xpath expr="//div[contains(@class, 'o_barcode_partner')]" position="replace">
             <div class="o_barcode_partner text-muted d-flex align-items-center">
                 <i class="fa fa-user-circle-o me-1"/>
@@ -17,32 +18,36 @@
             </div>
         </xpath>
 
-        <xpath expr="//button[contains(@class, 'o_add_line')]" position="before">
-            <button t-if="env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
-                    class="btn btn-primary" 
-                    t-on-click="() => this.onCustomAction('action_imprimir_guia')">
-                <i class="fa fa-print me-1"/> Imprimir Guía de Envío
-            </button>
-        </xpath>
-
+        <!-- Ocultar botón "Agregar línea" para PACK -->
         <xpath expr="//button[contains(@class, 'o_add_line')]" position="attributes">
             <attribute name="t-att-style">
                 (env.model.record and env.model.record.name and env.model.record.name.includes('PACK')) ? 'display: none !important;' : ''
             </attribute>
         </xpath>
 
-
-        <xpath expr="//button[contains(@class, 'o_put_in_pack')]" position="before">
-            <button t-if="env.model.record and env.model.record.name and env.model.record.name.includes('PACK')" 
-                    class="btn btn-secondary" 
-                    t-on-click="() => this.onCustomAction('action_print_tag')">
-                <i class="fa fa-tag me-1"/> Imprimir Etiqueta de la Orden
-            </button>
-        </xpath>
-
+        <!-- Ocultar botón "Meter en paquete" para PACK -->
         <xpath expr="//button[contains(@class, 'o_put_in_pack')]" position="attributes">
             <attribute name="t-att-style">
                 (env.model.record and env.model.record.name and env.model.record.name.includes('PACK')) ? 'display: none !important;' : ''
+            </attribute>
+        </xpath>
+
+        <!--
+            Botón VALIDAR: Bloquear si ya se imprimió (barcode_printed = true).
+        -->
+        <xpath expr="//button[contains(@class, 'o_validate_page')]" position="attributes">
+            <attribute name="t-att-disabled">
+                env.model.record and env.model.record.barcode_printed
+            </attribute>
+            <attribute name="t-att-class">
+                (env.model.record and env.model.record.barcode_printed)
+                    ? 'btn btn-secondary o_validate_page disabled'
+                    : 'btn btn-success o_validate_page'
+            </attribute>
+            <attribute name="t-att-title">
+                (env.model.record and env.model.record.barcode_printed)
+                    ? 'Ya se validó e imprimió este movimiento'
+                    : 'Validar'
             </attribute>
         </xpath>
 

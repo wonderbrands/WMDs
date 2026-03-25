@@ -6,31 +6,30 @@ import { patch } from "@web/core/utils/patch";
 
 patch(BarcodeModel.prototype, {
 
-    async onCustomAction(actionName) {
-        const recordId = this.resId;
-        const recordName = this.name || "";
-
-        if (!recordId || this.resModel !== 'stock.picking') return;
-        if (!recordName.includes('PACK')) return;
-
-        try {
-            const action = await this.orm.call('stock.picking', actionName, [[recordId]]);
-            if (action) {
-                await this.action.doAction(action);
-            }
-        } catch (error) {}
-    },
-    
     async _validate() {
-        /*console.log(this)
-        await this.onCustomAction('action_imprimir_guia')
-        await this.onCustomAction('action_imprimir_tag')*/
         const isBatch = this.resModel === 'stock.picking.batch';
         const recordData = Object.assign({}, this.record);
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
 
+        // -------------------------------------------------------
+        // PRE-VALIDACIÓN: Impresión combinada para PACK
+        // Dispara guía + etiqueta ZPL antes de validar
+        // -------------------------------------------------------
+        if (!isBatch && recordData.name && recordData.name.includes('PACK')) {
+            try {
+                await this._printCombinedPack(recordData.id);
+            } catch (error) {
+                // Si la impresión falla, logueamos pero NO bloqueamos la validación
+                console.warn("Error en impresión combinada pre-validación:", error);
+            }
+        }
+
+        // Validación normal (super)
         const result = await super._validate(...arguments);
 
+        // -------------------------------------------------------
+        // POST-VALIDACIÓN: Logs externos
+        // -------------------------------------------------------
         try {
             if (!isBatch) {
                 await this._enviar_log(recordData, "external", `Validación simple: ${recordData.name}`);
@@ -56,8 +55,37 @@ patch(BarcodeModel.prototype, {
             console.error(error);
         }
 
+        // -------------------------------------------------------
+        // POST-VALIDACIÓN: Marcar como impreso + redirección WMDS
+        // -------------------------------------------------------
+        if (!isBatch && recordData.name && recordData.name.includes('PACK')) {
+            try {
+                await this.orm.call('stock.picking', 'action_mark_barcode_printed', [[recordData.id]]);
+            } catch (e) {
+                console.warn("No se pudo marcar barcode_printed:", e);
+            }
+        }
+
         await this._metodo_final_post_validacion(recordData, result);
         return result;
+    },
+
+    /**
+     * Dispara la impresión combinada (Guía + Etiqueta ZPL)
+     * usando el reporte report_combined_pack_validate.
+     * Se ejecuta vía doAction para que el IoT handler envíe a la impresora.
+     */
+    async _printCombinedPack(pickingId) {
+        const action = await this.orm.call(
+            'stock.picking',
+            'action_print_combined_barcode',
+            [[pickingId]]
+        );
+        if (action) {
+            await this.action.doAction(action, {
+                onClose: () => {},  // Evitar navegación al cerrar
+            });
+        }
     },
 
     async _executeAction(action) {
@@ -113,7 +141,6 @@ patch(BarcodeModel.prototype, {
                 user = JSON.parse(session_wmds).email;
             } catch (e) {}
         } else {
-            // No user in session storage, so we don't redirect to WMDS
             return;
         }
         
