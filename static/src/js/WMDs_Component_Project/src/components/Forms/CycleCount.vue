@@ -210,7 +210,7 @@
                             <Button label="Seleccionar Discrepancias" icon="pi pi-check-circle" class="p-button-text p-button-sm" @click="selectAllDiscrepancies" />
                             <Button label="Seleccionar Coincidencias" icon="pi pi-circle" class="p-button-text p-button-sm" @click="selectAllMatches" />
                         </div>
-                        <div>
+                        <div :title="anyWaveOpen ? 'No están todas las olas cerradas.' : ''">
                             <Button label="AJUSTAR SELECCIONADOS" icon="pi pi-bolt" severity="success" :disabled="!canBulkAdjust || anyWaveOpen" @click="prepareBulkAdjustment" :loading="store.loading" />
                         </div>
                     </div>
@@ -298,8 +298,10 @@
                 <InputText v-model="bulkAdjDialog.reason" placeholder="Ej: Consolidación Auditoría Anual..." />
             </div>
             <template #footer>
-                <Button label="Cancelar" icon="pi pi-times" @click="bulkAdjDialog.visible = false" class="p-button-text" />
-                <Button label="CONFIRMAR TODO" icon="pi pi-check" severity="success" @click="confirmBulkAdjustment" :loading="store.loading" />
+                <div :title="anyWaveOpen ? 'No están todas las olas cerradas.' : ''" style="display:inline-block">
+                    <Button label="Cancelar" icon="pi pi-times" @click="bulkAdjDialog.visible = false" class="p-button-text mr-2" />
+                    <Button label="CONFIRMAR TODO" icon="pi pi-check" severity="success" @click="confirmBulkAdjustment" :loading="store.loading" :disabled="anyWaveOpen" />
+                </div>
             </template>
         </Dialog>
 
@@ -327,8 +329,10 @@
                 </small>
             </div>
             <template #footer>
-                <Button label="Cancelar" icon="pi pi-times" @click="adjDialog.visible = false" class="p-button-text" />
-                <Button label="CONFIRMAR AJUSTE" icon="pi pi-check" severity="success" @click="confirmAdjustment" :loading="store.loading" :disabled="!adjDialog.reason" />
+                <div :title="anyWaveOpen ? 'No están todas las olas cerradas.' : ''" style="display:inline-block">
+                    <Button label="Cancelar" icon="pi pi-times" @click="adjDialog.visible = false" class="p-button-text mr-2" />
+                    <Button label="CONFIRMAR AJUSTE" icon="pi pi-check" severity="success" @click="confirmAdjustment" :loading="store.loading" :disabled="!adjDialog.reason || anyWaveOpen" />
+                </div>
             </template>
         </Dialog>
 
@@ -437,7 +441,7 @@ export default {
             return (f.aisle_from > f.aisle_to) || (f.position_from > f.position_to) || (f.level_from > f.level_to) || (f.front_from > f.front_to);
         },
         isSaveDisabled() {
-            return !this.newCount.ref || this.assignedOperators.some(op => !op.operator_id) || !this.selectedLocations.length;
+            return !this.newCount.ref || this.assignedOperators.length === 0 || this.assignedOperators.some(op => !op.operator_id) || !this.selectedLocations.length;
         },
         filteredComparison() {
             let base = this.comparisonData;
@@ -526,7 +530,9 @@ export default {
             this.finalSelection = [];
         },
         addOperatorField() { this.assignedOperators.push({ id: Date.now() + Math.random(), operator_id: null }); },
-        removeOperatorField(idx) { this.assignedOperators.splice(idx, 1); },
+        removeOperatorField(idx) { 
+            this.assignedOperators = this.assignedOperators.filter((_, i) => i !== idx); 
+        },
         async saveFullCount() {
             const payload = {
                 name: this.newCount.ref,
