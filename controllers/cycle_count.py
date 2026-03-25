@@ -308,6 +308,15 @@ class CycleCount(http.Controller):
         try:
             wave = request.env['cycle.count.wave'].sudo().browse(kw.get('wave_id'))
             wave.write({'state': 'done'})
+            
+            # Registrar en log
+            request.env['wmds.log'].sudo().create({
+                'cycle_count': wave.cycle_count_id.id,
+                'log': f"Ola {wave.name} finalizada por {request.env.user.name}",
+                'user': request.env.user.id,
+                'date': fields.Datetime.now()
+            })
+            
             return {'ok': True}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
@@ -317,6 +326,14 @@ class CycleCount(http.Controller):
         try:
             count = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).browse(kw.get('count_id'))
             count.write({'state': 'finalized'})
+            
+            # Registrar en log
+            request.env['wmds.log'].sudo().create({
+                'cycle_count': count.id,
+                'log': f"Ciclo de conteo {count.name} FINALIZADO por {request.env.user.name}",
+                'user': request.env.user.id,
+                'date': fields.Datetime.now()
+            })
             
             # Unarchive the locations and move stock back
             for sl in count.selected_location_ids:
@@ -334,6 +351,15 @@ class CycleCount(http.Controller):
         try:
             count = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).browse(kw.get('count_id'))
             count.write({'state': 'cancelled'})
+            
+            # Registrar en log
+            request.env['wmds.log'].sudo().create({
+                'cycle_count': count.id,
+                'log': f"Ciclo de conteo {count.name} CANCELADO por {request.env.user.name}",
+                'user': request.env.user.id,
+                'date': fields.Datetime.now()
+            })
+            
             # Cancelar olas no terminadas
             count.wave_ids.filtered(lambda w: w.state not in ['done', 'cancelled']).write({'state': 'cancelled'})
             
@@ -352,7 +378,18 @@ class CycleCount(http.Controller):
     def reassign_cycle_count_wave_operator(self, **kw):
         try:
             wave = request.env['cycle.count.wave'].sudo().browse(kw.get('wave_id'))
-            wave.write({'operator_id': kw.get('operator_id')})
+            new_op = request.env['res.users'].sudo().browse(kw.get('operator_id'))
+            old_op_name = wave.operator_id.name
+            wave.write({'operator_id': new_op.id})
+            
+            # Registrar en log
+            request.env['wmds.log'].sudo().create({
+                'cycle_count': wave.cycle_count_id.id,
+                'log': f"Ola {wave.name} reasignada de {old_op_name} a {new_op.name} por {request.env.user.name}",
+                'user': request.env.user.id,
+                'date': fields.Datetime.now()
+            })
+            
             return {'ok': True}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
@@ -362,6 +399,15 @@ class CycleCount(http.Controller):
         try:
             wave = request.env['cycle.count.wave'].sudo().browse(kw.get('wave_id'))
             wave.write({'state': 'cancelled'})
+            
+            # Registrar en log
+            request.env['wmds.log'].sudo().create({
+                'cycle_count': wave.cycle_count_id.id,
+                'log': f"Ola {wave.name} CANCELADA por {request.env.user.name}",
+                'user': request.env.user.id,
+                'date': fields.Datetime.now()
+            })
+            
             return {'ok': True}
         except Exception as e:
             return {'ok': False, 'error': str(e)}
