@@ -214,7 +214,7 @@
                     const serverValidation = await this.store.callOdoo(
                         this.creation.create_by_aggregate.validate_item_endpoint,
                         item.value,
-                        null
+                        extraValues
                     );
                     
                     if (serverValidation.error){

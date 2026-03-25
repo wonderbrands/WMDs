@@ -319,6 +319,12 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
             case "reopen_cycle_count_wave":
                 return { ok: true }
 
+            case "batch_type":
+                return [
+                    { id: 'sale', name: 'Pedido' },
+                    { id: 'full', name: 'Full' }
+                ]
+
             default:
                 break;
         }
@@ -375,6 +381,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             adjust_cycle_count_stock: {url: '/wmds/v2/engine/adjust_cycle_count_stock', method: 'POST'},
             get_cycle_count_details_minimal: {url: '/wmds/v2/engine/get/cycle_count_details_minimal', method: 'POST'},
             get_user_role_permissions: {url: '/wmds/v2/engine/get/user_role_permissions', method: 'POST'},
+            batch_type: {url: '/wmds/v2/engine/get/batch_types', method: 'POST'},
         };
     }
 
@@ -432,8 +439,13 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
                 fetchParams = {task: term, ...params};
                 break;
             case "validate_pick_for_batch":
-                fetchParams = { pick: term };
+                fetchParams = { pick: term, ...params };
                 break;
+            case "batch_type":
+                return [
+                    { id: 'sale', name: 'Pedido' },
+                    { id: 'full', name: 'Full' }
+                ];
             default:
                 fetchParams = params;
                 break;

@@ -112,7 +112,16 @@ export const useGeneralStore = defineStore('general_store', {
                                 optionLabel: "name",      
                                 optionValue: "id",     
                                 required: true
-                            }
+                            },
+                            {
+                                name: "type_of_batch",     
+                                label: "Tipo de plan", 
+                                type: "selectable",       
+                                source: "batch_type",     
+                                optionLabel: "name",      
+                                optionValue: "id",     
+                                required: true
+                            },
                         ]                        
                     },
                     form_config: {

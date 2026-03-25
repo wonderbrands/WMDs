@@ -50,6 +50,12 @@
         <record id="role_wmds_counter" model="res.groups">
             <field name="name">WMDs Operator - Stock Counter</field>
         </record>
+
+        <record id="role_wmds_supplier" model="res.groups">
+            <field name="name">WMDs Operator - Replenishment</field>
+        </record>
+
+        WMDs Operator - Replenishment
         
     </data>
     

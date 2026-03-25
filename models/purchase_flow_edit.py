@@ -14,7 +14,7 @@ class StockWMDSPurchase(models.Model):
 
     def button_validate(self):
         for picking in self:
-            if picking.picking_type_id.name == 'Storage':
+            if picking.picking_type_id.name == 'Rackeos':
                 po = self.env['purchase.order'].search(
                     [('name', '=', picking.origin)],
                     limit=1

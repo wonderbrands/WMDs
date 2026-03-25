@@ -124,16 +124,24 @@ class BatchWMDS(models.Model):
     def _establish_pick_type(self):
         for record in self:
             total_operations = len(record.picking_ids)
-            #si todos los traslados son de tipo pick, el batch es de tipo sale
-            total_picks = len(record.picking_ids.filtered(lambda pick: pick.picking_type_id.name=="Pick"))
+            if total_operations == 0:
+                record.pick_type = "mix"
+                continue
+
+            # si todos los traslados son de tipo pick, el batch es de tipo sale
+            total_picks = len(record.picking_ids.filtered(lambda pick: pick.picking_type_id.name == "Pick"))
             if total_picks == total_operations:
                 record.pick_type = "sale"
-                return True
-            #si todos son de tipo full, es de tipo full
-            total_full = len(record.picking_ids.filtered(lambda pick: pick.picking_type_id.name in ["Resurtido a Ful: Pick", "Resurtido a Ful: Despacho"]))
-            #si no concuerdan, son mixtos
-            record.pick_type = "mix"
+                continue
 
+            # si todos son de tipo full, es de tipo full
+            total_full = len(record.picking_ids.filtered(lambda pick: pick.picking_type_id.name in ["Resurtido a Ful: Pick", "Resurtido a Ful: Despacho"]))
+            if total_full == total_operations:
+                record.pick_type = "full"
+                continue
+
+            # si no concuerdan, son mixtos
+            record.pick_type = "mix"
             
 
     @api.model

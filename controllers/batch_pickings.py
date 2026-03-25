@@ -3,51 +3,70 @@ from odoo.http import request
 
 class BatchPickController(http.Controller):
 
-    def _get_and_validate_picking(self, reference):
+    def _get_and_validate_picking(self, reference, type_of_batch):
         if not reference:
             return None, "Es necesario pasar un valor válido."
 
         ref_cap = reference.upper().strip()
         pick_odoo = None
 
-        if ref_cap.startswith("S"):
-            so = request.env['sale.order'].sudo().search([("name", "=", ref_cap)], limit=1)
-            if not so:
-                return None, f"La SO {ref_cap} no existe."
-            
-            if so.state != "sale":
-                return None, f"La SO {ref_cap} no está confirmada (Estado actual: {so.state})."
+        if type_of_batch=="sale":
+            if ref_cap.startswith("S"):
+                so = request.env['sale.order'].sudo().search([("name", "=", ref_cap)], limit=1)
+                if not so:
+                    return None, f"La SO {ref_cap} no existe."
+                
+                if so.state != "sale":
+                    return None, f"La SO {ref_cap} no está confirmada (Estado actual: {so.state})."
 
-            pick_odoo = so.picking_ids.filtered_domain([
-                ('picking_type_id.name', '=', 'Pick'),
-                ('state', '!=', 'cancel')
-            ])[:1]
+                pick_odoo = so.picking_ids.filtered_domain([
+                    ('picking_type_id.name', '=', 'Pick'),
+                    ('state', '!=', 'cancel')
+                ])[:1]
 
-            if not pick_odoo:
-                return None, f"La SO {ref_cap} no tiene un pick de tipo 'Pick' válido."
+                if not pick_odoo:
+                    return None, f"La SO {ref_cap} no tiene un pick de tipo 'Pick' válido."
 
-            #verificar si la orden esta lista para recolectar
-            if not so.data_ready_to_pick:
-                return None, f"La SO {ref_cap} no esta lista para recolectar (le hace falta guía y/o carrier)"
+                #verificar si la orden esta lista para recolectar
+                if not so.data_ready_to_pick:
+                    return None, f"La SO {ref_cap} no esta lista para recolectar (le hace falta guía y/o carrier)"
 
-        elif ref_cap.startswith("WH/PICK"):
-            pick_odoo = request.env['stock.picking'].sudo().search([
-                ("name", "=", ref_cap),
-                ('picking_type_id.name', '=', 'Pick'),
-            ], limit=1)
-            
-            if not pick_odoo:
-                return None, f"El pick {ref_cap} no existe."
+            elif ref_cap.startswith("WH/PICK"):
+                pick_odoo = request.env['stock.picking'].sudo().search([
+                    ("name", "=", ref_cap),
+                    ('picking_type_id.name', '=', 'Pick'),
+                    ('state', '!=', 'cancel')
+                ], limit=1)
+                
+                if not pick_odoo:
+                    return None, f"El pick {ref_cap} no existe o no esta disponible para recolección."
 
-            so = request.env['sale.order'].sudo().search([
-                ("name", "=", pick_odoo.origin),
-            ], limit=1)
+                so = request.env['sale.order'].sudo().search([
+                    ("name", "=", pick_odoo.origin),
+                ], limit=1)
 
-            if not so.data_ready_to_pick:
-                return None, f"La SO {ref_cap} no esta lista para recolectar (le hace falta guía y/o carrier)"
+                if not so:
+                     return None, f"El pick {ref_cap} no tiene una SO asociada válida."
 
-        else:
-            return None, f"Formato no reconocido: {ref_cap}. Use SO... o WH/PICK..."
+                if not so.data_ready_to_pick:
+                    return None, f"La SO {so.name} no esta lista para recolectar (le hace falta guía y/o carrier)"
+
+            else:
+                return None, f"Formato no reconocido: {ref_cap}. Use SO... o WH/PICK..."
+
+        elif type_of_batch=="full": 
+            if ref_cap.startswith("WH/DFUL") or ref_cap.startswith("WH/PFUL"):
+                pick_odoo = request.env['stock.picking'].sudo().search([
+                    ("name", "=", ref_cap),
+                    ('picking_type_id.name', 'in', ["Resurtido a Ful: Pick", "Resurtido a Ful: Despacho"]),
+                    ('state', '!=', 'cancel')
+                ], limit=1)
+                
+                if not pick_odoo:
+                    return None, f"El traslado {ref_cap} no existe o no esta disponible para recoleccion."
+            else:
+                return None, f"Formato no reconocido: {ref_cap}. Use WH/DFUL... o WH/PFUL..."
+
 
         # NUEVA VALIDACIÓN: Verificar si ya tiene un batch asignado
         if pick_odoo.batch_id:
@@ -61,7 +80,8 @@ class BatchPickController(http.Controller):
     @http.route('/wmds/v2/engine/post/validate_pick_for_batch', type='json', auth='user', methods=['POST'], csrf=True)
     def validate_pick_for_batch(self, **kw):
         pick_ref = kw.get("pick")
-        pick_obj, error_msg = self._get_and_validate_picking(pick_ref)
+        type_of_batch = kw.get("type_of_batch")
+        pick_obj, error_msg = self._get_and_validate_picking(pick_ref, type_of_batch)
 
         if error_msg:
             return {
@@ -79,6 +99,7 @@ class BatchPickController(http.Controller):
     def save_batch(self, **kw):
         picks_to_process = kw.get("batch_create")
         operator_code = kw.get("operator_id")
+        type_of_batch = kw.get("type_of_batch")
 
         if not picks_to_process or not isinstance(picks_to_process, list):
             return {
@@ -96,7 +117,7 @@ class BatchPickController(http.Controller):
 
         for item in picks_to_process:
             ref = item.get('value') if isinstance(item, dict) else item
-            pick_obj, error_msg = self._get_and_validate_picking(ref)
+            pick_obj, error_msg = self._get_and_validate_picking(ref, type_of_batch)
 
             if error_msg:
                 return {
