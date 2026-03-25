@@ -33,19 +33,19 @@
         </xpath>
 
         <!--
-            Botón VALIDAR: Bloquear si ya se imprimió (barcode_printed = true).
+            Botón VALIDAR: Bloquear si ya se imprimió (data_barcode_printed = true).
         -->
         <xpath expr="//button[contains(@class, 'o_validate_page')]" position="attributes">
             <attribute name="t-att-disabled">
-                env.model.record and env.model.record.barcode_printed
+                env.model.record and env.model.record.data_barcode_printed
             </attribute>
             <attribute name="t-att-class">
-                (env.model.record and env.model.record.barcode_printed)
+                (env.model.record and env.model.record.data_barcode_printed)
                     ? 'btn btn-secondary o_validate_page disabled'
-                    : 'btn btn-success o_validate_page'
+                    : 'btn btn-primary o_validate_page'
             </attribute>
             <attribute name="t-att-title">
-                (env.model.record and env.model.record.barcode_printed)
+                (env.model.record and env.model.record.data_barcode_printed)
                     ? 'Ya se validó e imprimió este movimiento'
                     : 'Validar'
             </attribute>
