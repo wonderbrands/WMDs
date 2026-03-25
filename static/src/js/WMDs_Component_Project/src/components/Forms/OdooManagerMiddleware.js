@@ -307,6 +307,15 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
             case "get_cycle_count_details_minimal":
                 return { ok: true, name: "CC0001-WAVE001" }
 
+            case "get_cycle_count_logs":
+                return {
+                    ok: true,
+                    data: [
+                        { id: 1, date: "2026-03-25 10:00:00", user: "Juan Perez", log: "Operador Juan Perez contó 10 productos en WH/Stock/A-01" },
+                        { id: 2, date: "2026-03-25 10:05:00", user: "Pedro Gomez", log: "Operador Pedro Gomez contó 5 productos en WH/Stock/A-02" }
+                    ]
+                }
+
             default:
                 break;
         }
@@ -345,6 +354,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_locations_by_range: {url: '/wmds/v2/engine/get/locations_by_range', method: 'POST'},
             cycle_count: {url: '/wmds/v2/engine/get/cycle_counts', method: 'POST'},
             get_cycle_count_details: {url: '/wmds/v2/engine/get/cycle_count_details', method: 'POST'},
+            get_cycle_count_logs: {url: '/wmds/v2/engine/get/cycle_count_logs', method: 'POST'},
             finish_cycle_count_wave: {url: '/wmds/v2/engine/finish_cycle_count_wave', method: 'POST'},
             close_cycle_count: {url: '/wmds/v2/engine/close_cycle_count', method: 'POST'},
             cancel_cycle_count: {url: '/wmds/v2/engine/cancel_cycle_count', method: 'POST'},

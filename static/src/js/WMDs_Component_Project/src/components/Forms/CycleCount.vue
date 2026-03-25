@@ -124,12 +124,14 @@
                             <span class="sub-title">Creado por: {{ created_by }}</span>
                         </div>
                         <div v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'">
+                            <Button label="Ver Logs" icon="pi pi-list" severity="secondary" class="mr-2" @click="showLogsReport" />
                             <Button label="Comparar Conteos" icon="pi pi-chart-bar" severity="help" class="mr-2" @click="showComparisonReport" />
                             <Button label="Añadir Ola" icon="pi pi-plus" class="p-button-outlined mr-2" @click="showOperatorDialog('add')" />
                             <Button label="Finalizar Ciclo" icon="pi pi-check-square" severity="success" class="mr-2" @click="closeEntireCount" :loading="store.loading" />
                             <Button label="Cancelar Ciclo" icon="pi pi-ban" severity="danger" class="p-button-outlined" @click="cancelEntireCount" :loading="store.loading" />
                         </div>
-                        <div v-else>
+                        <div v-else class="flex-row">
+                             <Button label="Ver Logs" icon="pi pi-list" severity="secondary" class="mr-2" @click="showLogsReport" />
                              <span :class="['state-badge', cycleCountState]">
                                 {{ cycleCountState === 'finalized' ? 'FINALIZADO' : 'CANCELADO' }}
                              </span>
@@ -181,6 +183,25 @@
                         </template>
                         <Column v-for="col of waveLinesCols" :key="col.field" :field="col.field" :header="col.name"></Column>
                         <template #empty>No se encontraron productos contados para esta ola.</template>
+                    </DataTable>
+                </div>
+                <div v-else-if="detailView === 'logs'">
+                    <div class="flex-between mb-medium">
+                        <div>
+                            <Button icon="pi pi-arrow-left" label="Volver" @click="detailView = null" class="p-button-text" />
+                            <h3 class="modal-title no-margin mt-2">Log de Actividad: {{ modalData?.name }}</h3>
+                        </div>
+                        <span class="p-input-icon-left">
+                            <i class="pi pi-search" />
+                            <InputText v-model="logSearchQuery" placeholder="Filtrar logs..." class="p-inputtext-sm" />
+                        </span>
+                    </div>
+
+                    <DataTable :value="filteredLogs" class="p-datatable-sm custom-border" paginator :rows="15">
+                        <Column field="date" header="Fecha/Hora" sortable style="width: 200px"></Column>
+                        <Column field="user" header="Usuario" sortable style="width: 150px"></Column>
+                        <Column field="log" header="Mensaje"></Column>
+                        <template #empty>No hay registros de actividad para este ciclo.</template>
                     </DataTable>
                 </div>
                 <div v-else-if="detailView === 'comparison'">
@@ -406,6 +427,9 @@ export default {
             comparisonLocationQuery: '',
             comparisonSelection: [],
             proposedQuantities: {}, // { 'locId_prodId': qty }
+
+            logData: [],
+            logSearchQuery: '',
             
             adjDialog: {
                 visible: false,
@@ -474,6 +498,11 @@ export default {
             if (!this.debouncedSearchQuerySelected) return this.selectedLocations;
             const q = this.debouncedSearchQuerySelected.toLowerCase();
             return this.selectedLocations.filter(l => l.complete_name.toLowerCase().includes(q));
+        },
+        filteredLogs() {
+            if (!this.logSearchQuery) return this.logData;
+            const q = this.logSearchQuery.toLowerCase();
+            return this.logData.filter(l => l.log.toLowerCase().includes(q) || l.user.toLowerCase().includes(q));
         }
     },
     async mounted() {
@@ -570,6 +599,14 @@ export default {
                 this.waveLines = res.data;
                 this.waveLinesCols = res.map_cols;
                 this.detailView = 'wave';
+            }
+        },
+        async showLogsReport() {
+            const res = await this.store.callOdoo("get_cycle_count_logs", "", { count_id: this.modalData.id });
+            if (res.ok) {
+                this.logData = res.data;
+                this.detailView = 'logs';
+                this.logSearchQuery = '';
             }
         },
         async showComparisonReport() {

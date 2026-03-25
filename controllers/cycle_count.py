@@ -595,6 +595,27 @@ class CycleCount(http.Controller):
             _logger.error(f"Error getting wave lines {e}")
             return {'ok': False, 'error': str(e)}
 
+    @http.route('/wmds/v2/engine/get/cycle_count_logs', type='json', auth='user', methods=['POST'])
+    def get_cycle_count_logs(self, **kw):
+        try:
+            count_id = kw.get('count_id')
+            if not count_id:
+                return {'ok': False, 'error': 'Se requiere ID de ciclo.'}
+
+            logs = request.env['wmds.log'].sudo().search([('cycle_count', '=', count_id)], order='date desc')
+
+            data = [{
+                'id': log.id,
+                'log': log.log,
+                'user': log.user.name if log.user else '---',
+                'date': fields.Datetime.to_string(log.date),
+            } for log in logs]
+
+            return {'ok': True, 'data': data}
+        except Exception as e:
+            _logger.error(f"Error getting cycle count logs {e}")
+            return {'ok': False, 'error': str(e)}
+
     @http.route('/wmds/v2/engine/create_waves_for_cycle', type='json', auth='user', methods=['POST'])
     def create_waves_for_cycle(self, **kw):
         try:
