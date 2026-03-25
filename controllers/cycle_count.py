@@ -558,7 +558,10 @@ class CycleCount(http.Controller):
             if not wave_id:
                 return {'ok': False, 'error': 'Se requiere ID de ola.'}
             
+            wave = request.env['cycle.count.wave'].sudo().browse(wave_id)
             lines = request.env['cycle.count.line'].sudo().search([('wave_id', '=', wave_id)])
+            
+            quar_to_orig_name = {sl.quarantine_location_id.id: sl.location_id.complete_name for sl in wave.cycle_count_id.selected_location_ids if sl.quarantine_location_id}
             
             map_cols = [
                 {'name': 'Producto', 'field': 'product_name'},
@@ -571,7 +574,7 @@ class CycleCount(http.Controller):
                 'id': line.id,
                 'product_name': line.product_id.display_name if line.product_id else '---',
                 'product_sku': line.product_id.default_code if line.product_id else '---',
-                'location_name': line.stock_location_id.complete_name,
+                'location_name': quar_to_orig_name.get(line.stock_location_id.id, line.stock_location_id.complete_name),
                 'qty': line.qty,
             } for line in lines if line.product_id]
             
@@ -671,6 +674,7 @@ class CycleCount(http.Controller):
                 return {'ok': False, 'error': 'Esta ubicación no está asignada a este ciclo de conteo.'}
             
             target_location = sl_entry.quarantine_location_id or sl_entry.location_id
+            original_location = sl_entry.location_id
             
             # Verificar si esta ubicación (la de destino) está en la ola
             planned_location = wave.line_ids.filtered(lambda l: l.stock_location_id.id == target_location.id)
@@ -683,7 +687,7 @@ class CycleCount(http.Controller):
             return {
                 'ok': True,
                 'location_id': target_location.id,
-                'location_name': target_location.complete_name
+                'location_name': original_location.complete_name
             }
         except Exception as e:
             return {'ok': False, 'error': str(e)}
