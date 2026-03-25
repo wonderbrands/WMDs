@@ -12,15 +12,39 @@ patch(BarcodeModel.prototype, {
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
 
         // -------------------------------------------------------
-        // PRE-VALIDACIÓN: Impresión combinada para PACK
-        // Dispara guía + etiqueta ZPL antes de validar
+        // PRE-VALIDACIÓN: Impresión para PACK
+        // Dispara DOS reportes independientes:
+        //   1. Guía de envío (PDF o ZPL según adjuntos)
+        //   2. Etiqueta interna ZPL
+        // Cada uno dispara su propio flujo IoT/impresora.
         // -------------------------------------------------------
         if (!isBatch && recordData.name && recordData.name.includes('PACK')) {
+            //Imprimir Guía de Envío
             try {
-                await this._printCombinedPack(recordData.id);
+                const guiaAction = await this.orm.call(
+                    'stock.picking',
+                    'action_print_guia_from_barcode',
+                    [[recordData.id]]
+                );
+                if (guiaAction) {
+                    await this.action.doAction(guiaAction, { onClose: () => {} });
+                }
             } catch (error) {
-                // Si la impresión falla, logueamos pero NO bloqueamos la validación
-                console.warn("Error en impresión combinada pre-validación:", error);
+                console.warn("Error imprimiendo guía de envío:", error);
+            }
+
+            //Imprimir Etiqueta Interna ZPL
+            try {
+                const etiquetaAction = await this.orm.call(
+                    'stock.picking',
+                    'action_print_etiqueta_from_barcode',
+                    [[recordData.id]]
+                );
+                if (etiquetaAction) {
+                    await this.action.doAction(etiquetaAction, { onClose: () => {} });
+                }
+            } catch (error) {
+                console.warn("Error imprimiendo etiqueta ZPL:", error);
             }
         }
 
@@ -56,36 +80,18 @@ patch(BarcodeModel.prototype, {
         }
 
         // -------------------------------------------------------
-        // POST-VALIDACIÓN: Marcar como impreso + redirección WMDS
+        // POST-VALIDACIÓN: Marcar como impreso en BD
         // -------------------------------------------------------
         if (!isBatch && recordData.name && recordData.name.includes('PACK')) {
             try {
                 await this.orm.call('stock.picking', 'action_mark_barcode_printed', [[recordData.id]]);
             } catch (e) {
-                console.warn("No se pudo marcar barcode_printed:", e);
+                console.warn("No se pudo marcar data_barcode_printed:", e);
             }
         }
 
         await this._metodo_final_post_validacion(recordData, result);
         return result;
-    },
-
-    /**
-     * Dispara la impresión combinada (Guía + Etiqueta ZPL)
-     * usando el reporte report_combined_pack_validate.
-     * Se ejecuta vía doAction para que el IoT handler envíe a la impresora.
-     */
-    async _printCombinedPack(pickingId) {
-        const action = await this.orm.call(
-            'stock.picking',
-            'action_print_combined_barcode',
-            [[pickingId]]
-        );
-        if (action) {
-            await this.action.doAction(action, {
-                onClose: () => {},  // Evitar navegación al cerrar
-            });
-        }
     },
 
     async _executeAction(action) {

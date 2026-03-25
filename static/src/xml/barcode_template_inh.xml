@@ -34,6 +34,7 @@
 
         <!--
             Botón VALIDAR: Bloquear si ya se imprimió (data_barcode_printed = true).
+            Persiste en BD (copy=False), así que sobrevive recargas y backorders lo heredan limpio.
         -->
         <xpath expr="//button[contains(@class, 'o_validate_page')]" position="attributes">
             <attribute name="t-att-disabled">
