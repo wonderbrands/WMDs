@@ -468,13 +468,12 @@ class CycleCount(http.Controller):
             wave.write({'state': 'ongoing'})
             
             # Registrar en log
-            if hasattr(request.env['wmds.log'], 'log_action'):
-                request.env['wmds.log'].sudo().log_action(
-                    'wave_reopen',
-                    f"Ola {wave.name} reabierta. Motivo: {reason}",
-                    res_model='cycle.count.wave',
-                    res_id=wave.id
-                )
+            request.env['wmds.log'].sudo().create({
+                'cycle_count': wave.cycle_count_id.id,
+                'log': f"Ola {wave.name} reabierta por {request.env.user.name}. Motivo: {reason}",
+                'user': request.env.user.id,
+                'date': fields.Datetime.now()
+            })
             
             return {'ok': True}
         except Exception as e:
@@ -535,15 +534,17 @@ class CycleCount(http.Controller):
             quar_to_orig = {sl.quarantine_location_id.id: sl.location_id.complete_name for sl in count.selected_location_ids if sl.quarantine_location_id}
             loc_name = quar_to_orig.get(location.id, location.complete_name)
             
-            # Registrar en el log de WMDS si existe el modelo
-            log_msg = f"Se hizo un ajuste de {new_qty} unidades, antes tenía {old_qty} unidades en la ubicación {loc_name}"
-            if hasattr(request.env['wmds.log'], 'log_action'):
-                request.env['wmds.log'].sudo().create({
-                    'cycle_count': count.id if count else False,
-                    'log': log_msg,
-                    'user': request.env.user.id,
-                    'date': fields.Datetime.now()
-                })
+            # Registrar en el log de WMDS
+            manager_name = request.env.user.name
+            product_name = product.display_name
+            log_msg = f"Manager {manager_name} ajustó el producto {product_name} de {old_qty} unidades a {new_qty} unidades basado en {reason} en la ubicación {loc_name}"
+            
+            request.env['wmds.log'].sudo().create({
+                'cycle_count': count.id if count else False,
+                'log': log_msg,
+                'user': request.env.user.id,
+                'date': fields.Datetime.now()
+            })
 
             return {'ok': True}
         except Exception as e:
@@ -809,18 +810,19 @@ class CycleCount(http.Controller):
             loc_name = quar_to_orig.get(location_id, request.env['stock.location'].sudo().browse(location_id).complete_name)
             
             product = request.env['product.product'].sudo().browse(product_id)
+            product_name = product.display_name
+            wave_name = wave.name
             operator_name = operator.name if operator else operator_email
             
-            log_msg = f"Operador {operator_name} contó {qty} productos en ubicación {loc_name}, a la hora {time_str}"
+            log_msg = f"Operador {operator_name} contó {qty} unidades de {product_name} en la ola {wave_name} a las {time_str} en la ubicación {loc_name}"
             
-            if hasattr(request.env['wmds.log'], 'log_action'):
-                request.env['wmds.log'].sudo().create({
-                    'cycle_count': count.id,
-                    'log': log_msg,
-                    'user': operator.id if operator else False,
-                    'date': fields.Datetime.now()
-                })
-                
+            request.env['wmds.log'].sudo().create({
+                'cycle_count': count.id,
+                'log': log_msg,
+                'user': operator.id if operator else False,
+                'date': fields.Datetime.now()
+            })
+            
             return {'ok': True}
         except Exception as e:
             _logger.error(f"Error logging cycle count line: {e}")

@@ -22,6 +22,18 @@ class WMDSLog(models.Model):
     date = fields.Datetime('Date', default=fields.Datetime.now) # Default automático
     user = fields.Many2one('res.users', 'User')
 
+    def init(self):
+        """ Ensure the column exists even if the module wasn't updated with -u """
+        self.env.cr.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'wmds_log' 
+              AND column_name = 'cycle_count'
+        """)
+        if not self.env.cr.fetchone():
+            self.env.cr.execute('ALTER TABLE wmds_log ADD COLUMN cycle_count integer')
+        super(WMDSLog, self).init()
+
     @api.model
     def create(self, vals):
         # Using create override to make it transparent
