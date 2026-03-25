@@ -99,10 +99,10 @@
                     </div>
 
                     <div class="operators-grid">
-                        <div v-for="(op, index) in assignedOperators" :key="index" class="operator-card card-background">
+                        <div v-for="(op, index) in assignedOperators" :key="op.id" class="operator-card card-background">
                             <div class="flex-between mb-small">
                                 <span class="wave-number">Ola #{{ index + 1 }}</span>
-                                <Button icon="pi pi-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOperatorField(index)" v-if="assignedOperators.length > 1" />
+                                <Button icon="pi pi-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOperatorField(index)" />
                             </div>
                             <label class="small-label">Responsable</label>
                             <Dropdown v-model="op.operator_id" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" placeholder="Seleccionar..." class="input-full" filter />
@@ -211,7 +211,7 @@
                             <Button label="Seleccionar Coincidencias" icon="pi pi-circle" class="p-button-text p-button-sm" @click="selectAllMatches" />
                         </div>
                         <div>
-                            <Button label="AJUSTAR SELECCIONADOS" icon="pi pi-bolt" severity="success" :disabled="!canBulkAdjust" @click="prepareBulkAdjustment" :loading="store.loading" />
+                            <Button label="AJUSTAR SELECCIONADOS" icon="pi pi-bolt" severity="success" :disabled="!canBulkAdjust || anyWaveOpen" @click="prepareBulkAdjustment" :loading="store.loading" />
                         </div>
                     </div>
 
@@ -381,7 +381,7 @@ export default {
             debouncedSearchQueryResults: "",
             rawSearchQuerySelected: "",
             debouncedSearchQuerySelected: "",
-            assignedOperators: [{ operator_id: null }],
+            assignedOperators: [{ id: Date.now(), operator_id: null }],
             newCount: { ref: "" },
             waves: [],
             created_by: '',
@@ -525,7 +525,7 @@ export default {
             this.selectedLocations = this.selectedLocations.filter(l => !idsToRemove.includes(l.id));
             this.finalSelection = [];
         },
-        addOperatorField() { this.assignedOperators.push({ operator_id: null }); },
+        addOperatorField() { this.assignedOperators.push({ id: Date.now() + Math.random(), operator_id: null }); },
         removeOperatorField(idx) { this.assignedOperators.splice(idx, 1); },
         async saveFullCount() {
             const payload = {
@@ -605,7 +605,10 @@ export default {
         },
         async confirmBulkAdjustment() {
             if (!this.bulkAdjDialog.reason) return;
-            if (this.anyWaveOpen && !confirm("Hay olas abiertas. ¿Estás seguro de que quieres proceder con el ajuste masivo?")) return;
+            if (this.anyWaveOpen) {
+                this.$toast.add({ severity: 'error', summary: 'Acción Bloqueada', detail: 'No se pueden hacer ajustes si hay olas sin finalizar o cancelar.', life: 5000 });
+                return;
+            }
             this.store.loading = true;
             try {
                 let count = 0;
@@ -646,7 +649,10 @@ export default {
         },
         async confirmAdjustment() {
             if (!this.adjDialog.reason) return;
-            if (this.anyWaveOpen && !confirm("Hay olas abiertas. ¿Proceder con el ajuste?")) return;
+            if (this.anyWaveOpen) {
+                this.$toast.add({ severity: 'error', summary: 'Acción Bloqueada', detail: 'No se pueden hacer ajustes si hay olas sin finalizar o cancelar.', life: 5000 });
+                return;
+            }
             const res = await this.store.callOdoo("adjust_cycle_count_stock", "", {
                 line: this.adjDialog.line,
                 new_qty: this.adjDialog.qty,
