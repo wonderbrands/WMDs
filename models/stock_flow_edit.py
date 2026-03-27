@@ -187,6 +187,13 @@ class BatchWMDS(models.Model):
     def _get_stock_barcode_data(self):
         res = super()._get_stock_barcode_data()
         
+        batch_records = res.get('records', {}).get('stock.picking.batch', [])
+        for batch_data in batch_records:
+            batch_id = batch_data.get('id')
+            if batch_id:
+                batch_real = self.env['stock.picking.batch'].browse(batch_id)
+                batch_data['pick_type'] = batch_real.pick_type
+
         picking_records = res.get('records', {}).get('stock.picking', [])
         
         for picking_data in picking_records:

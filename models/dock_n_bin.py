@@ -4,11 +4,21 @@ import qrcode
 import base64
 from io import BytesIO
 
+class BinStockMove(models.Model):
+    _inherit = "stock.move"
+
+    on_bin = fields.Boolean(string="En bin", default=False)
+    bin_id = fields.Many2one("bin.storage", string="BIN Actual", tracking=True)
+    on_dock = fields.Boolean(string="Está en DOCK", default=False, tracking=True)
+    dock_id = fields.Many2one("dock.storage", string="DOCK Actual", tracking=True)
+    dispatched = fields.Boolean(string="Entregado a paquetería", default=False)
+
 class BinCartStorage(models.Model):
     _name = "bin.storage"
 
     name = fields.Char(string="Nombre de BIN", required=True)
     ei = fields.One2many("sale.order.ei", "bin_id", string="Paquetes en BIN")
+    moves = fields.One2many("stock.move", "bin_id", string="Productos de full en BIN")
 
     qr_code_structure = fields.Char(
         string='QR Code',
@@ -55,6 +65,7 @@ class DockStorage(models.Model):
 
     name = fields.Char(string="Nombre de DOCK", required=True)
     ei = fields.One2many("sale.order.ei", "dock_id", string="Paquetes en DOCK")
+    moves = fields.One2many("stock.move", "dock_id", string="Productos de full en DOCK")
 
     qr_code_structure = fields.Char(
         string='QR Code',

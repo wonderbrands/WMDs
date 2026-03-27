@@ -152,6 +152,7 @@ patch(BarcodeModel.prototype, {
         
         const isBatch = this.resModel === 'stock.picking.batch';
         let isOnlyPick = false;
+        let isBatchFull = this.record && this.record.pick_type === "full"
 
         if (isBatch && record.picking_ids && record.picking_ids.length > 0) {
             const pickings = await this.orm.read('stock.picking', record.picking_ids, ['picking_type_id']);
@@ -166,11 +167,29 @@ patch(BarcodeModel.prototype, {
                     component_props: {
                         context: "assign_pack_for_operator",
                         instructions: "Escanea la linea de empaque para asignar el Pack",
-                        can_close: true,
+                        can_close: false,
                         extra_data: {
                             pick_id: record.id,
                             is_batch: isBatch,
                             operation_type: "Pack"
+                        }
+                    },
+                    user: user
+                })
+            );
+        }
+
+        if (isBatch && isBatchFull) {
+            localStorage.setItem("mandatory_uncompleted",
+                JSON.stringify({
+                    screen: null,
+                    component: "QRScannerComponent",
+                    component_props: {
+                        context: "assign_bin_for_ful",
+                        instructions: "Escanea el Bin para almacenar el pedido",
+                        can_close: false,
+                        extra_data: {
+                            pick_id: record.id,
                         }
                     },
                     user: user
