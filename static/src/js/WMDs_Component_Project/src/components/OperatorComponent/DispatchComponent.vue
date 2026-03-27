@@ -193,6 +193,17 @@ export default {
         async dispatchFullItem(item) {
             if (item.dispatchQty <= 0) return;
             
+            // Limit dispatchQty to remaining qty in the frontend
+            if (item.dispatchQty > item.qty) {
+                item.dispatchQty = item.qty;
+                this.$toast.add({ 
+                    severity: 'warn', 
+                    summary: 'Cantidad Ajustada', 
+                    detail: 'No puedes despachar más de lo pendiente. Se ajustó al máximo.', 
+                    life: 3000 
+                });
+            }
+
             try {
                 const response = await this.store.callOdoo("dispatch_full_items", "", {
                     operator_login: this.store.role.email,
@@ -208,13 +219,32 @@ export default {
             }
         },
         async dispatchSelectedFull() {
-            const itemsToDispatch = this.pendingFullItems.filter(i => i.dispatchQty > 0);
+            let itemsToDispatch = this.pendingFullItems.filter(i => i.dispatchQty > 0);
             if (itemsToDispatch.length === 0) return;
             
+            // Validate all items before sending
+            let adjusted = false;
+            itemsToDispatch = itemsToDispatch.map(i => {
+                if (i.dispatchQty > i.qty) {
+                    i.dispatchQty = i.qty;
+                    adjusted = true;
+                }
+                return { move_id: i.id, qty: i.dispatchQty };
+            });
+
+            if (adjusted) {
+                this.$toast.add({ 
+                    severity: 'warn', 
+                    summary: 'Ajuste de Cantidades', 
+                    detail: 'Algunas cantidades excedían lo pendiente y fueron ajustadas.', 
+                    life: 3000 
+                });
+            }
+
             try {
                 const response = await this.store.callOdoo("dispatch_full_items", "", {
                     operator_login: this.store.role.email,
-                    items: itemsToDispatch.map(i => ({ move_id: i.id, qty: i.dispatchQty }))
+                    items: itemsToDispatch
                 });
                 
                 if (response.status === "success") {

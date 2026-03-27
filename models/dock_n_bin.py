@@ -110,6 +110,27 @@ class BinStockMove(models.Model):
     dispatched = fields.Boolean(string="Entregado a paquetería", default=False)
     qty_dispatched = fields.Float(string="Cantidad Despachada", default=0.0, tracking=True)
     qty_remaining = fields.Float(string="Cantidad Pendiente", compute="_compute_qty_remaining", store=True)
+    wmds_state = fields.Selection([
+        ('in_stock', 'En Almacén'),
+        ('on_bin', 'En BIN'),
+        ('on_dock', 'En DOCK'),
+        ('partially_dispatched', 'Despacho Parcial'),
+        ('dispatched', 'Despachado')
+    ], string="Estado Logístico WMDS", compute="_compute_wmds_state", store=True)
+
+    @api.depends('on_bin', 'on_dock', 'dispatched', 'qty_dispatched', 'quantity')
+    def _compute_wmds_state(self):
+        for move in self:
+            if move.dispatched:
+                move.wmds_state = 'dispatched'
+            elif move.qty_dispatched > 0 and move.qty_dispatched < move.quantity:
+                move.wmds_state = 'partially_dispatched'
+            elif move.on_dock:
+                move.wmds_state = 'on_dock'
+            elif move.on_bin:
+                move.wmds_state = 'on_bin'
+            else:
+                move.wmds_state = 'in_stock'
 
     @api.depends('quantity', 'qty_dispatched')
     def _compute_qty_remaining(self):
