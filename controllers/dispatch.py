@@ -19,7 +19,8 @@ class Dispatch(http.Controller):
                 res.append({
                     "id": move.id,
                     "product": move.product_id.display_name,
-                    "qty": move.quantity,
+                    "qty": move.qty_remaining,
+                    "total_qty": move.quantity,
                     "origin": move.picking_id.origin or move.picking_id.name,
                     "dock": move.dock_id.name
                 })
@@ -42,37 +43,45 @@ class Dispatch(http.Controller):
                     continue
                 
                 qty_to_dispatch = item['qty']
+                if qty_to_dispatch <= 0:
+                    continue
                 
-                # In this specific business logic, if they dispatch less than the move qty,
-                # we might need to split the move, but the user said "dispatch a number or all of it".
-                # For simplicity, if they dispatch 'all', we mark as dispatched.
-                # If they dispatch 'a number', we might just log it or mark the whole move if it matches.
-                # Given the requirements, let's assume they dispatch the whole move if qty matches.
+                # Check if we are over-dispatching
+                if qty_to_dispatch > move.qty_remaining:
+                    qty_to_dispatch = move.qty_remaining
                 
-                if qty_to_dispatch >= move.quantity:
-                    move.write({
+                new_qty_dispatched = move.qty_dispatched + qty_to_dispatch
+                
+                move_vals = {
+                    'qty_dispatched': new_qty_dispatched,
+                }
+                
+                if new_qty_dispatched >= move.quantity:
+                    move_vals.update({
                         'dispatched': True,
                         'on_dock': False,
                         'dock_id': False
                     })
-                    
-                    log_msg = f"Producto {move.product_id.display_name} (Origen: {move.picking_id.name}) entregado a paquetería por {operator_login}."
-                    
-                    request.env['wmds.log'].sudo().create({
-                        'log': log_msg,
-                        'user': user_id,
-                        'date': fields.Datetime.now(),
-                    })
-                    
-                    # Validate the picking if all its moves are dispatched
-                    picking = move.picking_id
-                    if all(m.dispatched for m in picking.move_ids):
-                        # If the picking is not done, validate it. 
-                        # Note: move.state should already be 'done' from move_to_bin logic.
-                        pass
+                
+                move.write(move_vals)
+                
+                log_msg = f"Despacho parcial: {qty_to_dispatch} de {move.product_id.display_name} (Origen: {move.picking_id.name}) entregado a paquetería por {operator_login}."
+                if move.dispatched:
+                    log_msg = f"Despacho total: {move.product_id.display_name} (Origen: {move.picking_id.name}) entregado a paquetería por {operator_login}."
+                
+                # Log en picking
+                request.env['wmds.log'].sudo().create({
+                    'pick': move.picking_id.id,
+                    'log': log_msg,
+                    'user': user_id,
+                    'date': fields.Datetime.now(),
+                })
+                
+                # Note: wmds.log.create override will automatically propagate this to the batch if pick has one.
 
             return {"status": "success"}
         except Exception as e:
+            _logger.error(f"Error en dispatch_full_items: {e}")
             return {"status": "error", "message": str(e)}
 
     @http.route('/wmds/v2/engine/post/dispatch_packet', type='json', auth='user', methods=['POST'], csrf=True)
@@ -103,12 +112,29 @@ class Dispatch(http.Controller):
             _logger.info("EI tags actualizados a dispatched y removidos de DOCK")
             
             for tag in ei_tags:
+                log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
+                
+                # Log en Sale Order
                 request.env['wmds.log'].sudo().create({
                     'sale': tag.so_id.id,
-                    'log': f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}.",
+                    'log': log_msg,
                     'user': user_id,
                     'date': fields.Datetime.now(),
                 })
+                
+                # Log en Picking
+                picking = request.env['stock.picking'].sudo().search([
+                    ('sale_id', '=', tag.so_id.id),
+                    ('state', 'in', ['assigned', 'done']),
+                    ('picking_type_id.name', 'ilike', 'Pick')
+                ], order='date_done desc', limit=1)
+                if picking:
+                    request.env["wmds.log"].sudo().create({
+                        "pick": picking.id,
+                        "log": log_msg,
+                        "user": user_id,
+                    })
+                
                 _logger.info(f"Log creado para paquete {tag.display_name_custom}")
 
             sale_orders = ei_tags.mapped('so_id')

@@ -10,6 +10,8 @@
                     <group>
                         <field name="on_bin" readonly="1"/>
                         <field name="bin_id" readonly="1"/>
+                        <field name="qty_dispatched" readonly="1"/>
+                        <field name="qty_remaining" readonly="1"/>
                         <field name="dispatched" readonly="1"/>
                     </group>
                     <group>
@@ -31,6 +33,8 @@
                 <field name="bin_id" optional="hide"/>
                 <field name="on_dock" optional="show"/>
                 <field name="dock_id" optional="hide"/>
+                <field name="qty_dispatched" optional="show"/>
+                <field name="qty_remaining" optional="show"/>
                 <field name="dispatched" optional="show"/>
             </xpath>
         </field>
@@ -45,6 +49,8 @@
             <xpath expr="//field[@name='move_ids_without_package']/list/field[@name='state']" position="after">
                 <field name="on_bin" optional="show"/>
                 <field name="on_dock" optional="show"/>
+                <field name="qty_dispatched" optional="show"/>
+                <field name="qty_remaining" optional="show"/>
                 <field name="dispatched" optional="show"/>
             </xpath>
         </field>

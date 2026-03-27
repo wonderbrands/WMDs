@@ -11,13 +11,7 @@ patch(BarcodeModel.prototype, {
         const recordData = Object.assign({}, this.record);
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
 
-        // -------------------------------------------------------
-        // PRE-VALIDACIÓN: Impresión para PACK
-        // Dispara DOS reportes independientes:
-        //   1. Guía de envío (PDF o ZPL según adjuntos)
-        //   2. Etiqueta interna ZPL
-        // Cada uno dispara su propio flujo IoT/impresora.
-        // -------------------------------------------------------
+
         if (!isBatch && recordData.name && recordData.name.includes('PACK')) {
             //Imprimir Guía de Envío
             try {
@@ -48,12 +42,8 @@ patch(BarcodeModel.prototype, {
             }
         }
 
-        // Validación normal (super)
         const result = await super._validate(...arguments);
 
-        // -------------------------------------------------------
-        // POST-VALIDACIÓN: Logs externos
-        // -------------------------------------------------------
         try {
             if (!isBatch) {
                 await this._enviar_log(recordData, "external", `Validación simple: ${recordData.name}`);
@@ -79,9 +69,6 @@ patch(BarcodeModel.prototype, {
             console.error(error);
         }
 
-        // -------------------------------------------------------
-        // POST-VALIDACIÓN: Marcar como impreso en BD
-        // -------------------------------------------------------
         if (!isBatch && recordData.name && recordData.name.includes('PACK')) {
             try {
                 await this.orm.call('stock.picking', 'action_mark_barcode_printed', [[recordData.id]]);

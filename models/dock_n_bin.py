@@ -108,6 +108,13 @@ class BinStockMove(models.Model):
     on_dock = fields.Boolean(string="Está en DOCK", default=False, tracking=True)
     dock_id = fields.Many2one("dock.storage", string="DOCK Actual", tracking=True)
     dispatched = fields.Boolean(string="Entregado a paquetería", default=False)
+    qty_dispatched = fields.Float(string="Cantidad Despachada", default=0.0, tracking=True)
+    qty_remaining = fields.Float(string="Cantidad Pendiente", compute="_compute_qty_remaining", store=True)
+
+    @api.depends('quantity', 'qty_dispatched')
+    def _compute_qty_remaining(self):
+        for move in self:
+            move.qty_remaining = move.quantity - move.qty_dispatched
 
 class SaleOrderEIWMDS(models.Model):
     _inherit = "sale.order.ei"

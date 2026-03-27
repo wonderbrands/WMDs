@@ -146,6 +146,13 @@ class DockNBin(http.Controller):
                         "bin_log_id": bin_log.id
                     })
 
+                # Log General para el Batch (se duplica a los picks)
+                request.env["wmds.log"].sudo().create({
+                    "batch_pick": batch.id,
+                    "log": f"Lote movido a BIN {bin_storage.name} por {operator_name}",
+                    "user": operator_orm.id if operator_orm else False,
+                })
+
                 return {"ok": True, "count": len(moves)}
 
             if orders:
@@ -199,6 +206,19 @@ class DockNBin(http.Controller):
                                 "log": log_msg,
                                 "user": operator_orm.id if operator_orm else False,
                             })
+
+                            # Intentar loguear en el picking correspondiente (el último pick activo o validado)
+                            picking = request.env['stock.picking'].sudo().search([
+                                ('sale_id', '=', ei_tag.so_id.id),
+                                ('state', 'in', ['assigned', 'done']),
+                                ('picking_type_id.name', 'ilike', 'Pick')
+                            ], order='date_done desc', limit=1)
+                            if picking:
+                                request.env["wmds.log"].sudo().create({
+                                    "pick": picking.id,
+                                    "log": log_msg,
+                                    "user": operator_orm.id if operator_orm else False,
+                                })
                     else:
                         _logger.warning(f"No se pudo encontrar ni crear ei_tag para {so_custom_name}")
 
@@ -328,12 +348,28 @@ class DockNBin(http.Controller):
                         "log": log_msg,
                         "user": operator_orm.id if operator_orm else False,
                     })
+                    
+                    # Log en picking
+                    picking = request.env['stock.picking'].sudo().search([
+                        ('sale_id', '=', tag.so_id.id),
+                        ('state', 'in', ['assigned', 'done']),
+                        ('picking_type_id.name', 'ilike', 'Pick')
+                    ], order='date_done desc', limit=1)
+                    if picking:
+                        request.env["wmds.log"].sudo().create({
+                            "pick": picking.id,
+                            "log": log_msg,
+                            "user": operator_orm.id if operator_orm else False,
+                        })
 
             # Mover Stock Moves
             moves = request.env["stock.move"].sudo().search([
                 ('bin_id', '=', bin_storage.id),
                 ('on_bin', '=', True)
             ])
+
+            processed_pickings = request.env['stock.picking']
+            processed_batches = request.env['stock.picking.batch']
 
             for move in moves:
                 move.on_bin = False
@@ -348,6 +384,27 @@ class DockNBin(http.Controller):
                     "qty": move.quantity,
                     "message": log_msg,
                     "dock_log_id": dock_log.id
+                })
+                
+                if move.picking_id:
+                    processed_pickings |= move.picking_id
+                    if move.picking_id.batch_id:
+                        processed_batches |= move.picking_id.batch_id
+
+            # Log en Pickings y Batches de Full
+            for batch in processed_batches:
+                request.env["wmds.log"].sudo().create({
+                    "batch_pick": batch.id,
+                    "log": f"Lote movido a DOCK {dock_storage.name} por {operator_name}",
+                    "user": operator_orm.id if operator_orm else False,
+                })
+            
+            # Para pickings que no tienen batch
+            for picking in processed_pickings.filtered(lambda p: not p.batch_id):
+                request.env["wmds.log"].sudo().create({
+                    "pick": picking.id,
+                    "log": f"Traslado {picking.name} movido a DOCK {dock_storage.name} por {operator_name}",
+                    "user": operator_orm.id if operator_orm else False,
                 })
 
             return {"ok": True, "moved_packages": len(ei_tags) + len(moves)}

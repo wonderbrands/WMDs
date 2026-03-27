@@ -94,7 +94,7 @@
                         </div>
                         <div class="full-item-product">{{ item.product }}</div>
                         <div class="full-item-qty-row">
-                            <span class="full-item-qty">Cant: {{ item.qty }}</span>
+                            <span class="full-item-qty">Pendiente: {{ item.qty }} / {{ item.total_qty }}</span>
                             <div class="qty-input-group">
                                 <input type="number" v-model.number="item.dispatchQty" :max="item.qty" min="0" class="qty-input">
                                 <Button icon="pi pi-check" @click="dispatchFullItem(item)" class="p-button-success p-button-sm" />
