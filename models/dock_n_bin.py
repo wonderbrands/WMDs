@@ -4,17 +4,9 @@ import qrcode
 import base64
 from io import BytesIO
 
-class BinStockMove(models.Model):
-    _inherit = "stock.move"
-
-    on_bin = fields.Boolean(string="En bin", default=False)
-    bin_id = fields.Many2one("bin.storage", string="BIN Actual", tracking=True)
-    on_dock = fields.Boolean(string="Está en DOCK", default=False, tracking=True)
-    dock_id = fields.Many2one("dock.storage", string="DOCK Actual", tracking=True)
-    dispatched = fields.Boolean(string="Entregado a paquetería", default=False)
-
 class BinCartStorage(models.Model):
     _name = "bin.storage"
+    _description = "Bin Storage"
 
     name = fields.Char(string="Nombre de BIN", required=True)
     ei = fields.One2many("sale.order.ei", "bin_id", string="Paquetes en BIN")
@@ -62,6 +54,7 @@ class BinCartStorage(models.Model):
 
 class DockStorage(models.Model):
     _name = "dock.storage"
+    _description = "Dock Storage"
 
     name = fields.Char(string="Nombre de DOCK", required=True)
     ei = fields.One2many("sale.order.ei", "dock_id", string="Paquetes en DOCK")
@@ -106,6 +99,24 @@ class DockStorage(models.Model):
             qr_base64 = base64.b64encode(buffer.getvalue())
 
             record.qr_image = qr_base64    
+
+class BinStockMove(models.Model):
+    _inherit = "stock.move"
+
+    on_bin = fields.Boolean(string="En bin", default=False)
+    bin_id = fields.Many2one("bin.storage", string="BIN Actual", tracking=True)
+    on_dock = fields.Boolean(string="Está en DOCK", default=False, tracking=True)
+    dock_id = fields.Many2one("dock.storage", string="DOCK Actual", tracking=True)
+    dispatched = fields.Boolean(string="Entregado a paquetería", default=False)
+
+class SaleOrderEIWMDS(models.Model):
+    _inherit = "sale.order.ei"
+
+    on_bin = fields.Boolean(string="En bin", default=False)
+    bin_id = fields.Many2one("bin.storage", string="BIN Actual", tracking=True)
+    on_dock = fields.Boolean(string="Está en DOCK", default=False, tracking=True)
+    dock_id = fields.Many2one("dock.storage", string="DOCK Actual", tracking=True)
+    dispatched = fields.Boolean(string="Entregado a paquetería", default=False)
 
 class LogLine(models.Model):
     _name = "log.line"
