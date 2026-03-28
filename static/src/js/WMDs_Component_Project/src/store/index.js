@@ -384,6 +384,39 @@ export const useGeneralStore = defineStore('general_store', {
                 )
                 this.mandatory_uncompleted.doneMandatory()
             },
+            'assign_bin_for_ful':  async (qr, extra) => {
+                try {
+                    let parsedData = typeof qr === 'string' ? JSON.parse(qr) : qr;
+                    const binName = parsedData.name;
+                    
+                    let response = await this.callOdoo("validate_bin", "", {
+                        bin: binName
+                    });
+    
+                    if (response.valid) {
+                        try {
+                            let moveResponse = await this.callOdoo("move_to_bin", "", {
+                                bin: binName,
+                                operator: this.role.email,
+                                batch_id: extra.pick_id
+                            });
+            
+                            if (moveResponse.ok) {
+                                this.mandatory_uncompleted.doneMandatory();
+                                this.toast.add({ severity: 'success', summary: 'Éxito', detail: 'Movimiento a BIN completado.', life: 3000 });
+                            } else {
+                                this.toast.add({ severity: 'error', summary: 'Error', detail: moveResponse.error || 'No se pudo realizar el movimiento.', life: 3000 });
+                            }
+                        } catch (e) {
+                            this.toast.add({ severity: 'error', summary: 'Error de Servidor', detail: 'No se pudo realizar el movimiento en Odoo.', life: 3000 });
+                        }
+                    } else {
+                        this.toast.add({ severity: 'error', summary: 'Error de BIN', detail: response.error || 'BIN no válido.', life: 3000 });
+                    }
+                } catch (e) {
+                    this.toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'El código del bin no es válido.', life: 3000 });
+                }
+            },
         };
 
         if (actionsMap[context]) {

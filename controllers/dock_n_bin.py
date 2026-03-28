@@ -101,15 +101,13 @@ class DockNBin(http.Controller):
             bin_name = kw.get("bin")
             operator_login = kw.get("operator")
             orders = kw.get("orders")
+            batch_id = kw.get("batch_id")
 
-            if not bin_name or not operator_login or not orders:
+            if not bin_name or not operator_login:
                 _logger.error("Faltan datos en move_to_bin")
                 return {'error': 'Missing data'}
 
             operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
-            if not operator_orm:
-                _logger.warning(f"Operador {operator_login} no encontrado")
-
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             if not bin_storage:
                 _logger.error(f"Bin {bin_name} no encontrado")
@@ -119,33 +117,19 @@ class DockNBin(http.Controller):
             if not bin_log:
                 bin_log = request.env["bin.log"].sudo().create({'bin_id': bin_storage.id})
 
-            for so_custom_name in orders:
-                _logger.info(f"Procesando etiqueta: {so_custom_name}")
-                # Intentar buscar o crear la etiqueta EI
-                ei_tag = request.env["sale.order.ei"].sudo().search([
-                    ('display_name_custom', '=', so_custom_name)
-                ], limit=1)
+            operator_name = operator_orm.name if operator_orm else "Desconocido"
 
-                if not ei_tag and '/' in so_custom_name:
-                    parts = so_custom_name.split('/')
-                    if len(parts) == 2:
-                        so_name, seq_str = parts
-                        so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
-                        if so:
-                            try:
-                                seq = int(seq_str)
-                                if 0 < seq <= so.ei_total:
-                                    ei_tag = request.env["sale.order.ei"].sudo().create({
-                                        'so_id': so.id,
-                                        'sequence_number': seq
-                                    })
-                                    _logger.info(f"Etiqueta {so_custom_name} creada")
-                            except ValueError:
-                                pass
-
-                if ei_tag:
-                    _logger.info(f"Actualizando estado de ei_tag {ei_tag.id}")
-                    ei_tag.write({
+            if batch_id:
+                # Caso Full: Procesar por Batch ID
+                batch = request.env['stock.picking.batch'].sudo().browse(batch_id)
+                if not batch.exists():
+                    return {'error': 'Batch not found'}
+                
+                pickings = batch.picking_ids
+                moves = pickings.mapped('move_ids').filtered(lambda m: m.state == 'done' and not m.dispatched)
+                
+                for move in moves:
+                    move.write({
                         'on_bin': True,
                         'bin_id': bin_storage.id,
                         'on_dock': False,
@@ -153,24 +137,90 @@ class DockNBin(http.Controller):
                         'dispatched': False
                     })
                     
-                    operator_name = operator_orm.name if operator_orm else "Desconocido"
-                    log_msg = f"El operador {operator_name} puso el paquete {so_custom_name} en el bin {bin_storage.name}"
-
+                    log_msg = f"El operador {operator_name} puso el producto {move.product_id.display_name} (de la orden {move.picking_id.name}) en el bin {bin_storage.name}"
+                    
                     request.env["log.line"].sudo().create({
                         "operator_id": operator_orm.id if operator_orm else False,
-                        "qty": 1,
+                        "qty": move.quantity,
                         "message": log_msg,
                         "bin_log_id": bin_log.id
                     })
 
-                    if ei_tag.so_id:
-                        request.env["wmds.log"].sudo().create({
-                            "sale": ei_tag.so_id.id,
-                            "log": log_msg,
-                            "user": operator_orm.id if operator_orm else False,
+                # Log General para el Batch (se duplica a los picks)
+                request.env["wmds.log"].sudo().create({
+                    "batch_pick": batch.id,
+                    "log": f"Lote movido a BIN {bin_storage.name} por {operator_name}",
+                    "user": operator_orm.id if operator_orm else False,
+                })
+
+                return {"ok": True, "count": len(moves)}
+
+            if orders:
+                # Caso Ecommerce/Picks: Procesar por etiquetas EI
+                for so_custom_name in orders:
+                    _logger.info(f"Procesando etiqueta: {so_custom_name}")
+                    # Intentar buscar o crear la etiqueta EI
+                    ei_tag = request.env["sale.order.ei"].sudo().search([
+                        ('display_name_custom', '=', so_custom_name)
+                    ], limit=1)
+
+                    if not ei_tag and '/' in so_custom_name:
+                        parts = so_custom_name.split('/')
+                        if len(parts) == 2:
+                            so_name, seq_str = parts
+                            so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
+                            if so:
+                                try:
+                                    seq = int(seq_str)
+                                    if 0 < seq <= so.ei_total:
+                                        ei_tag = request.env["sale.order.ei"].sudo().create({
+                                            'so_id': so.id,
+                                            'sequence_number': seq
+                                        })
+                                        _logger.info(f"Etiqueta {so_custom_name} creada")
+                                except ValueError:
+                                    pass
+
+                    if ei_tag:
+                        _logger.info(f"Actualizando estado de ei_tag {ei_tag.id}")
+                        ei_tag.write({
+                            'on_bin': True,
+                            'bin_id': bin_storage.id,
+                            'on_dock': False,
+                            'dock_id': False,
+                            'dispatched': False
                         })
-                else:
-                    _logger.warning(f"No se pudo encontrar ni crear ei_tag para {so_custom_name}")
+                        
+                        log_msg = f"El operador {operator_name} puso el paquete {so_custom_name} en el bin {bin_storage.name}"
+
+                        request.env["log.line"].sudo().create({
+                            "operator_id": operator_orm.id if operator_orm else False,
+                            "qty": 1,
+                            "message": log_msg,
+                            "bin_log_id": bin_log.id
+                        })
+
+                        if ei_tag.so_id:
+                            request.env["wmds.log"].sudo().create({
+                                "sale": ei_tag.so_id.id,
+                                "log": log_msg,
+                                "user": operator_orm.id if operator_orm else False,
+                            })
+
+                            # Intentar loguear en el picking correspondiente (el último pick activo o validado)
+                            picking = request.env['stock.picking'].sudo().search([
+                                ('sale_id', '=', ei_tag.so_id.id),
+                                ('state', 'in', ['assigned', 'done']),
+                                ('picking_type_id.name', 'ilike', 'Pick')
+                            ], order='date_done desc', limit=1)
+                            if picking:
+                                request.env["wmds.log"].sudo().create({
+                                    "pick": picking.id,
+                                    "log": log_msg,
+                                    "user": operator_orm.id if operator_orm else False,
+                                })
+                    else:
+                        _logger.warning(f"No se pudo encontrar ni crear ei_tag para {so_custom_name}")
 
             return {"ok": True}
 
@@ -195,14 +245,28 @@ class DockNBin(http.Controller):
                 ('on_bin', '=', True)
             ])
 
+            moves = request.env["stock.move"].sudo().search([
+                ('bin_id', '=', bin_storage.id),
+                ('on_bin', '=', True)
+            ])
+
             packages = [tag.display_name_custom for tag in ei_tags]
             package_details = [{"name": tag.display_name_custom, "so": tag.so_id.name} for tag in ei_tags]
+            
+            for move in moves:
+                package_details.append({
+                    "name": move.product_id.display_name,
+                    "so": move.picking_id.origin or move.picking_id.name,
+                    "qty": move.quantity,
+                    "is_full": True
+                })
+
             return {
                 "valid": True,
                 "bin": bin_storage.name,
                 "packages": packages,
                 "package_details": package_details,
-                "total_packages": len(packages)
+                "total_packages": len(packages) + len(moves)
             }
         except Exception as e:
             return {"error": str(e), "valid": False}
@@ -255,12 +319,13 @@ class DockNBin(http.Controller):
                     'bin_id': bin_storage.id
                 })
 
+            operator_name = operator_orm.name if operator_orm else "Desconocido"
+
+            # Mover EI Tags
             ei_tags = request.env["sale.order.ei"].sudo().search([
                 ('bin_id', '=', bin_storage.id),
                 ('on_bin', '=', True)
             ])
-
-            operator_name = operator_orm.name if operator_orm else "Desconocido"
 
             for tag in ei_tags:
                 tag.on_bin = False
@@ -283,8 +348,66 @@ class DockNBin(http.Controller):
                         "log": log_msg,
                         "user": operator_orm.id if operator_orm else False,
                     })
+                    
+                    # Log en picking
+                    picking = request.env['stock.picking'].sudo().search([
+                        ('sale_id', '=', tag.so_id.id),
+                        ('state', 'in', ['assigned', 'done']),
+                        ('picking_type_id.name', 'ilike', 'Pick')
+                    ], order='date_done desc', limit=1)
+                    if picking:
+                        request.env["wmds.log"].sudo().create({
+                            "pick": picking.id,
+                            "log": log_msg,
+                            "user": operator_orm.id if operator_orm else False,
+                        })
 
-            return {"ok": True, "moved_packages": len(ei_tags)}
+            # Mover Stock Moves
+            moves = request.env["stock.move"].sudo().search([
+                ('bin_id', '=', bin_storage.id),
+                ('on_bin', '=', True)
+            ])
+
+            processed_pickings = request.env['stock.picking']
+            processed_batches = request.env['stock.picking.batch']
+
+            for move in moves:
+                move.on_bin = False
+                move.bin_id = False
+                move.on_dock = True
+                move.dock_id = dock_storage.id
+
+                log_msg = f"El operador {operator_name} movió el producto {move.product_id.display_name} del {bin_storage.name} al DOCK {dock_storage.name}"
+
+                request.env["log.line"].sudo().create({
+                    "operator_id": operator_orm.id if operator_orm else False,
+                    "qty": move.quantity,
+                    "message": log_msg,
+                    "dock_log_id": dock_log.id
+                })
+                
+                if move.picking_id:
+                    processed_pickings |= move.picking_id
+                    if move.picking_id.batch_id:
+                        processed_batches |= move.picking_id.batch_id
+
+            # Log en Pickings y Batches de Full
+            for batch in processed_batches:
+                request.env["wmds.log"].sudo().create({
+                    "batch_pick": batch.id,
+                    "log": f"Lote movido a DOCK {dock_storage.name} por {operator_name}",
+                    "user": operator_orm.id if operator_orm else False,
+                })
+            
+            # Para pickings que no tienen batch
+            for picking in processed_pickings.filtered(lambda p: not p.batch_id):
+                request.env["wmds.log"].sudo().create({
+                    "pick": picking.id,
+                    "log": f"Traslado {picking.name} movido a DOCK {dock_storage.name} por {operator_name}",
+                    "user": operator_orm.id if operator_orm else False,
+                })
+
+            return {"ok": True, "moved_packages": len(ei_tags) + len(moves)}
 
         except Exception as e:
             request.env.cr.rollback()

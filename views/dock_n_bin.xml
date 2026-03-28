@@ -91,11 +91,21 @@
                         </group>
                     </group>
                     <notebook>
-                        <page string="Paquetes en BIN">
+                        <page string="Paquetes en BIN (E-commerce)">
                             <field name="ei" readonly="1">
                                 <list>
                                     <field name="display_name_custom"/>
                                     <field name="so_id"/>
+                                    <field name="on_bin"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Productos en BIN (Full)">
+                            <field name="moves" readonly="1">
+                                <list>
+                                    <field name="product_id"/>
+                                    <field name="picking_id"/>
+                                    <field name="quantity"/>
                                     <field name="on_bin"/>
                                 </list>
                             </field>
@@ -132,11 +142,21 @@
                         </group>
                     </group>
                     <notebook>
-                        <page string="Paquetes en DOCK">
+                        <page string="Paquetes en DOCK (E-commerce)">
                             <field name="ei" readonly="1">
                                 <list>
                                     <field name="display_name_custom"/>
                                     <field name="so_id"/>
+                                    <field name="on_dock"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Productos en DOCK (Full)">
+                            <field name="moves" readonly="1">
+                                <list>
+                                    <field name="product_id"/>
+                                    <field name="picking_id"/>
+                                    <field name="quantity"/>
                                     <field name="on_dock"/>
                                 </list>
                             </field>

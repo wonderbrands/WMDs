@@ -6,6 +6,84 @@ _logger = logging.getLogger(__name__)
 
 class Dispatch(http.Controller):
 
+    @http.route('/wmds/v2/engine/get/pending_full_dispatch', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_pending_full_dispatch(self, **kw):
+        try:
+            moves = request.env["stock.move"].sudo().search([
+                ('on_dock', '=', True),
+                ('dispatched', '=', False)
+            ])
+            
+            res = []
+            for move in moves:
+                res.append({
+                    "id": move.id,
+                    "product": move.product_id.display_name,
+                    "qty": move.qty_remaining,
+                    "total_qty": move.quantity,
+                    "origin": move.picking_id.origin or move.picking_id.name,
+                    "dock": move.dock_id.name
+                })
+            return res
+        except Exception as e:
+            return {"error": str(e)}
+
+    @http.route('/wmds/v2/engine/post/dispatch_full_items', type='json', auth='user', methods=['POST'], csrf=True)
+    def dispatch_full_items(self, **kw):
+        try:
+            items = kw.get("items", []) # List of {move_id, qty}
+            operator_login = kw.get("operator_login")
+            
+            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            user_id = operator.id if operator else request.env.user.id
+
+            for item in items:
+                move = request.env["stock.move"].sudo().browse(item['move_id'])
+                if not move.exists():
+                    continue
+                
+                qty_to_dispatch = item['qty']
+                if qty_to_dispatch <= 0:
+                    continue
+                
+                # Check if we are over-dispatching
+                if qty_to_dispatch > move.qty_remaining:
+                    qty_to_dispatch = move.qty_remaining
+                
+                new_qty_dispatched = move.qty_dispatched + qty_to_dispatch
+                
+                move_vals = {
+                    'qty_dispatched': new_qty_dispatched,
+                }
+                
+                if new_qty_dispatched >= move.quantity:
+                    move_vals.update({
+                        'dispatched': True,
+                        'on_dock': False,
+                        'dock_id': False
+                    })
+                
+                move.write(move_vals)
+                
+                log_msg = f"Despacho parcial: {qty_to_dispatch} de {move.product_id.display_name} (Origen: {move.picking_id.name}) entregado a paquetería por {operator_login}."
+                if move.dispatched:
+                    log_msg = f"Despacho total: {move.product_id.display_name} (Origen: {move.picking_id.name}) entregado a paquetería por {operator_login}."
+                
+                # Log en picking
+                request.env['wmds.log'].sudo().create({
+                    'pick': move.picking_id.id,
+                    'log': log_msg,
+                    'user': user_id,
+                    'date': fields.Datetime.now(),
+                })
+                
+                # Note: wmds.log.create override will automatically propagate this to the batch if pick has one.
+
+            return {"status": "success"}
+        except Exception as e:
+            _logger.error(f"Error en dispatch_full_items: {e}")
+            return {"status": "error", "message": str(e)}
+
     @http.route('/wmds/v2/engine/post/dispatch_packet', type='json', auth='user', methods=['POST'], csrf=True)
     def dispatch_packet(self, **kw):
         try:
@@ -34,12 +112,29 @@ class Dispatch(http.Controller):
             _logger.info("EI tags actualizados a dispatched y removidos de DOCK")
             
             for tag in ei_tags:
+                log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
+                
+                # Log en Sale Order
                 request.env['wmds.log'].sudo().create({
                     'sale': tag.so_id.id,
-                    'log': f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}.",
+                    'log': log_msg,
                     'user': user_id,
                     'date': fields.Datetime.now(),
                 })
+                
+                # Log en Picking
+                picking = request.env['stock.picking'].sudo().search([
+                    ('sale_id', '=', tag.so_id.id),
+                    ('state', 'in', ['assigned', 'done']),
+                    ('picking_type_id.name', 'ilike', 'Pick')
+                ], order='date_done desc', limit=1)
+                if picking:
+                    request.env["wmds.log"].sudo().create({
+                        "pick": picking.id,
+                        "log": log_msg,
+                        "user": user_id,
+                    })
+                
                 _logger.info(f"Log creado para paquete {tag.display_name_custom}")
 
             sale_orders = ei_tags.mapped('so_id')

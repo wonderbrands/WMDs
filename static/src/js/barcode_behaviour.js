@@ -11,13 +11,7 @@ patch(BarcodeModel.prototype, {
         const recordData = Object.assign({}, this.record);
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
 
-        // -------------------------------------------------------
-        // PRE-VALIDACIÓN: Impresión para PACK
-        // Dispara DOS reportes independientes:
-        //   1. Guía de envío (PDF o ZPL según adjuntos)
-        //   2. Etiqueta interna ZPL
-        // Cada uno dispara su propio flujo IoT/impresora.
-        // -------------------------------------------------------
+
         if (!isBatch && recordData.name && recordData.name.includes('PACK')) {
             //Imprimir Guía de Envío
             try {
@@ -48,12 +42,8 @@ patch(BarcodeModel.prototype, {
             }
         }
 
-        // Validación normal (super)
         const result = await super._validate(...arguments);
 
-        // -------------------------------------------------------
-        // POST-VALIDACIÓN: Logs externos
-        // -------------------------------------------------------
         try {
             if (!isBatch) {
                 await this._enviar_log(recordData, "external", `Validación simple: ${recordData.name}`);
@@ -79,9 +69,6 @@ patch(BarcodeModel.prototype, {
             console.error(error);
         }
 
-        // -------------------------------------------------------
-        // POST-VALIDACIÓN: Marcar como impreso en BD
-        // -------------------------------------------------------
         if (!isBatch && recordData.name && recordData.name.includes('PACK')) {
             try {
                 await this.orm.call('stock.picking', 'action_mark_barcode_printed', [[recordData.id]]);
@@ -152,6 +139,7 @@ patch(BarcodeModel.prototype, {
         
         const isBatch = this.resModel === 'stock.picking.batch';
         let isOnlyPick = false;
+        let isBatchFull = this.record && this.record.pick_type === "full"
 
         if (isBatch && record.picking_ids && record.picking_ids.length > 0) {
             const pickings = await this.orm.read('stock.picking', record.picking_ids, ['picking_type_id']);
@@ -166,11 +154,29 @@ patch(BarcodeModel.prototype, {
                     component_props: {
                         context: "assign_pack_for_operator",
                         instructions: "Escanea la linea de empaque para asignar el Pack",
-                        can_close: true,
+                        can_close: false,
                         extra_data: {
                             pick_id: record.id,
                             is_batch: isBatch,
                             operation_type: "Pack"
+                        }
+                    },
+                    user: user
+                })
+            );
+        }
+
+        if (isBatch && isBatchFull) {
+            localStorage.setItem("mandatory_uncompleted",
+                JSON.stringify({
+                    screen: null,
+                    component: "QRScannerComponent",
+                    component_props: {
+                        context: "assign_bin_for_ful",
+                        instructions: "Escanea el Bin para almacenar el pedido",
+                        can_close: false,
+                        extra_data: {
+                            pick_id: record.id,
                         }
                     },
                     user: user
