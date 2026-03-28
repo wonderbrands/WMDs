@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+
+        <record id="wmds_po_inherit" model="ir.ui.view">
+            <field name="name">wmds.po.inherit</field>
+            <field name="model">purchase.order</field>
+            <field name="inherit_id" ref="purchase.purchase_order_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//notebook" position="inside">
+                    <page string="WMDS" name="wmds_logs">
+                        <field name="wmds_log">
+                            <list>
+                                <field name="log"/>
+                                <field name="date"/>
+                                <field name="user"/>
+                            </list>
+                        </field>
+                    </page>
+                </xpath>
+
+                <xpath expr="//group[@name='other_info']" position="inside">
+                    <field name="check_commertial" />
+                </xpath>
+            </field>
+        </record>
+
+    </data>
+</odoo>

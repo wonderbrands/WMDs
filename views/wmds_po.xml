@@ -7,6 +7,53 @@
             <field name="model">purchase.order</field>
             <field name="inherit_id" ref="purchase.purchase_order_form"/>
             <field name="arch" type="xml">
+
+                <!-- Botón VoBo COMEX -->
+                <xpath expr="//header" position="inside">
+                    <button name="action_comex_approve"
+                            string="✓ VoBo COMEX"
+                            type="object"
+                            class="btn-warning"
+                            invisible="check_commertial or state not in ('purchase', 'done')"
+                            confirm="¿Confirma el Visto Bueno de COMEX? Si hay stock en Cuarentena, se moverá a Almacenaje."
+                            groups="stock.group_stock_manager"/>
+                </xpath>
+
+                <!-- Badges -->
+                <xpath expr="//field[@name='state']/.." position="after">
+                    <field name="check_commertial" invisible="1"/>
+                    <div class="badge rounded-pill text-bg-success fs-6 lh-base"
+                         invisible="not check_commertial">
+                        ✓ VoBo COMEX
+                    </div>
+                    <div class="badge rounded-pill text-bg-warning fs-6 lh-base"
+                         invisible="check_commertial or state not in ('purchase', 'done')">
+                        ⏳ Pendiente COMEX
+                    </div>
+                </xpath>
+
+                <!-- Smart button Liberaciones -->
+                <xpath expr="//div[@name='button_box']" position="inside">
+                    <button name="action_view_quarantine_transfers"
+                            type="object"
+                            class="oe_stat_button"
+                            icon="fa-exchange"
+                            invisible="quarantine_transfer_count == 0">
+                        <field name="quarantine_transfer_count"
+                               widget="statinfo"
+                               string="Liberaciones"/>
+                    </button>
+                </xpath>
+
+                <!-- VoBo en Otra Información -->
+                <xpath expr="//group[@name='other_info']" position="inside">
+                    <field name="check_commertial" readonly="1"
+                           widget="boolean_toggle"/>
+                    <field name="comex_release_date"
+                           invisible="not check_commertial"/>
+                </xpath>
+
+                <!-- Pestaña WMDS -->
                 <xpath expr="//notebook" position="inside">
                     <page string="WMDS" name="wmds_logs">
                         <field name="wmds_log">
@@ -19,8 +66,19 @@
                     </page>
                 </xpath>
 
-                <xpath expr="//group[@name='other_info']" position="inside">
-                    <field name="check_commertial" />
+            </field>
+        </record>
+
+        <!-- Picking form: campo COMEX -->
+        <record id="wmds_picking_form_comex" model="ir.ui.view">
+            <field name="name">wmds.picking.form.comex</field>
+            <field name="model">stock.picking</field>
+            <field name="inherit_id" ref="stock.view_picking_form"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='origin']" position="after">
+                    <field name="comex_source_po_id"
+                           invisible="not comex_source_po_id"
+                           readonly="1"/>
                 </xpath>
             </field>
         </record>
