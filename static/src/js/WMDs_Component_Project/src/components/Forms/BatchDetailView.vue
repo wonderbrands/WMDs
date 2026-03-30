@@ -21,11 +21,12 @@
             </div>
         </div>
 
-        <div class="flex gap-4 w-full">
+        <!-- Main Content Grid: Products and Logs side by side -->
+        <div class="grid">
             <!-- Left Column: Pick-Products (50%) -->
-            <div class="w-6 pr-4">
+            <div class="col-12 md:col-6 pr-4">
                 <h3 class="text-lg font-semibold mb-3">Órdenes y Productos</h3>
-                <div class="picks-container overflow-y-auto" style="max-height: 60vh;">
+                <div class="picks-container overflow-y-auto" style="max-height: 65vh;">
                     <div v-for="pick in batch_data.picks" :key="pick.id" class="mb-4 p-3 surface-100 border-round shadow-1">
                         <div class="flex justify-content-between align-items-center mb-2">
                             <span class="font-bold text-blue-700">{{ pick.name }}</span>
@@ -49,9 +50,9 @@
             </div>
 
             <!-- Right Column: Timeline (50%) -->
-            <div class="w-6 flex flex-col">
+            <div class="col-12 md:col-6">
                 <h3 class="text-lg font-semibold mb-3">Línea de Tiempo (Logs)</h3>
-                <div class="timeline-container overflow-y-auto" style="max-height: 60vh;">
+                <div class="timeline-container overflow-y-auto" style="max-height: 65vh;">
                     <Timeline :value="batch_data.logs" class="customized-timeline">
                         <template #opposite="slotProps">
                             <small class="text-gray-500">{{ store.formatDate(slotProps.item.date) }}</small>
@@ -103,7 +104,7 @@ export default {
                     this.selected_operator = result.operator;
                 }
                 
-                // Fetch products for all picks in parallel immediately
+                // Fetch products for all picks in parallel
                 const productPromises = result.picks.map(async (pick) => {
                     const prodResult = await this.store.callOdoo("pick_products", "", { id: pick.id });
                     if (!prodResult.error) {
@@ -155,10 +156,12 @@ export default {
     margin-top: 1rem;
 }
 .timeline-container, .picks-container {
-    padding-right: 10px;
+    padding-right: 15px;
+    padding-left: 5px;
 }
-/* PrimeFlex/PrimeVue helper classes for layout if needed, though using standard flex */
-.w-6 {
-    width: 50%;
+/* Ensure the grid doesn't cause horizontal scroll in the modal */
+.grid {
+    margin-right: 0;
+    margin-left: 0;
 }
 </style>
