@@ -19,26 +19,24 @@ class StockWMDSPurchase(models.Model):
     def button_validate(self):
         for picking in self:
             if picking.picking_type_id.name == 'Rackeos':
-                clean_origin = picking.origin.replace('COMEX: ', '') if picking.origin else ''
-                
+                # Limpiar el origin por si viene de un traslado COMEX
+                clean_origin = (picking.origin or '').replace('COMEX: ', '')
+
                 po = self.env['purchase.order'].search(
                     [('name', '=', clean_origin)],
                     limit=1
                 )
-                
-                logging.info(f'po: {po}')
 
                 if not po:
                     raise UserError(
-                        'No se pudo encontrar la orden de compra asociada a la recepción'
+                        'No se pudo encontrar la orden de compra '
+                        'asociada a la recepción'
                     )
 
                 if not po.check_commertial:
                     for move in picking.move_ids:
                         for line in move.move_line_ids:
                             destiny = line.location_dest_id.complete_name
-                            
-                            logging.info(f'\n\ndestiny: {destiny}\n\n')
 
                             if 'Stock/Almacenaje' in destiny:
                                 destiny = destiny.replace(
@@ -72,8 +70,6 @@ class StockWMDSPurchase(models.Model):
                         move.location_dest_id = location.id
 
                 else:
-                    # VoBo TRUE: si el destino apunta a Cuarentena,
-                    # corregir a Stock/Almacenaje
                     for move in picking.move_ids:
                         for line in move.move_line_ids:
                             destiny = line.location_dest_id.complete_name
@@ -120,13 +116,6 @@ class PurchaseWMDS(models.Model):
         return action
 
     def action_comex_approve(self):
-        """
-        Botón VoBo COMEX. Un solo click:
-        1. Busca stock en cuarentena de ESTA PO
-        2. Activa check_commertial
-        3. Crea traslados Cuarentena → Almacenaje
-        4. Recarga la vista
-        """
         self.ensure_one()
 
         if self.check_commertial:
@@ -134,16 +123,13 @@ class PurchaseWMDS(models.Model):
                 'El VoBo COMEX ya fue otorgado para esta orden.'
             )
 
-        # Buscar stock en cuarentena de esta PO
         lines = self._get_quarantine_from_rackeos()
 
-        # Activar VoBo
         self.write({
             'check_commertial': True,
             'comex_release_date': fields.Datetime.now(),
         })
 
-        # Crear traslados si hay stock en cuarentena
         if lines:
             pickings = self._create_release_pickings(lines)
             pick_names = ', '.join(pickings.mapped('name'))
@@ -159,7 +145,6 @@ class PurchaseWMDS(models.Model):
                 'date': fields.Datetime.now(),
             })
 
-        # Recargar el formulario
         return {
             'type': 'ir.actions.act_window',
             'res_model': 'purchase.order',
@@ -169,12 +154,6 @@ class PurchaseWMDS(models.Model):
         }
 
     def _get_quarantine_from_rackeos(self):
-        logging.info(f'\n\n DENTRO DE: _get_quarantine_from_rackeos \n\n')
-
-        """
-        Busca stock en cuarentena puesto por Rackeos de ESTA PO.
-        Asegurando capturar todo el disponible sumando los quants.
-        """
         self.ensure_one()
 
         rackeos = self.env['stock.picking'].search([
@@ -182,7 +161,7 @@ class PurchaseWMDS(models.Model):
             ('picking_type_id.name', '=', 'Rackeos'),
             ('state', '=', 'done'),
         ])
-        logging.info(f'\n\n rackeos: {rackeos} \n\n')
+
         if not rackeos:
             return []
 
@@ -192,13 +171,14 @@ class PurchaseWMDS(models.Model):
         ])
 
         cuarentena_lines = move_lines.filtered(
-            lambda ml: 'Cuarentena' in (ml.location_dest_id.complete_name or '')
+            lambda ml: 'Cuarentena' in (
+                ml.location_dest_id.complete_name or ''
+            )
         )
 
         if not cuarentena_lines:
             return []
 
-        # Agrupar por (producto, ubicación, lote)
         grouped = {}
         for ml in cuarentena_lines:
             key = (
@@ -230,12 +210,14 @@ class PurchaseWMDS(models.Model):
             if lot_id:
                 domain.append(('lot_id', '=', lot_id))
 
-            # CORRECCIÓN: Evitamos limit=1 para sumar quants en caso de estar divididos por empaques
             quants = self.env['stock.quant'].search(domain)
             if not quants:
                 continue
 
-            available = sum(quants.mapped('quantity')) - sum(quants.mapped('reserved_quantity'))
+            available = (
+                sum(quants.mapped('quantity'))
+                - sum(quants.mapped('reserved_quantity'))
+            )
             qty = min(data['qty'], available)
 
             if qty <= 0:
@@ -245,7 +227,9 @@ class PurchaseWMDS(models.Model):
             if 'Cuarentena' not in loc_name:
                 continue
 
-            storage_name = loc_name.replace('Cuarentena', 'Stock/Almacenaje')
+            storage_name = loc_name.replace(
+                'Cuarentena', 'Stock/Almacenaje'
+            )
             storage_loc = self.env['stock.location'].search([
                 ('complete_name', '=', storage_name),
                 ('usage', '=', 'internal'),
@@ -258,13 +242,22 @@ class PurchaseWMDS(models.Model):
             data['storage_location_id'] = storage_loc.id
             result.append(data)
 
-        logging.info(f'\n\n RESULTADO: {result} \n\n')
         return result
 
     def _create_release_pickings(self, lines):
         """
-        Crea picking(s) interno(s) Cuarentena → Almacenaje, 
-        asigna cantidades y lotes exactos, y los VALIDA automáticamente.
+        Crea picking(s) Cuarentena → Almacenaje.
+
+        NO llama button_validate() porque:
+        1. button_validate dispara nuestro override de Rackeos
+           que intenta buscar la PO y redirigir ubicaciones
+        2. button_validate dispara cálculo de valoración de
+           inventario (quantity_svl) que genera una query SQL
+           enorme dentro de la misma transacción → memory exhausted
+
+        En su lugar: confirma, reserva, asigna cantidades y
+        usa _action_done() que es el método interno de Odoo
+        para completar moves sin pasar por la UI.
         """
         self.ensure_one()
 
@@ -293,20 +286,6 @@ class PurchaseWMDS(models.Model):
         for (src_id, dest_id), group_lines in groups.items():
             moves = []
             for line in group_lines:
-                # CORRECCIÓN: Definimos explícitamente el stock.move.line para forzar Odoo
-                # a mover esta cantidad y este lote específicos, bypassando reservas genéricas.
-                move_line_vals = {
-                    'product_id': line['product_id'],
-                    'location_id': src_id,
-                    'location_dest_id': dest_id,
-                    'quantity': line['qty'],  # Cantidad Hecha
-                    'product_uom_id': line['uom_id'],
-                }
-                
-                # Asignar lote si el producto utiliza trazabilidad
-                if line.get('lot_id'):
-                    move_line_vals['lot_id'] = line['lot_id']
-
                 moves.append((0, 0, {
                     'name': 'COMEX: %s' % line['product_name'],
                     'product_id': line['product_id'],
@@ -314,7 +293,6 @@ class PurchaseWMDS(models.Model):
                     'product_uom': line['uom_id'],
                     'location_id': src_id,
                     'location_dest_id': dest_id,
-                    'move_line_ids': [(0, 0, move_line_vals)],
                 }))
 
             picking = self.env['stock.picking'].create({
@@ -325,16 +303,35 @@ class PurchaseWMDS(models.Model):
                 'comex_source_po_id': self.id,
                 'move_ids': moves,
             })
-            
-            # CORRECCIÓN: Confirmar y VALIDAR el movimiento inmediatamente para que el
-            # stock se mueva físicamente y no quede bloqueando futuras transferencias.
+
+            # Confirmar y reservar
             picking.action_confirm()
-            picking.button_validate()
-            
+            picking.action_assign()
+
+            # Asignar cantidades hechas y lotes en las move_lines
+            for move in picking.move_ids:
+                # Buscar la línea original para obtener el lote
+                original = next(
+                    (l for l in group_lines
+                     if l['product_id'] == move.product_id.id),
+                    None
+                )
+                move.quantity = move.product_uom_qty
+                if original and original.get('lot_id'):
+                    for ml in move.move_line_ids:
+                        ml.lot_id = original['lot_id']
+
+            # Validar con _action_done (interno, sin UI, sin
+            # pasar por nuestro override de button_validate)
+            picking.with_context(
+                skip_backorder=True,
+                cancel_backorder=True,
+            )._action_done()
+
             pickings |= picking
 
-        return pickings 
-   
+        return pickings
+
     def write(self, vals):
         if 'state' in vals:
             new_state = vals['state']

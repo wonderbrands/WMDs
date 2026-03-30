@@ -15,7 +15,7 @@
                             type="object"
                             class="btn-warning"
                             invisible="check_commertial or state not in ('purchase', 'done')"
-                            confirm="¿Confirma el Visto Bueno de COMEX? Si hay stock en Cuarentena, se moverá a Almacenaje."
+                            confirm="¿Confirma el Visto Bueno de COMEX? Se trasladará el stock de Cuarentena a Almacenaje."
                             groups="stock.group_stock_manager"/>
                 </xpath>
 
