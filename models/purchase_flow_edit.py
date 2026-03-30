@@ -91,7 +91,11 @@ class StockWMDSPurchase(models.Model):
                 for dest_name, moves in moves_by_dest.items():
                     moves.write({'location_dest_id': location_cache[dest_name]})
 
-        return super(StockWMDSPurchase, self).button_validate()
+        try:
+            return super(StockWMDSPurchase, self).button_validate()
+        except Exception as e:
+            _logger.error("Error en validación de picking", exc_info=True)
+            raise
 
 
 class PurchaseWMDS(models.Model):
