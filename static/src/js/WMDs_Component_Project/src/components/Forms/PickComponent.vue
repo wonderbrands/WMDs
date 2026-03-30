@@ -2,7 +2,6 @@
     <div class="pick_component" v-if="form_data">
         <div class="title_section">
             <h1>{{ store.main_manager_screen.form_title }} {{ form_data.name }}</h1>
-            <h2>{{}}</h2>
         </div>
         <div class="form_items">
             <div v-for="field in Object.keys(form_data)" :key="field" class="field">
@@ -16,9 +15,8 @@
                         :options="options_non_blocked[field]" 
                         filter
                         :showClear="true"
-                        placeholder="Selecciona un usuario para asignar" 
                         :invalid="!form_data[field]"
-                        class="w-full" 
+                        class="w-full custom-select" 
                         optionLabel="name"
                         optionValue="id">
                         
@@ -34,7 +32,7 @@
                     <label :for="field">{{ map_cols.filter(col => col.field === field)[0].name }}</label>
                 </FloatLabel>
             </div>
-            <div v-if="extra_data">
+            <div v-if="extra_data" class="extra-data-container">
                 <h5>{{ extra_data.title }}</h5>
                 <DataTable v-if="extra_data.data"
                     stripedRows 
@@ -49,7 +47,7 @@
                 </DataTable>
             </div>
         </div>
-        <Button severity="success" label="Guardar" @click="saveForm(form_data, 'assign_pick')" />
+        <Button severity="success" label="Guardar" @click="saveForm(form_data, 'assign_pick')" class="save-button" />
     </div>
 </template>
 <script>
@@ -154,3 +152,86 @@
         }
     }
 </script>
+
+<style scoped>
+.pick_component {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    padding: 1em;
+    padding-bottom: 3em;
+    position: relative;
+    overflow: hidden;
+}
+
+.title_section {
+    width: 100%;
+    height: 10vh;
+    min-height: 80px;
+    text-align: center;
+}
+
+.form_items {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    align-content: flex-start;
+    overflow-y: scroll;
+}
+
+.field {
+    width: 50%;
+    height: 10vh;
+    min-width: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-top: 2rem;
+}
+
+.field :deep(.p-floatlabel) {
+    width: 90%;
+    position: relative;
+    display: block;
+}
+
+.field :deep(.p-inputtext), 
+.field :deep(.p-select) {
+    width: 100%;
+}
+
+/* Fix for FloatLabel with Select overlapping */
+.field :deep(.p-floatlabel label) {
+    z-index: 1;
+    pointer-events: none;
+}
+
+.save-button {
+    width: 20vw;
+    height: 7vh;
+    position: fixed;
+    right: 2vw;
+    bottom: 2vh;
+    z-index: 5;
+}
+
+.extra-data-container {
+    width: 100%;
+    margin-top: 2rem;
+}
+
+/* Ensure Select label floats correctly in PrimeVue 4 */
+:deep(.p-floatlabel:has(.p-select-overlay-visible) label),
+:deep(.p-floatlabel:has(.p-inputwrapper-filled) label) {
+    top: -0.75rem;
+    font-size: 12px;
+}
+</style>

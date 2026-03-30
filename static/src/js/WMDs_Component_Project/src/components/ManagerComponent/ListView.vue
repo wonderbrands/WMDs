@@ -279,3 +279,23 @@ export default {
   }
 };
 </script>
+
+<style scoped>
+.list_view {
+    width: 100%;
+    height: 100%;
+    overflow-y: scroll;
+}
+
+.table_wrapper {
+    width: 100%;
+}
+
+:deep(.p-paginator-content button) {
+    width: auto !important;
+}
+
+.title_section {
+    margin-bottom: 2rem;
+}
+</style>

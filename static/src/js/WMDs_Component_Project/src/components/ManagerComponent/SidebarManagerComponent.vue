@@ -34,7 +34,7 @@
                     </template>
                 </div>
 
-                <div class="options">
+                <div class="logout-wrapper">
                     <LogoutComponent />
                 </div>
 
@@ -79,3 +79,96 @@
         }
     }
 </script>
+
+<style scoped>
+.sidebar_manager {
+    height: 100vh;
+    width: 25vw;
+    min-width: 217px;
+    background-color: #F9FAFB;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    overflow: visible !important; 
+    z-index: 10;
+}
+
+.sidebar_content {
+    width: 100%;
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.toggle_sidebar {
+    z-index: 15;
+    width: 40px;
+    height: 40px;
+    border-radius: 20px;
+    position: absolute;
+    right: -20px;
+    margin: 0px;
+    padding: 0px;
+    margin-top: 2em;
+}
+
+.options {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.options button {
+    width: 100%;
+    background-color: white;
+    padding: .7em;
+    text-align: left;
+    border: none;
+    border-bottom: 1px solid #eee;
+    transition: all 0.2s ease;
+    color: #4b5563;
+}
+
+.options .selected_option {
+    background-color: #111827 !important;
+    color: #facc15 !important;
+    font-weight: bold !important;
+    border-left: 4px solid #facc15 !important;
+    opacity: 1 !important;
+}
+
+.options .active_submenu {
+    background-color: #f3f4f6;
+    font-weight: 600;
+}
+
+.options .submenu_child {
+    width: 90% !important; 
+    margin-left: 1.5em !important;
+    font-size: 0.85em;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.logout-wrapper {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-top: auto;
+    padding-bottom: 2em;
+}
+
+/* Specific styling for LogoutComponent when in sidebar if needed, 
+   but it's better to keep LogoutComponent's own styles inside it */
+:deep(.logout-wrapper button) {
+    width: 80% !important;
+    height: auto !important;
+    border-radius: 8px !important;
+    margin: 0px !important;
+    background-color: #ef4444 !important;
+    color: white !important;
+}
+</style>

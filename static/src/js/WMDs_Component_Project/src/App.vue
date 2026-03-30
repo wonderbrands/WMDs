@@ -142,10 +142,36 @@ export default {
 </script>
 
 <style>
-html, body, #app {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0,0,0,.3) transparent;
+}
+
+#app {
+  height: 100vh;
+  width: 100vw;
+  margin: 0px;
+  padding: 0px;
+  overflow: hidden;
+}
+
+:root {
+    --p-button-primary-color: #000 !important;
+    margin: 0px;
+    padding: 0px;
+}
+
+body{
+    margin: 0px;
+    padding: 0px;
+}
+
+/* Mobile Toast Overrides */
+@media screen and (max-width: 768px) {
+    .p-toast {
+        width: 90vw !important;
+        left: 5vw !important;
+        right: 5vw !important;
+    }
 }
 </style>

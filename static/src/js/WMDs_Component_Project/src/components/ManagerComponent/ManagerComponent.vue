@@ -3,7 +3,6 @@
     <div class="manager_screen">
         <SidebarManagerComponent v-if="show_sidebar"/>
         <main class="main_manager_screen_container">
-            <!--<BackButton where="role_picker" class="back_button"/>-->
             <MainManagerScreen v-if="store.main_manager_screen"/>
         </main>
     </div>
@@ -40,3 +39,26 @@
         }
     }
 </script>
+
+<style scoped>
+.manager_screen {
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: row;
+    position: relative;
+}
+
+.manager_screen button {
+    margin: 10px;
+    width: 40vw;
+}
+
+.main_manager_screen_container {
+    width: 75vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+}
+</style>

@@ -7,7 +7,6 @@ import App from './App.vue'
 import QrScanner from 'qr-scanner'
 import Quagga from 'quagga';
 import ToastService from 'primevue/toastservice';
-import './style.css'
 
 QrScanner.WORKER_PATH = null
 window.QrScanner = QrScanner

@@ -72,7 +72,7 @@ export default {
                 { id: "dispatch", title:"Despacho", description:"Entrega paquetera", fetch: false, label: "Registrar", view: "DispatchComponent", permission: "WMDs Operator - Dispatch" },
                 { id: "dispatch_ful", title:"Despacho fulfilment", description:"Entrega a paquetería de ordenes ful", fetch: false, label: "Registrar", view: "DispatchComponentFul", permission: "WMDs Operator - Dispatch" },
                 { id: "cycle_count_assigned", title: "Conteo cíclico", description: "Conteo de inventario por ubicación", fetch: true, label: "Asignados", permission: "WMDs Operator - Stock Counter" },
-                { id: "reabastecimiento", title: "Reabastecimiento/Traslados internos", description: "Traslado de stock de niveles superiores a niveles inferiores para disponibilizar", fetch: true, label: "Abiertos", permission: "WMDs Operator - Replenishment" },
+                { id: "reabastecimiento", title: "Reabastecimiento", description: "Traslado de stock de niveles superiores a niveles inferiores para disponibilizar", fetch: true, label: "Abiertos", permission: "WMDs Operator - Replenishment" },
             ],
             tasks: []
         };
@@ -164,6 +164,20 @@ export default {
 </script>
 
 <style scoped>
+.task-container {
+    overflow-y: scroll; 
+    padding: 1em; 
+    width: 100%; 
+    height: 90%; 
+    margin-bottom: 3em;
+    display: flex; 
+    flex-direction: column;
+}
+
+.welcome-header { 
+    margin: 1em; 
+}
+
 .cards-grid {
     display: flex;
     flex-wrap: wrap;
@@ -171,24 +185,45 @@ export default {
     gap: 20px;
     padding: 20px;
 }
+
 .task-card {
     width: 25%;
     min-width: 280px;
     cursor: pointer;
     transition: box-shadow 0.2s;
+    margin: 1em;
 }
+
 .task-card:hover {
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
+
+.pending-badge { 
+    font-style: italic; 
+    color: red; 
+}
+
+.empty-tasks { 
+    padding: 1em; 
+    color: #666; 
+    font-style: italic; 
+}
+
+.full-width { 
+    width: 100%; 
+}
+
 .logout-wrapper {
     display: flex;
     justify-content: center;
     width: 100%;
     margin-top: 2rem;
 }
+
 .logout-btn-60 {
     width: 60% !important;
 }
+
 .custom-view-btn {
     background: #3B82F6;
     color: white;

@@ -37,3 +37,19 @@
         }
     }
 </script>
+
+<style scoped>
+.role_picker {
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.role_picker button {
+    margin: 10px;
+    width: 40vw;
+}
+</style>

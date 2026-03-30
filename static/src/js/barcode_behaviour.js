@@ -11,6 +11,29 @@ patch(BarcodeModel.prototype, {
         const recordData = Object.assign({}, this.record);
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
 
+    
+        if (isBatch) {
+            const linesByPicking = {};
+            for (const line of this.currentState.lines) {
+                const pId = line.picking_id.id || line.picking_id;
+                if (!linesByPicking[pId]) { linesByPicking[pId] = []; }
+                linesByPicking[pId].push(line);
+            }
+
+            for (const [pickingId, pLines] of Object.entries(linesByPicking)) {
+                const hasStarted = pLines.some(l => this.getQtyDone(l) > 0);
+                const isComplete = pLines.every(l => this.getQtyDone(l) >= this.getQtyDemand(l));
+
+                if (hasStarted && !isComplete) {
+                    const pName = pLines[0].picking_id.display_name || `Picking #${pickingId}`;
+                    return this.notification(
+                        _t("La orden %s está incompleta. Debe recolectar todos los productos o no recoger ninguno (regresarlos).", pName),
+                        { type: "danger", title: _t("Orden Incompleta") }
+                    );
+                }
+            }
+        }
+
 
         if (!isBatch && recordData.name && recordData.name.includes('PACK')) {
             //Imprimir Guía de Envío
@@ -197,6 +220,21 @@ patch(BarcodeModel.prototype, {
         } catch (error) {}
     },
     
+    async _processBarcode(barcode) {
+        if (this.resModel === 'stock.picking.batch') {
+            const barcodeData = await this._parseBarcode(barcode, {});
+            if (barcodeData.product) {
+                const line = this._findLine(barcodeData);
+                if (!line) {
+                    return this.notification(
+                        _t("El producto escaneado no pertenece a este Plan de pickeo."),
+                        { type: "danger", title: _t("Producto no permitido") }
+                    );
+                }
+            }
+        }
+        return await super._processBarcode(...arguments);
+    },
 });
 
 patch(MainComponent.prototype, {

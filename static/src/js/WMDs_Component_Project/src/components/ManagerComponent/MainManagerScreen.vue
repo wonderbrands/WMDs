@@ -31,3 +31,19 @@
       }
     }
 </script>
+
+<style scoped>
+.main_manager_screen {
+    width: 100%;
+    height: 100%;
+    padding: 25px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.home-screen {
+    text-align: center;
+    margin-top: 5rem;
+}
+</style>

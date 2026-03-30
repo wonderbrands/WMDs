@@ -4,8 +4,8 @@
             <h1 class="text-2xl font-bold">Plan de Pickeo: {{ batch_data.name }}</h1>
         </div>
 
-        <div class="grid formgrid p-fluid mb-4">
-            <div class="col-12 md:col-6">
+        <div class="operator-assignment mb-4">
+            <div class="operator-field">
                 <label class="block font-medium mb-2">Operador Asignado</label>
                 <div class="flex gap-2">
                     <Select v-model="selected_operator" 
@@ -21,10 +21,10 @@
             </div>
         </div>
 
-        <!-- Main Content Grid: Products and Logs side by side -->
-        <div class="grid">
+        <!-- Main Content Row: Products and Logs side by side -->
+        <div class="content-row">
             <!-- Left Column: Pick-Products (50%) -->
-            <div class="col-12 md:col-6 pr-4">
+            <div class="column products-column">
                 <h3 class="text-lg font-semibold mb-3">Órdenes y Productos</h3>
                 <div class="picks-container overflow-y-auto" style="max-height: 65vh;">
                     <div v-for="pick in batch_data.picks" :key="pick.id" class="mb-4 p-3 surface-100 border-round shadow-1">
@@ -50,7 +50,7 @@
             </div>
 
             <!-- Right Column: Timeline (50%) -->
-            <div class="col-12 md:col-6">
+            <div class="column logs-column">
                 <h3 class="text-lg font-semibold mb-3">Línea de Tiempo (Logs)</h3>
                 <div class="timeline-container overflow-y-auto" style="max-height: 65vh;">
                     <Timeline :value="batch_data.logs" class="customized-timeline">
@@ -151,17 +151,38 @@ export default {
     padding: 1rem;
     height: 100%;
     overflow-y: auto;
+    width: 100%;
 }
+
+.operator-assignment {
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
+}
+
+.operator-field {
+    width: 50%; /* Same width as columns for consistency */
+    min-width: 300px;
+}
+
+.content-row {
+    display: flex;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 2rem;
+}
+
+.column {
+    flex: 1;
+    min-width: 300px;
+}
+
 .customized-timeline {
     margin-top: 1rem;
 }
+
 .timeline-container, .picks-container {
     padding-right: 15px;
     padding-left: 5px;
-}
-/* Ensure the grid doesn't cause horizontal scroll in the modal */
-.grid {
-    margin-right: 0;
-    margin-left: 0;
 }
 </style>
