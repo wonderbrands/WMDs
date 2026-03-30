@@ -63,9 +63,13 @@
             <field name="arch" type="xml">
                 <xpath expr="//notebook" position="inside">
                     <page string="WMDS" name="wmds_logs">
+                        <field name="picking_type_id_name" invisible="1"/>
                         <group>
                             <field name="operator"/>
                             <field name="wmds_status"/>
+                            <field name="marketplace_location" 
+                                invisible="picking_type_id_name != 'Resurtido a Ful: Pick'"
+                                required="picking_type_id_name == 'Resurtido a Ful: Pick'"/>
                         </group>
                         <field name="wmds_log">
                             <list>

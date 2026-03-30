@@ -17,10 +17,45 @@ class StockWMDS(models.Model):
     operator = fields.Many2one('res.users', 'Operator')
     wmds_status = fields.Many2one('wmds.stock.status', 'WMDS Status')
     wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log')
+    marketplace_location = fields.Many2one("stock.location", string="Ubicación del marketplace")
+    picking_type_id_name = fields.Char(related='picking_type_id.name', string='Operation Type Name', store=True)
 
     @api.model
     def create(self, vals):
+        # Propagate marketplace_location to DFUL if created from PFUL
+        if 'picking_type_id' in vals:
+            picking_type = self.env['stock.picking.type'].browse(vals['picking_type_id'])
+            if picking_type.name and 'Resurtido a Ful: Despacho' in picking_type.name:
+                # Look for a related PFUL picking via Sale Order or Origin
+                sale_id = vals.get('sale_id')
+                origin = vals.get('origin')
+                domain = [
+                    ('picking_type_id.name', '=', 'Resurtido a Ful: Pick'),
+                    ('marketplace_location', '!=', False)
+                ]
+                if sale_id:
+                    domain.append(('sale_id', '=', sale_id))
+                elif origin:
+                    domain.append(('origin', '=', origin))
+                else:
+                    domain = [] # Can't link if both are missing
+                
+                if domain:
+                    pful_pick = self.env['stock.picking'].search(domain, limit=1)
+                    if pful_pick:
+                        vals['marketplace_location'] = pful_pick.marketplace_location.id
+                        vals['location_dest_id'] = pful_pick.marketplace_location.id
+                        # If moves are in vals, update their destination location too
+                        if 'move_ids' in vals:
+                            for move in vals['move_ids']:
+                                if move[0] in (0, 1): # Create or Update
+                                    move[2]['location_dest_id'] = pful_pick.marketplace_location.id
+
         res = super(StockWMDS, self).create(vals)
+        # For existing moves not in vals['move_ids'] (if any, though unlikely for create)
+        if res.marketplace_location and res.picking_type_id_name == 'Resurtido a Ful: Despacho':
+            res.move_ids.write({'location_dest_id': res.marketplace_location.id})
+
         if not res.operator:
             not_assigned = self.env['wmds.stock.status'].search([('value', '=', 'not_assigned')], limit=1)
             if not_assigned:
