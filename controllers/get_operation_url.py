@@ -58,6 +58,44 @@ class GetURLOfPick(http.Controller):
             }   
 
     @http.route(
+        '/wmds/v2/engine/get/validate_dfull_pick',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def validate_dfull_pick(self, **kw):
+        try:
+            pick_name = kw.get('pick_name')
+            if not pick_name:
+                return {"valid": False, "message": "Falta el nombre de la operación."}
+            
+            pick = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1)
+            
+            if not pick:
+                return {"valid": False, "message": "La operación no existe."}
+            
+            if not pick.name.startswith("WH/DFUL/"):
+                return {"valid": False, "message": f"La operación {pick_name} no es de tipo WH/DFUL."}
+
+            if pick.state != 'assigned':
+                states = {
+                    'draft': 'Borrador',
+                    'waiting': 'Esperando otra operación',
+                    'confirmed': 'Esperando disponibilidad',
+                    'assigned': 'Listo',
+                    'done': 'Hecho',
+                    'cancel': 'Cancelado'
+                }
+                return {"valid": False, "message": f"La operación está en estado: {states.get(pick.state, pick.state)}. Debe estar 'Listo'."}
+            
+            return {"valid": True, "pick_id": pick.id}
+            
+        except Exception as e:
+            logger.error(traceback.format_exc())
+            return {"valid": False, "message": str(e)}
+
+    @http.route(
         '/wmds/v2/engine/get/wmds-url',
         type='json',
         auth='user',

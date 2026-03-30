@@ -29,7 +29,8 @@ class PendingTasks(http.Controller):
                 "ingresos": "Recepciones",
                 "acomodo": "Storage",
                 "pack": "Pack",
-                "reabastecimiento": "Reabastecimiento"
+                "reabastecimiento": "Reabastecimiento",
+                "dispatch_ful": "Resurtido a Ful: Despacho"
             }
 
             if task == "batch_pick":
@@ -53,8 +54,6 @@ class PendingTasks(http.Controller):
                 if task not in ["acomodo", "ingresos"]:
                     search_domain.append(('operator.login', '=', email))
                 else:
-                    # For acomodos and ingresos, return all available (unassigned)
-                    # or assigned to the current user
                     search_domain.append('|')
                     search_domain.append(('operator', '=', False))
                     search_domain.append(('operator.login', '=', email))

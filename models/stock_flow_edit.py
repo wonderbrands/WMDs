@@ -135,7 +135,7 @@ class BatchWMDS(models.Model):
                 continue
 
             # si todos son de tipo full, es de tipo full
-            total_full = len(record.picking_ids.filtered(lambda pick: pick.picking_type_id.name in ["Resurtido a Ful: Pick", "Resurtido a Ful: Despacho"]))
+            total_full = len(record.picking_ids.filtered(lambda pick: pick.picking_type_id.name in ["Resurtido a Ful: Pick"]))
             if total_full == total_operations:
                 record.pick_type = "full"
                 continue

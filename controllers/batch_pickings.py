@@ -55,17 +55,17 @@ class BatchPickController(http.Controller):
                 return None, f"Formato no reconocido: {ref_cap}. Use SO... o WH/PICK..."
 
         elif type_of_batch=="full": 
-            if ref_cap.startswith("WH/DFUL") or ref_cap.startswith("WH/PFUL"):
+            if ref_cap.startswith("WH/PFUL"):
                 pick_odoo = request.env['stock.picking'].sudo().search([
                     ("name", "=", ref_cap),
-                    ('picking_type_id.name', 'in', ["Resurtido a Ful: Pick", "Resurtido a Ful: Despacho"]),
+                    ('picking_type_id.name', 'in', ["Resurtido a Ful: Pick"]),
                     ('state', '!=', 'cancel')
                 ], limit=1)
                 
                 if not pick_odoo:
                     return None, f"El traslado {ref_cap} no existe o no esta disponible para recoleccion."
             else:
-                return None, f"Formato no reconocido: {ref_cap}. Use WH/DFUL... o WH/PFUL..."
+                return None, f"Formato no reconocido: {ref_cap}. Use WH/PFUL..."
 
 
         # NUEVA VALIDACIÓN: Verificar si ya tiene un batch asignado

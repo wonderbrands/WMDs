@@ -1,18 +1,5 @@
 <template>
     <div class="test-flow-container">
-        
-        <div class="mode-toggle">
-            <Button 
-                :class="dispatchMode === 'individual' ? 'p-button-primary' : 'p-button-outlined'"
-                label="Ecommerce / Individual" 
-                @click="setMode('individual')"
-            />
-            <Button 
-                :class="dispatchMode === 'full' ? 'p-button-primary' : 'p-button-outlined'"
-                label="Full / Mayoreo" 
-                @click="setMode('full')"
-            />
-        </div>
 
         <div v-if="dispatchMode === 'individual'" class="individual-mode">
             <div class="scanner-col">
@@ -79,37 +66,6 @@
             </div>
         </div>
 
-        <div v-if="dispatchMode === 'full'" class="full-mode">
-            <div class="full-list-container">
-                <div v-if="pendingFullItems.length === 0" class="empty-log">
-                    <i class="pi pi-info-circle search-icon"></i>
-                    No hay movimientos full pendientes en DOCK.
-                </div>
-                
-                <div v-else class="full-items-grid">
-                    <div v-for="item in pendingFullItems" :key="item.id" class="full-item-card">
-                        <div class="full-item-header">
-                            <span class="full-item-origin">{{ item.origin }}</span>
-                            <span class="full-item-dock">{{ item.dock }}</span>
-                        </div>
-                        <div class="full-item-product">{{ item.product }}</div>
-                        <div class="full-item-qty-row">
-                            <span class="full-item-qty">Pendiente: {{ item.qty }} / {{ item.total_qty }}</span>
-                            <div class="qty-input-group">
-                                <input type="number" v-model.number="item.dispatchQty" :max="item.qty" min="0" class="qty-input">
-                                <Button icon="pi pi-check" @click="dispatchFullItem(item)" class="p-button-success p-button-sm" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="full-actions">
-                <Button label="Refrescar" icon="pi pi-refresh" @click="fetchPendingFullItems" class="p-button-info" />
-                <Button label="Despachar Selección" icon="pi pi-truck" @click="dispatchSelectedFull" class="p-button-success" />
-                <Button label="Salir" icon="pi pi-times" @click="exitFlow" class="p-button-danger p-button-text" />
-            </div>
-        </div>
     </div>
 </template>
 

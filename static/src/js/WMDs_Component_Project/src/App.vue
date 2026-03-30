@@ -34,6 +34,7 @@ import LogoutComponent from "./components/RolePicker/LogoutComponent.vue"
 import BinComponent  from "./components/OperatorComponent/BinComponent.vue"
 import DockComponent  from "./components/OperatorComponent/DockComponent.vue"
 import DispatchComponent  from "./components/OperatorComponent/DispatchComponent.vue"
+import DispatchComponentFul  from "./components/OperatorComponent/DispatchComponentFul.vue"
 
 import { useGeneralStore } from "./store/index"
 
@@ -50,7 +51,8 @@ export default {
     LogoutComponent,
     BinComponent,
     DockComponent,
-    DispatchComponent
+    DispatchComponent,
+    DispatchComponentFul
   },
   data() {
     return {

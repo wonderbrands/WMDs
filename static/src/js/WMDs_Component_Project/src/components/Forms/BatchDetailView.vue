@@ -21,50 +21,50 @@
             </div>
         </div>
 
-        <div class="mb-6">
-            <h3 class="text-lg font-semibold mb-3">Órdenes que lo componen</h3>
-            <DataTable 
-                :value="batch_data.picks" 
-                v-model:expandedRows="expandedRows"
-                dataKey="id"
-                @row-click="onRowClick"
-                stripedRows 
-                class="p-datatable-sm shadow-1 border-round overflow-hidden cursor-pointer"
-            >
-                <Column expander style="width: 3rem" />
-                <Column field="id" header="ID" style="width: 10%"></Column>
-                <Column field="name" header="Referencia" style="width: 40%"></Column>
-                <Column field="origin" header="Pedido (SO)" style="width: 40%"></Column>
-                <template #expansion="slotProps">
-                    <div class="p-3 surface-100 border-round">
-                        <h5 class="mt-0 mb-3 text-blue-700">Productos para {{ slotProps.data.name }}</h5>
-                        <DataTable :value="products[slotProps.data.id]" v-if="products[slotProps.data.id]" class="p-datatable-sm shadow-1">
+        <div class="flex gap-4 w-full">
+            <!-- Left Column: Pick-Products (50%) -->
+            <div class="w-6 pr-4">
+                <h3 class="text-lg font-semibold mb-3">Órdenes y Productos</h3>
+                <div class="picks-container overflow-y-auto" style="max-height: 60vh;">
+                    <div v-for="pick in batch_data.picks" :key="pick.id" class="mb-4 p-3 surface-100 border-round shadow-1">
+                        <div class="flex justify-content-between align-items-center mb-2">
+                            <span class="font-bold text-blue-700">{{ pick.name }}</span>
+                            <span class="text-sm text-gray-600">Pedido: {{ pick.origin }}</span>
+                        </div>
+                        
+                        <DataTable :value="products[pick.id]" v-if="products[pick.id]" class="p-datatable-sm shadow-1 border-round overflow-hidden">
                             <Column field="product_id" header="Producto"></Column>
                             <Column field="sku" header="SKU"></Column>
-                            <Column field="product_uom_qty" header="Cant. Reservada" class="text-center"></Column>
+                            <Column field="product_uom_qty" header="Cant." class="text-center"></Column>
                             <Column field="product_uom" header="UM"></Column>
                         </DataTable>
                         <div v-else class="flex justify-content-center p-4">
                             <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem"></i>
                         </div>
                     </div>
-                </template>
-            </DataTable>
-        </div>
-
-        <div>
-            <h3 class="text-lg font-semibold mb-3">Línea de Tiempo (Logs)</h3>
-            <Timeline :value="batch_data.logs" class="customized-timeline">
-                <template #opposite="slotProps">
-                    <small class="text-gray-500">{{ store.formatDate(slotProps.item.date) }}</small>
-                </template>
-                <template #content="slotProps">
-                    <div class="p-3 border-round surface-card shadow-1 mb-3">
-                        <div class="font-bold text-blue-600 mb-1">{{ slotProps.item.user }}</div>
-                        <div class="text-700">{{ slotProps.item.log }}</div>
+                    <div v-if="batch_data.picks.length === 0" class="text-center p-4 text-gray-500">
+                        Sin órdenes asignadas
                     </div>
-                </template>
-            </Timeline>
+                </div>
+            </div>
+
+            <!-- Right Column: Timeline (50%) -->
+            <div class="w-6 flex flex-col">
+                <h3 class="text-lg font-semibold mb-3">Línea de Tiempo (Logs)</h3>
+                <div class="timeline-container overflow-y-auto" style="max-height: 60vh;">
+                    <Timeline :value="batch_data.logs" class="customized-timeline">
+                        <template #opposite="slotProps">
+                            <small class="text-gray-500">{{ store.formatDate(slotProps.item.date) }}</small>
+                        </template>
+                        <template #content="slotProps">
+                            <div class="p-3 border-round surface-card shadow-1 mb-3">
+                                <div class="font-bold text-blue-600 mb-1">{{ slotProps.item.user }}</div>
+                                <div class="text-700">{{ slotProps.item.log }}</div>
+                            </div>
+                        </template>
+                    </Timeline>
+                </div>
+            </div>
         </div>
     </div>
     <div v-else class="flex justify-content-center align-items-center h-full">
@@ -90,28 +90,10 @@ export default {
             operators: [],
             selected_operator: null,
             debounceTimeout: null,
-            expandedRows: {},
             products: {}
         }
     },
     methods: {
-        async onRowClick(event) {
-            const rowData = event.data;
-            if (this.expandedRows[rowData.id]) {
-                const newExpandedRows = { ...this.expandedRows };
-                delete newExpandedRows[rowData.id];
-                this.expandedRows = newExpandedRows;
-            } else {
-                this.expandedRows = { ...this.expandedRows, [rowData.id]: true };
-                
-                if (!this.products[rowData.id]) {
-                    const result = await this.store.callOdoo("pick_products", "", { id: rowData.id });
-                    if (!result.error) {
-                        this.products[rowData.id] = result.data;
-                    }
-                }
-            }
-        },
         async loadBatchData() {
             const batch_id = this.store.form_context.data.id;
             const result = await this.store.callOdoo("batch_details", "", { id: batch_id });
@@ -120,6 +102,15 @@ export default {
                 if (result.operator) {
                     this.selected_operator = result.operator;
                 }
+                
+                // Fetch products for all picks in parallel immediately
+                const productPromises = result.picks.map(async (pick) => {
+                    const prodResult = await this.store.callOdoo("pick_products", "", { id: pick.id });
+                    if (!prodResult.error) {
+                        this.products[pick.id] = prodResult.data;
+                    }
+                });
+                await Promise.all(productPromises);
             }
         },
         async loadOperators(term = "*") {
@@ -143,7 +134,6 @@ export default {
             
             const result = await this.store.callOdoo("assign_pick", "", payload);
             if (result.saved) {
-                // Log the reassignment locally or refresh data
                 await this.loadBatchData();
             }
         }
@@ -164,7 +154,11 @@ export default {
 .customized-timeline {
     margin-top: 1rem;
 }
-.cursor-pointer {
-    cursor: pointer;
+.timeline-container, .picks-container {
+    padding-right: 10px;
+}
+/* PrimeFlex/PrimeVue helper classes for layout if needed, though using standard flex */
+.w-6 {
+    width: 50%;
 }
 </style>

@@ -384,6 +384,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_cycle_count_details_minimal: {url: '/wmds/v2/engine/get/cycle_count_details_minimal', method: 'POST'},
             get_user_role_permissions: {url: '/wmds/v2/engine/get/user_role_permissions', method: 'POST'},
             batch_type: {url: '/wmds/v2/engine/get/batch_types', method: 'POST'},
+            validate_dfull_pick: {url: '/wmds/v2/engine/get/validate_dfull_pick', method: 'POST'},
         };
     }
 
