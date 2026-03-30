@@ -33,69 +33,59 @@ class StockWMDSPurchase(models.Model):
                         'asociada a la recepción'
                     )
 
-                #Caché para evitar múltiples consultas SQL
-                location_cache = {}
+                if not po.check_commertial:
+                    for move in picking.move_ids:
+                        for line in move.move_line_ids:
+                            destiny = line.location_dest_id.complete_name
 
-                #Diccionarios para agrupar los registros por destino
-                lines_by_dest = {}
-                moves_by_dest = {}
+                            if 'Stock/Almacenaje' in destiny:
+                                destiny = destiny.replace(
+                                    'Stock/Almacenaje', 'Cuarentena'
+                                )
+                            elif 'Stock' in destiny:
+                                destiny = destiny.replace(
+                                    'Stock', 'Cuarentena'
+                                )
+                            elif 'Cuarentena' in destiny:
+                                pass
+                            else:
+                                raise UserError(
+                                    'No se pudo encontrar el destino '
+                                    'de la recepción'
+                                )
 
-                for move in picking.move_ids:
-                    #Evaluar nivel MOVE
-                    move_dest = move.location_dest_id.complete_name or ''
-                    new_move_dest = move_dest
+                            location = self.env['stock.location'].search(
+                                [('complete_name', '=', destiny)],
+                                limit=1
+                            )
 
-                    if not po.check_commertial:
-                        if 'Stock/Almacenaje' in move_dest:
-                            new_move_dest = move_dest.replace('Stock/Almacenaje', 'Cuarentena')
-                        elif 'Stock' in move_dest:
-                            new_move_dest = move_dest.replace('Stock', 'Cuarentena')
-                    else:
-                        if 'Cuarentena' in move_dest:
-                            new_move_dest = move_dest.replace('Cuarentena', 'Stock/Almacenaje')
+                            if not location:
+                                raise UserError(
+                                    'No se encontró la ubicación de '
+                                    'cuarentena'
+                                )
 
-                    if new_move_dest != move_dest:
-                        moves_by_dest.setdefault(new_move_dest, self.env['stock.move'])
-                        moves_by_dest[new_move_dest] |= move
+                            line.location_dest_id = location.id
 
-                    #Evaluar nivel LINE
-                    for line in move.move_line_ids:
-                        line_dest = line.location_dest_id.complete_name or ''
-                        new_line_dest = line_dest
+                        move.location_dest_id = location.id
 
-                        if not po.check_commertial:
-                            if 'Stock/Almacenaje' in line_dest:
-                                new_line_dest = line_dest.replace('Stock/Almacenaje', 'Cuarentena')
-                            elif 'Stock' in line_dest:
-                                new_line_dest = line_dest.replace('Stock', 'Cuarentena')
-                        else:
-                            if 'Cuarentena' in line_dest:
-                                new_line_dest = line_dest.replace('Cuarentena', 'Stock/Almacenaje')
+                else:
+                    for move in picking.move_ids:
+                        for line in move.move_line_ids:
+                            destiny = line.location_dest_id.complete_name
+                            if 'Cuarentena' in destiny:
+                                new_dest = destiny.replace(
+                                    'Cuarentena', 'Stock/Almacenaje'
+                                )
+                                loc = self.env['stock.location'].search(
+                                    [('complete_name', '=', new_dest)],
+                                    limit=1
+                                )
+                                if loc:
+                                    line.location_dest_id = loc.id
+                                    move.location_dest_id = loc.id
 
-                        if new_line_dest != line_dest:
-                            lines_by_dest.setdefault(new_line_dest, self.env['stock.move.line'])
-                            lines_by_dest[new_line_dest] |= line
-
-                #Buscar las ubicaciones necesarias (1 sola query por nombre único)
-                all_new_dests = set(moves_by_dest.keys()) | set(lines_by_dest.keys())
-                for dest_name in all_new_dests:
-                    loc = self.env['stock.location'].search([('complete_name', '=', dest_name)], limit=1)
-                    if not loc:
-                        raise UserError(f'No se encontró la ubicación de destino: {dest_name}')
-                    location_cache[dest_name] = loc.id
-
-                #Aplicar las actualizaciones en bloque (Batch Write)
-                for dest_name, lines in lines_by_dest.items():
-                    lines.write({'location_dest_id': location_cache[dest_name]})
-
-                for dest_name, moves in moves_by_dest.items():
-                    moves.write({'location_dest_id': location_cache[dest_name]})
-
-        try:
-            return super(StockWMDSPurchase, self).button_validate()
-        except Exception as e:
-            _logger.error("Error en validación de picking", exc_info=True)
-            raise
+        return super(StockWMDSPurchase, self).button_validate()
 
 
 class PurchaseWMDS(models.Model):
