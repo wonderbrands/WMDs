@@ -40,7 +40,6 @@ Planned replacement for the current WMS
         "data/wmds_status.xml",
         "views/wmds_stock.xml",
         "views/wmds_po.xml",
-        'views/comex_release_wizard_views.xml',
         "views/wmds_sale.xml",
         "views/wmds_stock_batch.xml",
         "views/user.xml",
