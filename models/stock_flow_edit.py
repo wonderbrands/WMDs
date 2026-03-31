@@ -11,6 +11,18 @@ class WMDSStockStatus(models.Model):
     name = fields.Char('Name', required=True)
     value = fields.Char('Value', required=True)
 
+class BlockReason(models.Model):
+    _name = 'block.reason'
+    _description = 'Motivos de Bloqueo de Ubicación'
+
+    name = fields.Char('Motivo', required=True)
+
+class StockLocationWMDS(models.Model):
+    _inherit = 'stock.location'
+
+    block_reason = fields.Many2one('block.reason', string='Motivo de Bloqueo')
+    original_parent_id = fields.Many2one('stock.location', string='Ubicación padre original')
+
 class StockWMDS(models.Model):
     _inherit = 'stock.picking'
 

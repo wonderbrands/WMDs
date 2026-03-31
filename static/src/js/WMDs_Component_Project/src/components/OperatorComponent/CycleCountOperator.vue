@@ -18,19 +18,28 @@
                     <span class="header-val">{{ current_product.sku || current_product.name }}</span>
                 </div>
             </div>
-            <Button 
-                @click="finishWave"
-                class="p-button-text p-button-success p-button-sm mr-2" 
-                label="Finalizar" 
-                icon="pi pi-check-circle"
-                :loading="loading"
-            />
-            <Button 
-                @click="exitFlow"
-                class="p-button-text p-button-danger p-button-sm exit-btn" 
-                label="Salir" 
-                icon="pi pi-times"
-            />
+            
+            <div class="header-actions">
+                <Button 
+                    @click="showLocationsModal = true"
+                    class="p-button-text p-button-info p-button-sm mr-2" 
+                    icon="pi pi-list"
+                    label="Ubicaciones"
+                />
+                <Button 
+                    @click="finishWave"
+                    class="p-button-text p-button-success p-button-sm mr-2" 
+                    label="Finalizar" 
+                    icon="pi pi-check-circle"
+                    :loading="loading"
+                />
+                <Button 
+                    @click="exitFlow"
+                    class="p-button-text p-button-danger p-button-sm exit-btn" 
+                    label="Salir" 
+                    icon="pi pi-times"
+                />
+            </div>
         </div>
 
         <!-- Main Workflow Area -->
@@ -38,6 +47,22 @@
             
             <!-- Step 1: Scan Location -->
             <div v-if="step === 'location'" class="step-container">
+                <!-- Pending Locations Info -->
+                <div class="pending-summary" v-if="pending_locations.length > 0">
+                    <div class="summary-title">Próximas Ubicaciones ({{ pending_locations.length }})</div>
+                    <div class="summary-list">
+                        <span v-for="loc in pending_locations.slice(0, 3)" :key="loc.id" class="loc-badge">
+                            {{ loc.name }}
+                        </span>
+                        <span v-if="pending_locations.length > 3" class="loc-badge more">
+                            +{{ pending_locations.length - 3 }} más
+                        </span>
+                    </div>
+                </div>
+                <div class="pending-summary completed" v-else>
+                    <div class="summary-title">¡Todas las ubicaciones contadas!</div>
+                </div>
+
                 <div class="scanner-section">
                     <BarcodeScannerComponent 
                         :key="scannerKey"
@@ -54,6 +79,16 @@
                         <i class="pi pi-map-marker"></i>
                         <span>{{ current_location.name }}</span>
                         <Button icon="pi pi-pencil" class="p-button-rounded p-button-warning p-button-sm ml-auto" @click="resetToLocation" label="Cambiar" />
+                    </div>
+                    <div class="mt-2 flex justify-content-center">
+                        <Button 
+                            label="UBICACIÓN VACÍA" 
+                            icon="pi pi-trash" 
+                            severity="danger" 
+                            class="p-button-sm"
+                            @click="markEmpty"
+                            :loading="loading"
+                        />
                     </div>
                 </div>
                 <div class="scanner-section">
@@ -102,12 +137,42 @@
         </div>
 
     </div>
+
+    <!-- Locations List Modal -->
+    <Dialog v-model:visible="showLocationsModal" header="Detalle de Ubicaciones" :style="{ width: '90vw' }" modal>
+        <div class="locations-modal-content">
+            <div class="location-group">
+                <div class="group-title">PENDIENTES ({{ pending_locations.length }})</div>
+                <div class="loc-grid">
+                    <div v-for="loc in pending_locations" :key="loc.id" class="loc-item-modal pending">
+                        <i class="pi pi-map-marker"></i>
+                        <span>{{ loc.name }}</span>
+                    </div>
+                    <div v-if="pending_locations.length === 0" class="empty-msg">No hay ubicaciones pendientes.</div>
+                </div>
+            </div>
+            <div class="location-group mt-4">
+                <div class="group-title">COMPLETADAS ({{ done_locations.length }})</div>
+                <div class="loc-grid">
+                    <div v-for="loc in done_locations" :key="loc.id" class="loc-item-modal done">
+                        <i class="pi pi-check-circle"></i>
+                        <span>{{ loc.name }}</span>
+                    </div>
+                    <div v-if="done_locations.length === 0" class="empty-msg">Aún no has completado ninguna ubicación.</div>
+                </div>
+            </div>
+        </div>
+        <template #footer>
+            <Button label="CERRAR" icon="pi pi-times" @click="showLocationsModal = false" class="p-button-text" />
+        </template>
+    </Dialog>
 </template>
 
 <script>
 import BarcodeScannerComponent from '../QRScannerComponent/BarcodeScannerComponent.vue';
 import Button from 'primevue/button';
 import InputNumber from 'primevue/inputnumber';
+import Dialog from 'primevue/dialog';
 import { useGeneralStore } from "../../store/index";
 
 export default {
@@ -115,7 +180,8 @@ export default {
     components: {
         BarcodeScannerComponent,
         Button,
-        InputNumber
+        InputNumber,
+        Dialog
     },
     data() {
         return {
@@ -129,7 +195,17 @@ export default {
             quantity: 0,
             session_log: [],
             waveId: null,
-            waveName: 'Cargando...'
+            waveName: 'Cargando...',
+            locations_list: [], // [{id, name, status}]
+            showLocationsModal: false
+        }
+    },
+    computed: {
+        pending_locations() {
+            return this.locations_list.filter(l => l.status === 'pending');
+        },
+        done_locations() {
+            return this.locations_list.filter(l => l.status === 'done');
         }
     },
     async mounted() {
@@ -155,6 +231,7 @@ export default {
             let res = await this.store.callOdoo("get_cycle_count_details_minimal", "", { wave_id: this.waveId });
             if (res && res.ok) {
                 this.waveName = res.name;
+                this.locations_list = res.locations || [];
             }
         },
 
@@ -208,6 +285,43 @@ export default {
             }
         },
 
+        async markEmpty() {
+            if (!confirm(`¿Confirmas que la ubicación ${this.current_location.name} está totalmente vacía?`)) return;
+            
+            this.loading = true;
+            try {
+                let res = await this.store.callOdoo("mark_location_empty", "", {
+                    wave_id: this.waveId,
+                    location_id: this.current_location.id,
+                    operator_email: this.store.role.email
+                });
+
+                if (res.ok) {
+                    this.$toast.add({ severity: 'success', summary: 'Ubicación Vacía', detail: 'Se registró la ubicación como vacía.', life: 3000 });
+                    
+                    // Update local list status
+                    let loc = this.locations_list.find(l => l.id === this.current_location.id);
+                    if (loc) loc.status = 'done';
+
+                    // Update local session log
+                    this.session_log.unshift({
+                        location: this.current_location.name,
+                        product: '(UBICACIÓN VACÍA)',
+                        qty: 0
+                    });
+
+                    // Reset to location step to scan next location
+                    this.resetToLocation();
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 3000 });
+                }
+            } catch (e) {
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la ubicación como vacía.', life: 3000 });
+            } finally {
+                this.loading = false;
+            }
+        },
+
         async confirmCount() {
             this.loading = true;
             try {
@@ -222,6 +336,10 @@ export default {
                 if (res.ok) {
                     this.$toast.add({ severity: 'success', summary: 'Registrado', detail: 'Conteo guardado con éxito.', life: 2000 });
                     
+                    // Update local list status
+                    let loc = this.locations_list.find(l => l.id === this.current_location.id);
+                    if (loc) loc.status = 'done';
+
                     // Agregar al log local
                     this.session_log.unshift({
                         location: this.current_location.name,
@@ -348,6 +466,11 @@ export default {
     margin-left: 5px;
 }
 
+.header-actions {
+    display: flex;
+    gap: 5px;
+}
+
 .workflow-area {
     flex: 2;
     background: #fff;
@@ -361,6 +484,52 @@ export default {
     height: 100%;
     display: flex;
     flex-direction: column;
+}
+
+.pending-summary {
+    background: #fff9c4;
+    padding: 10px;
+    border-bottom: 2px solid #fbc02d;
+}
+
+.pending-summary.completed {
+    background: #c8e6c9;
+    border-bottom-color: #4caf50;
+    text-align: center;
+}
+
+.summary-title {
+    font-size: 0.75rem;
+    font-weight: bold;
+    color: #5d4037;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+}
+
+.pending-summary.completed .summary-title {
+    color: #2e7d32;
+    font-size: 0.9rem;
+    margin-bottom: 0;
+}
+
+.summary-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.loc-badge {
+    background: #fbc02d;
+    color: #000;
+    font-size: 0.75rem;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.loc-badge.more {
+    background: #e0e0e0;
+    color: #616161;
 }
 
 .scanner-section {
@@ -509,5 +678,70 @@ export default {
     color: #95a5a6;
     margin-top: 20px;
     font-style: italic;
+}
+
+/* Modal Styles */
+.locations-modal-content {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.location-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.group-title {
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #757575;
+    margin-bottom: 10px;
+    border-left: 4px solid #3498db;
+    padding-left: 10px;
+}
+
+.loc-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.loc-item-modal {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: #f5f5f5;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.loc-item-modal i {
+    font-size: 1rem;
+}
+
+.loc-item-modal.pending {
+    border-left: 4px solid #fbc02d;
+}
+
+.loc-item-modal.pending i {
+    color: #fbc02d;
+}
+
+.loc-item-modal.done {
+    border-left: 4px solid #4caf50;
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.loc-item-modal.done i {
+    color: #4caf50;
+}
+
+.empty-msg {
+    color: #9e9e9e;
+    font-style: italic;
+    font-size: 0.85rem;
+    padding: 10px;
 }
 </style>

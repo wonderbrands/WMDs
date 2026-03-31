@@ -233,12 +233,20 @@ class DockNBin(http.Controller):
     def validate_bin(self, **kw):
         try:
             bin_name = kw.get("bin")
+            purpose = kw.get("purpose", "in") # 'in' to add items, 'out' to take items
+            
             if not bin_name:
                 return {'error': 'El nombre del BIN es requerido', 'valid': False}
 
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             if not bin_storage:
                 return {'error': f'El BIN {bin_name} no existe', 'valid': False}
+
+            if purpose == "in" and bin_storage.state == 'blocked':
+                return {'error': f'El BIN {bin_name} ya está ocupado', 'valid': False}
+            
+            if purpose == "out" and bin_storage.state == 'available':
+                return {'error': f'El BIN {bin_name} está vacío', 'valid': False}
 
             ei_tags = request.env["sale.order.ei"].sudo().search([
                 ('bin_id', '=', bin_storage.id),
@@ -282,6 +290,9 @@ class DockNBin(http.Controller):
             dock_storage = request.env["dock.storage"].sudo().search([('name', '=', dock_name)], limit=1)
             if not dock_storage:
                 return {'error': f'El DOCK {dock_name} no existe', 'valid': False}
+
+            if dock_storage.state == 'blocked':
+                return {'error': f'El DOCK {dock_name} ya está ocupado', 'valid': False}
 
             return {
                 "valid": True,

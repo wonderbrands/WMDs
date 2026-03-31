@@ -333,7 +333,10 @@ export const useGeneralStore = defineStore('general_store', {
                 try {
                     const parsedData = JSON.parse(scannedData);
                     const binName = parsedData.name;
-                    const response = await this.callOdoo("validate_bin", "", { bin: binName });
+                    const response = await this.callOdoo("validate_bin", "", { 
+                        bin: binName,
+                        purpose: "out"
+                    });
                     if (response.valid) {
                         component.scannedBin = binName;
                         component.packageCount = response.total_packages || 0;

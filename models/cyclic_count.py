@@ -30,19 +30,7 @@ class CycleCountSelectedLocation(models.Model):
 
     cycle_count_id = fields.Many2one("scheduled.cycle.count", ondelete="cascade")
     location_id = fields.Many2one("stock.location", string="Ubicación", required=True)
-    quarantine_location_id = fields.Many2one("stock.location", string="Ubicación Cuarentena")
-
-    def init(self):
-        """ Ensure the column exists even if the module wasn't updated with -u """
-        self.env.cr.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'cycle_count_selected_location' 
-              AND column_name = 'quarantine_location_id'
-        """)
-        if not self.env.cr.fetchone():
-            self.env.cr.execute('ALTER TABLE cycle_count_selected_location ADD COLUMN quarantine_location_id integer')
-        super(CycleCountSelectedLocation, self).init()
+    is_blocked = fields.Boolean(string="Ubicación Bloqueada", default=False)
 
 class CycleCountWave(models.Model):
     _name = "cycle.count.wave"

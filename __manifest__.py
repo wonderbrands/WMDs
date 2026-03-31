@@ -38,6 +38,7 @@ Planned replacement for the current WMS
         "menu/main.xml",
         "template/wmds_template.xml",
         "data/wmds_status.xml",
+        "data/block_reason_data.xml",
         "views/wmds_stock.xml",
         "views/wmds_po.xml",
         "views/wmds_sale.xml",

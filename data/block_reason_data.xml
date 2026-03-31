@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="block_reason_cyclic" model="block.reason">
+            <field name="name">Reservado para conteo cíclico</field>
+        </record>
+        <record id="block_reason_no_visto_bueno" model="block.reason">
+            <field name="name">Con stock sin visto bueno</field>
+        </record>
+        <record id="block_reason_none" model="block.reason">
+            <field name="name">Sin bloquear</field>
+        </record>
+
+        <record id="location_blocked" model="stock.location">
+            <field name="name">Bloqueado</field>
+            <field name="usage">internal</field>
+        </record>
+    </data>
+</odoo>

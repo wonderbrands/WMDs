@@ -240,7 +240,8 @@
                         <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
                         <Column header="Ubicación" field="location_name" sortable style="min-width: 150px">
                              <template #body="slotProps">
-                                <span class="font-bold text-primary">{{ slotProps.data.location_name }}</span>
+                                <span :class="['font-bold', slotProps.data.is_blocked ? 'text-secondary line-through' : 'text-primary']">{{ slotProps.data.location_name }}</span>
+                                <i v-if="slotProps.data.is_blocked" class="pi pi-lock ml-2 text-secondary" title="Ubicación Bloqueada"></i>
                              </template>
                         </Column>
                         <Column field="product_sku" header="SKU" sortable></Column>
@@ -298,6 +299,17 @@
                                 <span v-else class="text-red-500 font-bold">
                                     <i class="pi pi-exclamation-triangle"></i> DIF
                                 </span>
+                            </template>
+                        </Column>
+
+                        <Column header="Bloquear" headerStyle="width: 5rem">
+                            <template #body="slotProps">
+                                <Button 
+                                    :icon="slotProps.data.is_blocked ? 'pi pi-lock' : 'pi pi-lock-open'" 
+                                    :class="['p-button-rounded p-button-text', slotProps.data.is_blocked ? 'p-button-danger' : 'p-button-secondary']"
+                                    @click="toggleLocationBlock(slotProps.data)"
+                                    title="Bloquear para nuevas olas"
+                                />
                             </template>
                         </Column>
                     </DataTable>
@@ -743,6 +755,21 @@ export default {
                 if (this.detailView === 'comparison') {
                     await this.showComparisonReport();
                 }
+            }
+        },
+        async toggleLocationBlock(row) {
+            let res = await this.store.callOdoo("toggle_location_block", "", {
+                count_id: this.modalData.id,
+                location_id: row.location_id
+            });
+            if (res.ok) {
+                // Update local data to reflect change immediately
+                this.comparisonData.forEach(d => {
+                    if (d.location_id === row.location_id) {
+                        d.is_blocked = res.is_blocked;
+                    }
+                });
+                this.$toast.add({ severity: 'success', summary: 'Ubicación Actualizada', detail: `La ubicación ahora está ${res.is_blocked ? 'bloqueada' : 'disponible'}.`, life: 2000 });
             }
         },
         async handleOperatorSave() {
