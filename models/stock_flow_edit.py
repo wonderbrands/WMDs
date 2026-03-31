@@ -11,11 +11,6 @@ class WMDSStockStatus(models.Model):
     name = fields.Char('Name', required=True)
     value = fields.Char('Value', required=True)
 
-class BlockReason(models.Model):
-    _name = 'block.reason'
-    _description = 'Motivos de Bloqueo de Ubicación'
-
-    name = fields.Char('Motivo', required=True)
 
 class StockLocationWMDS(models.Model):
     _inherit = 'stock.location'

@@ -223,14 +223,29 @@ patch(BarcodeModel.prototype, {
     },
     
     async _processBarcode(barcode) {
-        if (this.resModel === 'stock.picking.batch') {
-            const barcodeData = await this._parseBarcode(barcode, {});
-            if (barcodeData.product) {
-                const line = this._findLine(barcodeData);
-                if (!line) {
+        const barcodeData = await this._parseBarcode(barcode, {});
+        if (barcodeData.product && (this.resModel === 'stock.picking.batch' || this.resModel === 'stock.picking')) {
+            // Check if the product belongs to the order
+            const existingLine = this._findLine(barcodeData);
+            if (this.resModel === 'stock.picking.batch' && !existingLine) {
+                return this.notification(
+                    _t("El producto escaneado no pertenece a este Plan de pickeo."),
+                    { type: "danger", title: _t("Producto no permitido") }
+                );
+            }
+
+            // Manually get all lines for this product to check if they are all full
+            const lines = this.currentState.lines.filter(l => {
+                const lineProductId = (typeof l.product_id === 'object') ? l.product_id.id : l.product_id;
+                return lineProductId === barcodeData.product.id;
+            });
+
+            if (lines.length > 0) {
+                const allFull = lines.every(line => this.getQtyDone(line) >= this.getQtyDemand(line));
+                if (allFull) {
                     return this.notification(
-                        _t("El producto escaneado no pertenece a este Plan de pickeo."),
-                        { type: "danger", title: _t("Producto no permitido") }
+                        _t("Ya se ha completado la cantidad solicitada para el producto: %s.", barcodeData.product.display_name),
+                        { type: "danger", title: _t("Cantidad Excedida") }
                     );
                 }
             }
