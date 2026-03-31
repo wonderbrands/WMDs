@@ -3,6 +3,8 @@
 import BarcodeModel from "@stock_barcode/models/barcode_model";
 import MainComponent from "@stock_barcode/components/main";
 import { patch } from "@web/core/utils/patch";
+import { _t } from "@web/core/l10n/translation";
+
 
 patch(BarcodeModel.prototype, {
 
