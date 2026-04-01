@@ -91,11 +91,22 @@ class GetURLOfPick(http.Controller):
             
             # Update moves on dock and log dispatch
             operator_name = request.env.user.name
-            moves_on_dock = pick.move_ids.filtered(lambda m: m.on_dock)
+            
+            # Identify all related PFUL moves through move_orig_ids
+            # DFUL moves are linked to PFUL moves via move_orig_ids
+            pful_moves = pick.move_ids.mapped('move_orig_ids').filtered(
+                lambda m: 'Resurtido a Ful: Pick' in (m.picking_id.picking_type_id.name or '')
+            )
+            
+            # Identify which of these original moves are currently on dock
+            moves_on_dock = pful_moves.filtered(lambda m: m.on_dock)
             
             if moves_on_dock:
                 for move in moves_on_dock:
                     dock_name = move.dock_id.name if move.dock_id else "DOCK"
+                    origin_pick = move.picking_id.name
+                    
+                    # Mark PFUL move as dispatched
                     move.sudo().write({
                         'on_dock': False,
                         'dock_id': False,
@@ -103,15 +114,37 @@ class GetURLOfPick(http.Controller):
                         'qty_dispatched': move.quantity
                     })
                     
-                    log_msg = f"Despacho Fulfillment: Operación {pick.name}. Producto {move.product_id.display_name} retirado de {dock_name} por {operator_name}."
+                    log_msg = f"Despacho Fulfillment: Operación {pick.name}. Producto {move.product_id.display_name} (Origen: {origin_pick}) retirado de {dock_name} por {operator_name}."
                     request.env["wmds.log"].sudo().create({
                         "pick": pick.id,
                         "log": log_msg,
                         "user": request.env.user.id,
                     })
-            else:
-                # If no moves were on dock, still log the validation/dispatch intent
-                log_msg = f"Despacho Fulfillment: Operación {pick.name} validada para despacho por {operator_name}."
+            
+            # Check for partial dispatch: if some related PFUL moves are NOT on dock
+            # and the picking is not allowed to be partial, we might need to block.
+            # However, the user mentioned there is a field for this. 
+            # We'll check for 'dful_partial_dispatch' or similar if it exists.
+            total_pful_qty = sum(pful_moves.mapped('quantity'))
+            total_on_dock_qty = sum(moves_on_dock.mapped('quantity'))
+            
+            if total_on_dock_qty < total_pful_qty:
+                # It's a partial dispatch. Check if allowed.
+                # If the field doesn't exist, we assume True for now to not break the flow,
+                # but we log the partial nature.
+                can_partial = getattr(pick, 'dful_partial_dispatch', True) 
+                if not can_partial:
+                    return {"valid": False, "message": "La operación no está completa en el DOCK y no permite despacho parcial."}
+                
+                log_msg = f"Despacho Fulfillment PARCIAL: Operación {pick.name}. Pendientes {total_pful_qty - total_on_dock_qty} unidades por recolectar de PFULs."
+                request.env["wmds.log"].sudo().create({
+                    "pick": pick.id,
+                    "log": log_msg,
+                    "user": request.env.user.id,
+                })
+            elif not moves_on_dock:
+                # If no moves were on dock at all
+                log_msg = f"Despacho Fulfillment: Operación {pick.name} validada para despacho por {operator_name} (Sin movimientos previos en DOCK)."
                 request.env["wmds.log"].sudo().create({
                     "pick": pick.id,
                     "log": log_msg,

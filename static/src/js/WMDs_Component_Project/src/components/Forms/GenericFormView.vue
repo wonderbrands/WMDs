@@ -7,22 +7,12 @@
         <div class="form_items">
             <div v-for="col in merged_cols" :key="col.field" class="field">
                 
-                <FloatLabel v-if="!col.non_blocked_field">
-                    <InputText disabled :id="col.field" 
-                        :value="col.field.includes('date') ? store.formatDate(form_data[col.field]) : form_data[col.field]" 
-                        class="w-full" />
-                    <label :for="col.field">{{ col.label }}</label>
-                </FloatLabel>
-                
-                <FloatLabel v-else-if="col.type === 'text'">
-                    <InputText :id="col.field" :name="col.field" type="text" autocomplete="off" v-model="form_data[col.field]" class="w-full" />
-                    <label :for="col.field">{{ col.label }}</label>
-                </FloatLabel>
-
-                <FloatLabel v-else-if="col.type === 'multiselect'">
+                <!-- MultiSelect -->
+                <FloatLabel v-if="col.type === 'multiselect'" :class="{ 'float-label-filled': hasValue(col.field) }">
                     <MultiSelect v-model="form_data[col.field]" 
                         :id="col.field"
-                        :options="optionsCache[col.source]" 
+                        :disabled="!col.non_blocked_field"
+                        :options="optionsCache[col.source] || []" 
                         filter
                         dataKey="id"
                         class="w-full" 
@@ -41,11 +31,13 @@
                     </MultiSelect>
                     <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
-                
-                <FloatLabel v-else>
+
+                <!-- Select (Relational) -->
+                <FloatLabel v-else-if="col.source" :class="{ 'float-label-filled': hasValue(col.field) }">
                     <Select v-model="form_data[col.field]" 
                         :id="col.field"
-                        :options="optionsCache[col.source]" 
+                        :disabled="!col.non_blocked_field"
+                        :options="optionsCache[col.source] || []" 
                         filter
                         :showClear="true"
                         dataKey="id"
@@ -62,6 +54,18 @@
                             />
                         </template>
                     </Select>
+                    <label :for="col.field">{{ col.label }}</label>
+                </FloatLabel>
+                
+                <!-- InputText (Standard / Text) -->
+                <FloatLabel v-else :class="{ 'float-label-filled': hasValue(col.field) }">
+                    <InputText :id="col.field" 
+                        :name="col.field" 
+                        type="text" 
+                        autocomplete="off" 
+                        v-model="form_data[col.field]" 
+                        :disabled="!col.non_blocked_field"
+                        class="w-full" />
                     <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
                 
@@ -85,6 +89,9 @@
                         <template #body="slotProps">
                             <span v-if="col.field.includes('date')">
                                 {{ store.formatDate(slotProps.data[col.field]) }}
+                            </span>
+                            <span v-else-if="typeof slotProps.data[col.field] === 'object' && slotProps.data[col.field] !== null">
+                                {{ formatObjectValue(slotProps.data[col.field]) }}
                             </span>
                             <span v-else>
                                 {{ slotProps.data[col.field] }}
@@ -126,6 +133,64 @@
             }
         },
         methods: {
+            /**
+             * Formatea un objeto para mostrar su valor de manera legible
+             * @param {*} value - El valor a formatear
+             * @returns {string} - Valor formateado como string
+             */
+            formatObjectValue(value) {
+                if (value === null || value === undefined) return '';
+                
+                if (typeof value === 'object') {
+                    // Si es un array de objetos
+                    if (Array.isArray(value)) {
+                        return value.map(item => this.formatObjectValue(item)).join(', ');
+                    }
+                    
+                    // Si es un objeto único
+                    // Priorizar diferentes propiedades comunes
+                    return value.name || 
+                           value.display_name || 
+                           value.email || 
+                           value.login ||
+                           value.reference ||
+                           value.code ||
+                           (value.id ? `ID: ${value.id}` : JSON.stringify(value));
+                }
+                
+                return String(value);
+            },
+
+            /**
+             * Verifica si un campo tiene valor para la animación del FloatLabel
+             * @param {string} field - Nombre del campo
+             * @returns {boolean} - True si el campo tiene valor
+             */
+            hasValue(field) {
+                const val = this.form_data[field];
+                if (val === null || val === undefined || val === '') return false;
+                if (Array.isArray(val)) return val.length > 0;
+                if (typeof val === 'object') return Object.keys(val).length > 0;
+                return true;
+            },
+
+            /**
+             * Obtiene el valor a mostrar para campos deshabilitados
+             * @param {Object} col - Configuración de la columna
+             * @returns {string} - Valor formateado para mostrar
+             */
+            getDisplayValue(col) {
+                const val = this.form_data[col.field];
+                
+                // Manejo de fechas
+                if (col.field && col.field.includes('date')) {
+                    return this.store.formatDate(val);
+                }
+                
+                // Manejo de objetos
+                return this.formatObjectValue(val);
+            },
+
             async loadOptions(term, source) {
                 if (!source) return;
                 const results = await this.store.callOdoo(source, term || "*");
@@ -144,23 +209,29 @@
                 }
                 this.optionsCache[source] = unique;
             },
+
             onSearchInput(term, source) {
                 clearTimeout(this.debounceTimeout);
                 this.debounceTimeout = setTimeout(() => {
                     this.loadOptions(term, source);
                 }, 500);
             },
+
             async saveForm() {
                 const formConfig = this.store.main_manager_screen.form_config;
                 let data = { ...this.form_data };
 
                 const nonBlockedCols = this.merged_cols.filter(col => col.non_blocked_field);
 
-                nonBlockedCols.forEach(col => {
+                // Procesar cada columna no bloqueada para convertir IDs a objetos
+                for (const col of nonBlockedCols) {
                     if (col.type !== 'multiselect' && col.type !== 'text' && this.optionsCache[col.source]) {
-                        data[col.field] = this.optionsCache[col.source].find(opt => opt.id === data[col.field]);
+                        const selectedOption = this.optionsCache[col.source].find(opt => opt.id === data[col.field]);
+                        if (selectedOption) {
+                            data[col.field] = selectedOption;
+                        }
                     }
-                });
+                }
 
                 let saved = await this.store.callOdoo(formConfig.save_context, "", data);
                 
@@ -169,11 +240,23 @@
                         let params = { ...action.params };
                         for (const key in params) {
                             if (typeof params[key] === 'string') {
+                                // Reemplazar placeholders con valores reales
                                 params[key] = params[key].replace(/{id}/g, data.id);
                                 params[key] = params[key].replace(/{name}/g, data.name);
                                 params[key] = params[key].replace(/{user_email}/g, this.store.role.email);
+                                
+                                // Manejar objetos anidados como responsible.name u operator.name
                                 if (data.responsible && data.responsible.name) {
                                     params[key] = params[key].replace(/{responsible.name}/g, data.responsible.name);
+                                }
+                                if (data.operator && data.operator.name) {
+                                    params[key] = params[key].replace(/{operator.name}/g, data.operator.name);
+                                }
+                                if (data.responsible && data.responsible.id) {
+                                    params[key] = params[key].replace(/{responsible.id}/g, data.responsible.id);
+                                }
+                                if (data.operator && data.operator.id) {
+                                    params[key] = params[key].replace(/{operator.id}/g, data.operator.id);
                                 }
                             }
                         }
@@ -181,8 +264,54 @@
                     }
                     this.store.closeModal();
                 }
+            },
+
+            async ensureOptionsLoaded(col) {
+                if (col.source && col.non_blocked_field && this.optionsCache[col.source] && this.optionsCache[col.source].length === 0) {
+                    await this.loadOptions("*", col.source);
+                }
+            },
+
+            async normalizeFormData() {
+                // Procesar cada columna para normalizar los datos
+                for (const col of this.merged_cols) {
+                    const val = this.form_data[col.field];
+                    
+                    if (val && typeof val === 'object') {
+                        // MultiSelect con array de objetos
+                        if (Array.isArray(val) && col.type === 'multiselect') {
+                            if (val.length > 0 && typeof val[0] === 'object' && col.source) {
+                                await this.ensureOptionsLoaded(col);
+                                const existing = this.optionsCache[col.source] || [];
+                                val.forEach(item => {
+                                    if (item.id && !existing.find(i => i.id === item.id)) {
+                                        existing.push(item);
+                                    }
+                                });
+                                this.form_data[col.field] = val.map(item => item.id);
+                            }
+                        } 
+                        // Select con objeto único
+                        else if (val.id && !Array.isArray(val) && col.source) {
+                            await this.ensureOptionsLoaded(col);
+                            const existing = this.optionsCache[col.source] || [];
+                            if (!existing.find(i => i.id === val.id)) {
+                                existing.push(val);
+                            }
+                            this.form_data[col.field] = val.id;
+                        }
+                    }
+                    
+                    // Para campos deshabilitados con valores que no son objetos, forzar actualización
+                    if (!col.non_blocked_field && val !== null && val !== undefined && val !== '') {
+                        this.$nextTick(() => {
+                            this.hasValue(col.field);
+                        });
+                    }
+                }
             }
         },
+
         async mounted() {
             const formConfig = this.store.main_manager_screen.form_config;
             const frontendCols = this.store.main_manager_screen.map_columns || [];
@@ -190,57 +319,53 @@
             this.form_data = { ...this.store.form_context.data };
             delete this.form_data.map_cols;
             
-            this.merged_cols = frontendCols.map(col => {
-                return {
-                    field: col.name,
-                    label: col.label,
-                    non_blocked_field: col.non_blocked_field || false,
-                    source: col.source || null,
-                    type: col.type || null
-                };
+            // 1. Initial columns from config
+            this.merged_cols = frontendCols.map(col => ({
+                field: col.name,
+                label: col.label,
+                non_blocked_field: col.non_blocked_field || false,
+                source: col.source || null,
+                type: col.type || (col.source ? 'select' : 'text')
+            }));
+
+            // 2. Add remaining fields from form_data as blocked
+            const mappedFields = new Set(this.merged_cols.map(c => c.field));
+            Object.keys(this.form_data).forEach(key => {
+                if (!mappedFields.has(key) && !['id', 'qr_image'].includes(key) && !key.startsWith('_')) {
+                    this.merged_cols.push({
+                        field: key,
+                        label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
+                        non_blocked_field: false,
+                        source: null,
+                        type: 'text'
+                    });
+                }
             });
 
+            // 3. Initialize optionsCache
             for (const col of this.merged_cols) {
                 if (col.source && !this.optionsCache[col.source]) {
                     this.optionsCache[col.source] = [];
                 }
             }
 
+            // 4. Load options for non-blocked columns
             const nonBlockedCols = this.merged_cols.filter(col => col.non_blocked_field);
-            
             for (const col of nonBlockedCols) {
-                await this.loadOptions("*", col.source);
+                if (col.source) {
+                    await this.loadOptions("*", col.source);
+                }
             }
             
-            nonBlockedCols.forEach(col => {
-                if (col.type === 'multiselect' && Array.isArray(this.form_data[col.field])) {
-                    if (this.form_data[col.field].length > 0 && typeof this.form_data[col.field][0] === 'object') {
-                        const existing = this.optionsCache[col.source] || [];
-                        const merged = [...existing, ...this.form_data[col.field]];
-                        const unique = [];
-                        const map = new Map();
-                        for (const item of merged) {
-                            if (item && item.id && !map.has(item.id)) {
-                                map.set(item.id, true);
-                                unique.push(item);
-                            }
-                        }
-                        this.optionsCache[col.source] = unique;
-                        this.form_data[col.field] = this.form_data[col.field].map(item => item.id || item);
-                    }
-                } else if (this.form_data[col.field] && typeof this.form_data[col.field] === 'object' && !Array.isArray(this.form_data[col.field]) && this.form_data[col.field].id) {
-                    const existing = this.optionsCache[col.source] || [];
-                    if (!existing.find(i => i.id === this.form_data[col.field].id)) {
-                        this.optionsCache[col.source] = [...existing, { ...this.form_data[col.field] }];
-                    }
-                    this.form_data[col.field] = this.form_data[col.field].id;
-                }
-            });
+            // 5. Normalize data for ALL columns (handle objects/relations)
+            await this.normalizeFormData();
             
+            // 6. Load extra data if configured
             if (formConfig && formConfig.related_data_endpoint) {
                 this.extra_data = await this.store.callOdoo(formConfig.related_data_endpoint, "", { id: this.form_data.id });
             }
         },
+
         components: {
             Button,
             Select,
@@ -309,10 +434,30 @@
     width: 100%;
 }
 
-/* Fix for FloatLabel with Select overlapping */
+/* Fix para FloatLabel con campos deshabilitados */
 .field :deep(.p-floatlabel label) {
-    z-index: 1;
+    transition: all 0.2s ease;
+    background: transparent;
+    padding: 0 0.25rem;
     pointer-events: none;
+    z-index: 1;
+}
+
+.field :deep(.p-floatlabel.float-label-filled label),
+.field :deep(.p-floatlabel:has(.p-inputwrapper-filled) label),
+.field :deep(.p-floatlabel:has(.p-inputtext:not(:placeholder-shown)) label),
+.field :deep(.p-floatlabel:has(input:not([value=""])) label),
+.field :deep(.p-floatlabel:has(input[value]:not([value=""])) label),
+.field :deep(.p-floatlabel:has(.p-inputtext:disabled[value]:not([value=""])) label) {
+    top: -0.75rem;
+    font-size: 12px;
+    background: white;
+    padding: 0 0.25rem;
+}
+
+/* Para campos deshabilitados con valor */
+.field :deep(.p-floatlabel:has(input:disabled) label) {
+    background: #f5f5f5;
 }
 
 .save-button {
@@ -329,11 +474,20 @@
     margin-top: 2rem;
 }
 
-/* Ensure Select label floats correctly in PrimeVue 4 */
-:deep(.p-floatlabel:has(.p-select-overlay-visible) label),
-:deep(.p-floatlabel:has(.p-multiselect-overlay-visible) label),
-:deep(.p-floatlabel:has(.p-inputwrapper-filled) label) {
-    top: -0.75rem;
-    font-size: 12px;
+/* Asegurar que los campos deshabilitados tengan un estilo consistente */
+.field :deep(.p-inputtext:disabled) {
+    background-color: #f5f5f5;
+    opacity: 0.8;
+}
+
+/* Responsive para pantallas pequeñas */
+@media (max-width: 768px) {
+    .field {
+        width: 100%;
+    }
+    
+    .save-button {
+        width: 40vw;
+    }
 }
 </style>
