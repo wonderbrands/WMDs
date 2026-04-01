@@ -58,7 +58,7 @@ class BatchPickController(http.Controller):
             if ref_cap.startswith("WH/PFUL"):
                 pick_odoo = request.env['stock.picking'].sudo().search([
                     ("name", "=", ref_cap),
-                    ('picking_type_id.name', 'in', ["   "]),
+                    ('picking_type_id.name', 'in', ["Resurtido a Ful: Pick"]),
                     ('state', '!=', 'cancel')
                 ], limit=1)
                 
