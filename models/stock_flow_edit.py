@@ -186,6 +186,28 @@ class BatchWMDS(models.Model):
             record.pick_type = "mix"
             
 
+    def action_exclude_unstarted_pickings(self):
+        self.ensure_one()
+        pickings_to_remove = self.env['stock.picking']
+        for pick in self.picking_ids:
+            # Solo removemos si está COMPLETAMENTE sin tocar (todo qty_done == 0)
+            has_started = any(ml.quantity > 0 or ml.qty_done > 0 for ml in pick.move_line_ids)
+            if not has_started:
+                pickings_to_remove |= pick
+        
+        if pickings_to_remove:
+            batch_name = self.name
+            for pick in pickings_to_remove:
+                msg = f"Se excluyó el pick {pick.name} del plan de pickeo {batch_name} al no poder escanear todos los productos, queda libre para agregar a otro plan"
+                self.env['wmds.log'].sudo().create({
+                    'pick': pick.id,
+                    'batch_pick': self.id,
+                    'log': msg,
+                    'user': self.env.user.id,
+                })
+            pickings_to_remove.write({'batch_id': False})
+        return True
+
     @api.model
     def create(self, vals):
         res = super(BatchWMDS, self).create(vals)

@@ -3,7 +3,7 @@
         <section class="modal_box">
             <div class="close_modal_button">
                 <Button 
-                    icon="pi pi-times" 
+                    icon="fa fa-times" 
                     @click="store.closeModal()" 
                     rounded 
                     severity="danger" 
@@ -74,6 +74,41 @@
 </script>
 
 <style scoped>
+.modal_context {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.6);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 400; /* Below LoadingComponent (500) */
+}
+
+.modal_box {
+    background-color: white;
+    width: 95%;
+    max-width: 1400px;
+    height: 90%;
+    max-height: 95vh;
+    border-radius: 12px;
+    position: relative;
+    padding: 1.5rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.close_modal_button {
+    position: absolute;
+    top: 1rem;
+    right: 1.5rem;
+    z-index: 100;
+}
+
 .close-btn-styled {
     width: 2.5rem !important;
     height: 2.5rem !important;

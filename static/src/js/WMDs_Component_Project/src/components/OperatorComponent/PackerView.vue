@@ -107,9 +107,9 @@ export default {
         } catch (error) {
             this.$toast.add({ 
                 severity: 'error', 
-                summary: 'Error', 
-                detail: 'No se pudieron cargar las tareas de empaque.', 
-                life: 3000 
+                summary: 'Error de Carga', 
+                detail: 'No se pudieron recuperar las tareas de empaque asignadas. Detalle técnico: ' + (error.message || 'Error de conexión con el servidor'), 
+                life: 5000 
             });
         }
     },

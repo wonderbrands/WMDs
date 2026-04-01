@@ -359,14 +359,14 @@ class CycleCount(http.Controller):
             all_lines = request.env['cycle.count.line'].sudo().with_context(active_test=False).search([('wave_id', 'in', waves.ids)])
             
             comparison_map = {}
+            # Track which locations were marked as empty by which waves
+            empty_locations_by_wave = set() # (wave_id, location_id)
             
             # Inicializar con lo contado
             for line in all_lines:
                 if not line.product_id or not line.stock_location_id:
                     if line.description == 'Marcada como vacía':
-                        # Special handling for marked empty locations with no specific product line yet
-                        # We'll create a dummy entry if it doesn't exist to show it was counted
-                        pass
+                        empty_locations_by_wave.add((line.wave_id.id, line.stock_location_id.id))
                     continue
                 key = (line.stock_location_id.id, line.product_id.id)
                 if key not in comparison_map:
@@ -422,6 +422,14 @@ class CycleCount(http.Controller):
                         'wave_counts': {str(w.id): '-' for w in waves},
                         'theoretical_qty': 0,
                     }
+
+            # Apply "marked as empty" 0s to all products in those locations for those waves
+            for (wave_id, loc_id) in empty_locations_by_wave:
+                wave_key = str(wave_id)
+                for entry in comparison_map.values():
+                    if entry['location_id'] == loc_id:
+                        if entry['wave_counts'].get(wave_key) == '-':
+                            entry['wave_counts'][wave_key] = 0
 
             # 3. Formatear data final y detectar discrepancias
             report_data = []

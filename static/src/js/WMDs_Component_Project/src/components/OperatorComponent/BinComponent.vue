@@ -12,7 +12,7 @@
             </div>
             <div v-else-if="ready && scan_bin && !showConfirmation" class="scanner-wrapper">
                 <Button 
-                    icon="pi pi-arrow-left" 
+                    icon="fa fa-arrow-left" 
                     @click="backToScanSO" 
                     class="p-button-rounded p-button-secondary back-button" 
                 />
@@ -24,12 +24,12 @@
 
             <div v-else-if="showConfirmation" class="confirmation-wrapper">
                 <div class="confirmation-content">
-                    <i class="pi pi-exclamation-triangle confirmation-icon"></i>
+                    <i class="fa fa-exclamation-triangle confirmation-icon"></i>
                     <h3>Confirmación de Traslado</h3>
                     <p>Vas a mover <b>{{ so.length }}</b> órdenes al BIN: <b>{{ targetBin }}</b></p>
                     <div class="confirmation-buttons">
-                        <Button label="Confirmar" icon="pi pi-check" class="p-button-success" @click="confirmMove" />
-                        <Button label="Re-escanear BIN" icon="pi pi-refresh" class="p-button-secondary" @click="cancelConfirmation" />
+                        <Button label="Confirmar" icon="fa fa-check" class="p-button-success" @click="confirmMove" />
+                        <Button label="Re-escanear BIN" icon="fa fa-refresh" class="p-button-secondary" @click="cancelConfirmation" />
                     </div>
                 </div>
             </div>
@@ -40,13 +40,13 @@
                 @click="goToScanBin"
                 class="p-button-success p-button-sm" 
                 label="Trasladar a BIN" 
-                icon="pi pi-send"
+                icon="fa fa-paper-plane"
             />
             <Button 
                 @click="exitFlow"
                 class="p-button-text p-button-danger p-button-sm" 
                 label="Salir / Finalizar" 
-                icon="pi pi-times"
+                icon="fa fa-times"
             />
         </div>
 
@@ -54,7 +54,7 @@
             <div class="log-header">
                 <div class="log-header-info">
                     <span class="log-title">Resumen de Escaneo</span>
-                    <Button icon="pi pi-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0 && !showConfirmation"/>
+                    <Button icon="fa fa-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0 && !showConfirmation"/>
                 </div>
             </div>
 
@@ -74,14 +74,14 @@
             <div class="log-list">
                 <div v-for="(order, index) in so" :key="index" class="log-item">
                     <div>
-                        <i class="pi pi-barcode barcode-icon"></i>
+                        <i class="fa fa-barcode barcode-icon"></i>
                         {{ order.name }}
                         <small class="text-info ml-2">({{ order.current }}/{{ order.total }})</small>
                     </div>
-                    <Button v-if="!showConfirmation" icon="pi pi-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
+                    <Button v-if="!showConfirmation" icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
                 </div>
                 <div v-if="so.length === 0" class="empty-log">
-                    <i class="pi pi-search search-icon"></i>
+                    <i class="fa fa-search search-icon"></i>
                     Esperando escaneo de etiqueta EI (SOXXXX/N)...
                 </div>
             </div>
@@ -186,11 +186,11 @@ export default {
                     this.showConfirmation = true;
                     console.log("Action: Confirmation screen displayed for bin:", this.targetBin);
                 } else {
-                    this.$toast.add({ severity: 'error', summary: 'Error de BIN', detail: response.error || 'BIN no válido.', life: 3000 });
+                    this.$toast.add({ severity: 'error', summary: 'Error de BIN', detail: 'Detalle técnico: ' + (response.error || 'BIN no válido.'), life: 3000 });
                 }
             } catch (e) {
                 console.log("Action: Error parsing bin data", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'El código del bin no es válido.', life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'Detalle técnico: El código del bin no es válido.', life: 3000 });
             }
         },
         async confirmMove() {
@@ -213,7 +213,7 @@ export default {
                 }
             } catch (e) {
                 console.log("Action: Error in confirmMove", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Servidor', detail: 'No se pudo realizar el movimiento en Odoo.', life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error de Servidor', detail: 'Detalle técnico: No se pudo realizar el movimiento en Odoo.', life: 3000 });
             }
         },
         cancelConfirmation() {

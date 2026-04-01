@@ -11,12 +11,13 @@
                     <Select v-model="selected_operator" 
                         :options="operators" 
                         optionLabel="name" 
+                        dataKey="id"
                         placeholder="Seleccionar operador" 
                         class="w-full"
                         filter
                         @filter="onFilterOperators"
                     />
-                    <Button label="Reasignar" icon="pi pi-user-edit" severity="info" @click="reassignOperator" :disabled="!selected_operator || selected_operator.id === batch_data.operator?.id" />
+                    <Button label="Reasignar" icon="fa fa-user" severity="info" @click="reassignOperator" :disabled="!selected_operator || selected_operator.id === batch_data.operator?.id" />
                 </div>
             </div>
         </div>
@@ -40,7 +41,7 @@
                             <Column field="product_uom" header="UM"></Column>
                         </DataTable>
                         <div v-else class="flex justify-content-center p-4">
-                            <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem"></i>
+                            <i class="fa fa-spin fa-spinner" style="font-size: 1.5rem"></i>
                         </div>
                     </div>
                     <div v-if="batch_data.picks.length === 0" class="text-center p-4 text-gray-500">
@@ -69,7 +70,7 @@
         </div>
     </div>
     <div v-else class="flex justify-content-center align-items-center h-full">
-        <i class="pi pi-spin pi-spinner" style="font-size: 2rem"></i>
+        <i class="fa fa-spin fa-spinner" style="font-size: 2rem"></i>
     </div>
 </template>
 
@@ -102,6 +103,10 @@ export default {
                 this.batch_data = result;
                 if (result.operator) {
                     this.selected_operator = result.operator;
+                    // Ensure assigned operator is in the list
+                    if (!this.operators.some(o => o.id === result.operator.id)) {
+                        this.operators.push(result.operator);
+                    }
                 }
                 
                 // Fetch products for all picks in parallel

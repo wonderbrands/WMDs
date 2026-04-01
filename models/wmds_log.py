@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 from odoo import models, fields, api
-from datetime import datetime
-from odoo.exceptions import UserError
 import logging
-import requests
 
 _logger = logging.getLogger(__name__)
 
@@ -11,80 +8,116 @@ _logger = logging.getLogger(__name__)
 class WMDSLog(models.Model):
     _name = 'wmds.log'
     _description = 'Log compartido WMDS'
+    _order = 'date desc, id desc'
 
-    pick = fields.Many2one('stock.picking', 'Pick')
-    purchase = fields.Many2one('purchase.order', 'Purchase Order')
-    sale = fields.Many2one('sale.order', "Sale order")
-    batch_pick = fields.Many2one('stock.picking.batch', 'Lote de picks')
-    cycle_count = fields.Many2one('scheduled.cycle.count', 'Conteo Cíclico')
+    pick = fields.Many2one('stock.picking', 'Pick', ondelete='cascade')
+    purchase = fields.Many2one('purchase.order', 'Purchase Order', ondelete='cascade')
+    sale = fields.Many2one('sale.order', "Sale order", ondelete='cascade')
+    batch_pick = fields.Many2one('stock.picking.batch', 'Lote de picks', ondelete='cascade')
+    cycle_count = fields.Many2one('scheduled.cycle.count', 'Conteo Cíclico', ondelete='cascade')
 
-    log = fields.Text('Log')
-    date = fields.Datetime('Date', default=fields.Datetime.now) # Default automático
+    log = fields.Text('Log', required=True)
+    date = fields.Datetime('Date', default=fields.Datetime.now, index=True)
     user = fields.Many2one('res.users', 'User')
-
-    def init(self):
-        """ Ensure the column exists even if the module wasn't updated with -u """
-        self.env.cr.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'wmds_log' 
-              AND column_name = 'cycle_count'
-        """)
-        if not self.env.cr.fetchone():
-            self.env.cr.execute('ALTER TABLE wmds_log ADD COLUMN cycle_count integer')
-        super(WMDSLog, self).init()
 
     @api.model
     def create(self, vals):
-        # Using create override to make it transparent
+        if vals.get('log'):
+            vals['log'] = vals['log'].replace('\n', ' ').replace('\r', ' ').strip()
+        
+        # Original log record
         log = super(WMDSLog, self).create(vals)
         
+        # Avoid recursion if we are already duplicating
         if self.env.context.get('wmds_log_duplicating'):
             return log
 
-        new_vals = vals.copy()
-        new_vals.pop('pick', None)
-        new_vals.pop('purchase', None)
-        new_vals.pop('sale', None)
-        new_vals.pop('batch_pick', None)
+        # Propagation logic
+        self._propagate_log(log, vals)
+        
+        return log
 
+    def _propagate_log(self, log, original_vals):
+        """
+        Propagates the log to related records to ensure consistency.
+        We use a set of (model, id) to avoid duplicate logs in the same record.
+        """
+        target_records = set()
+        
+        # 1. Identify all related records
+        
+        # From Picking
         if log.pick:
             picking = log.pick
-            
-            # Record log into Sale/Purchase Orders
             if picking.sale_id:
-                new_vals_sale = new_vals.copy()
-                new_vals_sale['sale'] = picking.sale_id.id
-                self.with_context(wmds_log_duplicating=True).create(new_vals_sale)
-            elif picking.purchase_id:
-                new_vals_purchase = new_vals.copy()
-                new_vals_purchase['purchase'] = picking.purchase_id.id
-                self.with_context(wmds_log_duplicating=True).create(new_vals_purchase)
-            elif picking.origin:
-                if picking.origin.startswith('S'):
-                    so = self.env['sale.order'].search([('name', '=', picking.origin)], limit=1)
-                    if so:
-                        new_vals_sale = new_vals.copy()
-                        new_vals_sale['sale'] = so.id
-                        self.with_context(wmds_log_duplicating=True).create(new_vals_sale)
-                elif picking.origin.startswith('P'):
-                    po = self.env['purchase.order'].search([('name', '=', picking.origin)], limit=1)
-                    if po:
-                        new_vals_purchase = new_vals.copy()
-                        new_vals_purchase['purchase'] = po.id
-                        self.with_context(wmds_log_duplicating=True).create(new_vals_purchase)
-            
-            # Record log into Batch Picking
+                target_records.add(('sale', picking.sale_id.id))
+            if picking.purchase_id:
+                target_records.add(('purchase', picking.purchase_id.id))
             if picking.batch_id:
-                new_vals_batch = new_vals.copy()
-                new_vals_batch['batch_pick'] = picking.batch_id.id
-                self.with_context(wmds_log_duplicating=True).create(new_vals_batch)
+                target_records.add(('batch_pick', picking.batch_id.id))
+            
+            # Handle origin based linking if relations are missing
+            if not picking.sale_id and not picking.purchase_id and picking.origin:
+                if picking.origin.startswith('S'):
+                    so = self.env['sale.order'].sudo().search([('name', '=', picking.origin)], limit=1)
+                    if so:
+                        target_records.add(('sale', so.id))
+                elif picking.origin.startswith('P'):
+                    po = self.env['purchase.order'].sudo().search([('name', '=', picking.origin)], limit=1)
+                    if po:
+                        target_records.add(('purchase', po.id))
 
-        elif log.batch_pick:
+        # From Batch
+        if log.batch_pick:
             batch = log.batch_pick
             for picking in batch.picking_ids:
-                new_vals_picking = new_vals.copy()
-                new_vals_picking['pick'] = picking.id
-                self.with_context(wmds_log_duplicating=True).create(new_vals_picking)
+                target_records.add(('pick', picking.id))
+                if picking.sale_id:
+                    target_records.add(('sale', picking.sale_id.id))
+                if picking.purchase_id:
+                    target_records.add(('purchase', picking.purchase_id.id))
 
-        return log
+        # From Sale Order
+        if log.sale:
+            so = log.sale
+            pickings = self.env['stock.picking'].sudo().search([('sale_id', '=', so.id)])
+            for pick in pickings:
+                target_records.add(('pick', pick.id))
+                if pick.batch_id:
+                    target_records.add(('batch_pick', pick.batch_id.id))
+
+        # From Purchase Order
+        if log.purchase:
+            po = log.purchase
+            pickings = self.env['stock.picking'].sudo().search([('purchase_id', '=', po.id)])
+            for pick in pickings:
+                target_records.add(('pick', pick.id))
+                if pick.batch_id:
+                    target_records.add(('batch_pick', pick.batch_id.id))
+
+        # 2. Filter out the original record to avoid self-duplication
+        current_model = None
+        for field in ['pick', 'purchase', 'sale', 'batch_pick', 'cycle_count']:
+            if original_vals.get(field):
+                current_model = field
+                break
+        
+        if current_model and (current_model, original_vals[current_model]) in target_records:
+            target_records.remove((current_model, original_vals[current_model]))
+
+        # 3. Create duplicate logs
+        if target_records:
+            new_vals_base = original_vals.copy()
+            # Clear all relation fields
+            for field in ['pick', 'purchase', 'sale', 'batch_pick', 'cycle_count']:
+                new_vals_base.pop(field, None)
+            
+            for model, res_id in target_records:
+                new_vals = new_vals_base.copy()
+                new_vals[model] = res_id
+                self.with_context(wmds_log_duplicating=True).create(new_vals)
+
+    def write(self, vals):
+        if vals.get('log'):
+            vals['log'] = vals['log'].replace('\n', ' ').replace('\r', ' ').strip()
+        return super(WMDSLog, self).write(vals)

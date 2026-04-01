@@ -9,12 +9,12 @@
             </div>
             <div v-else class="context-info-header">
                 <div class="header-item">
-                    <i class="pi pi-map-marker"></i>
+                    <i class="fa fa-map-marker"></i>
                     <span class="header-val">{{ current_location.name }}</span>
-                    <i class="pi pi-pencil edit-icon" @click="resetToLocation"></i>
+                    <i class="fa fa-pencil edit-icon" @click="resetToLocation"></i>
                 </div>
                 <div class="header-item">
-                    <i class="pi pi-box"></i>
+                    <i class="fa fa-box"></i>
                     <span class="header-val">{{ current_product.sku || current_product.name }}</span>
                 </div>
             </div>
@@ -23,21 +23,21 @@
                 <Button 
                     @click="showLocationsModal = true"
                     class="p-button-text p-button-info p-button-sm mr-2" 
-                    icon="pi pi-list"
+                    icon="fa fa-list"
                     label="Ubicaciones"
                 />
                 <Button 
                     @click="finishWave"
                     class="p-button-text p-button-success p-button-sm mr-2" 
                     label="Finalizar" 
-                    icon="pi pi-check-circle"
+                    icon="fa fa-check-circle"
                     :loading="loading"
                 />
                 <Button 
                     @click="exitFlow"
                     class="p-button-text p-button-danger p-button-sm exit-btn" 
                     label="Salir" 
-                    icon="pi pi-times"
+                    icon="fa fa-times"
                 />
             </div>
         </div>
@@ -76,14 +76,14 @@
             <div v-else-if="step === 'product'" class="step-container">
                 <div class="current-context">
                     <div class="context-item">
-                        <i class="pi pi-map-marker"></i>
+                        <i class="fa fa-map-marker"></i>
                         <span>{{ current_location.name }}</span>
-                        <Button icon="pi pi-pencil" class="p-button-rounded p-button-warning p-button-sm ml-auto" @click="resetToLocation" label="Cambiar" />
+                        <Button icon="fa fa-pencil" class="p-button-rounded p-button-warning p-button-sm ml-auto" @click="resetToLocation" label="Cambiar" />
                     </div>
                     <div class="mt-2 flex justify-content-center">
                         <Button 
                             label="UBICACIÓN VACÍA" 
-                            icon="pi pi-trash" 
+                            icon="fa fa-trash" 
                             severity="danger" 
                             class="p-button-sm"
                             @click="markEmpty"
@@ -111,8 +111,8 @@
                             <Button label="+" @click="quantity++" class="p-button-outlined qty-btn" />
                         </div>
                         <div class="form-actions">
-                            <Button label="CANCELAR" icon="pi pi-times" class="p-button-secondary p-button-text" @click="step = 'product'" />
-                            <Button label="CONFIRMAR" icon="pi pi-check" class="p-button-success" @click="confirmCount" :loading="loading" />
+                            <Button label="CANCELAR" icon="fa fa-times" class="p-button-secondary p-button-text" @click="step = 'product'" />
+                            <Button label="CONFIRMAR" icon="fa fa-check" class="p-button-success" @click="confirmCount" :loading="loading" />
                         </div>
                     </div>
                 </div>
@@ -145,7 +145,7 @@
                 <div class="group-title">PENDIENTES ({{ pending_locations.length }})</div>
                 <div class="loc-grid">
                     <div v-for="loc in pending_locations" :key="loc.id" class="loc-item-modal pending">
-                        <i class="pi pi-map-marker"></i>
+                        <i class="fa fa-map-marker"></i>
                         <span>{{ loc.name }}</span>
                     </div>
                     <div v-if="pending_locations.length === 0" class="empty-msg">No hay ubicaciones pendientes.</div>
@@ -155,7 +155,7 @@
                 <div class="group-title">COMPLETADAS ({{ done_locations.length }})</div>
                 <div class="loc-grid">
                     <div v-for="loc in done_locations" :key="loc.id" class="loc-item-modal done">
-                        <i class="pi pi-check-circle"></i>
+                        <i class="fa fa-check-circle"></i>
                         <span>{{ loc.name }}</span>
                     </div>
                     <div v-if="done_locations.length === 0" class="empty-msg">Aún no has completado ninguna ubicación.</div>
@@ -163,7 +163,7 @@
             </div>
         </div>
         <template #footer>
-            <Button label="CERRAR" icon="pi pi-times" @click="showLocationsModal = false" class="p-button-text" />
+            <Button label="CERRAR" icon="fa fa-times" @click="showLocationsModal = false" class="p-button-text" />
         </template>
     </Dialog>
 </template>
@@ -211,7 +211,12 @@ export default {
     async mounted() {
         this.waveId = this.store.mandatory_uncompleted.component_props?.cc_id;
         if (!this.waveId) {
-            this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se encontró ID de ola.', life: 3000 });
+            this.$toast.add({ 
+                severity: 'error', 
+                summary: 'Error de Inicialización', 
+                detail: 'No se pudo recuperar el identificador de la ola de conteo. Por favor, reintente desde el menú principal.', 
+                life: 5000 
+            });
             this.exitFlow();
             return;
         }
@@ -251,11 +256,21 @@ export default {
                     this.step = 'product';
                     this.scannerKey++;
                 } else {
-                    this.$toast.add({ severity: 'error', summary: 'Ubicación Inválida', detail: res.error, life: 3000 });
+                    this.$toast.add({ 
+                        severity: 'error', 
+                        summary: 'Ubicación Inválida', 
+                        detail: 'La ubicación escaneada no es válida para esta ola. Detalle técnico: ' + (res.error || 'Ubicación no encontrada o no asignada'), 
+                        life: 4000 
+                    });
                     this.scannerKey++;
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Error al validar ubicación.', life: 3000 });
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Validación', 
+                    detail: 'Ocurrió un error al validar la ubicación en el servidor. Detalle técnico: ' + (e.message || 'Error de conexión'), 
+                    life: 4000 
+                });
                 this.scannerKey++;
             }
         },
@@ -276,11 +291,21 @@ export default {
                     this.quantity = 1;
                     this.step = 'quantity';
                 } else {
-                    this.$toast.add({ severity: 'error', summary: 'Producto no encontrado', detail: res.error, life: 3000 });
+                    this.$toast.add({ 
+                        severity: 'error', 
+                        summary: 'Producto no Encontrado', 
+                        detail: 'El código de barras no corresponde a ningún producto registrado. Detalle técnico: ' + (res.error || 'Sin coincidencia'), 
+                        life: 4000 
+                    });
                     this.scannerKey++;
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Error al validar producto.', life: 3000 });
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Búsqueda', 
+                    detail: 'Ocurrió un error al buscar el producto. Detalle técnico: ' + (e.message || 'Error de comunicación'), 
+                    life: 4000 
+                });
                 this.scannerKey++;
             }
         },
@@ -297,7 +322,15 @@ export default {
                 });
 
                 if (res.ok) {
-                    this.$toast.add({ severity: 'success', summary: 'Ubicación Vacía', detail: 'Se registró la ubicación como vacía.', life: 3000 });
+                    const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                    if (!isManager) {
+                        this.$toast.add({ 
+                            severity: 'success', 
+                            summary: 'Ubicación Vacía', 
+                            detail: `Se ha registrado correctamente que la ubicación ${this.current_location.name} no contiene stock.`, 
+                            life: 3000 
+                        });
+                    }
                     
                     // Update local list status
                     let loc = this.locations_list.find(l => l.id === this.current_location.id);
@@ -313,10 +346,20 @@ export default {
                     // Reset to location step to scan next location
                     this.resetToLocation();
                 } else {
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 3000 });
+                    this.$toast.add({ 
+                        severity: 'error', 
+                        summary: 'Error de Registro', 
+                        detail: 'No se pudo marcar la ubicación como vacía. Detalle técnico: ' + (res.error || 'Error en el servidor'), 
+                        life: 4000 
+                    });
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo registrar la ubicación como vacía.', life: 3000 });
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Comunicación', 
+                    detail: 'No se pudo completar la acción de vaciado. Detalle técnico: ' + (e.message || 'Error de red'), 
+                    life: 4000 
+                });
             } finally {
                 this.loading = false;
             }
@@ -334,7 +377,15 @@ export default {
                 });
 
                 if (res.ok) {
-                    this.$toast.add({ severity: 'success', summary: 'Registrado', detail: 'Conteo guardado con éxito.', life: 2000 });
+                    const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                    if (!isManager) {
+                        this.$toast.add({ 
+                            severity: 'success', 
+                            summary: 'Conteo Registrado', 
+                            detail: `Se registró un conteo de ${this.quantity} para el producto ${this.current_product.sku || this.current_product.name}.`, 
+                            life: 2000 
+                        });
+                    }
                     
                     // Update local list status
                     let loc = this.locations_list.find(l => l.id === this.current_location.id);
@@ -353,28 +404,65 @@ export default {
                     this.step = 'product';
                     this.scannerKey++;
                 } else {
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 3000 });
+                    this.$toast.add({ 
+                        severity: 'error', 
+                        summary: 'Error al Guardar', 
+                        detail: 'No se pudo guardar el registro del conteo. Detalle técnico: ' + (res.error || 'Error desconocido'), 
+                        life: 4000 
+                    });
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo guardar el conteo.', life: 3000 });
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Conexión', 
+                    detail: 'Hubo un problema al enviar el conteo al servidor. Detalle técnico: ' + (e.message || 'Error de red'), 
+                    life: 4000 
+                });
             } finally {
                 this.loading = false;
             }
         },
 
         async finishWave() {
+            if (this.pending_locations.length > 0) {
+                this.$toast.add({ 
+                    severity: 'warn', 
+                    summary: 'Ubicaciones Pendientes', 
+                    detail: `No es posible finalizar la ola mientras existan ubicaciones por contar. Quedan ${this.pending_locations.length} pendientes.`, 
+                    life: 5000 
+                });
+                return;
+            }
             if (!confirm("¿Estás seguro de que quieres finalizar esta ola? Ya no podrás registrar más productos.")) return;
             this.loading = true;
             try {
                 let res = await this.store.callOdoo("finish_cycle_count_wave", "", { wave_id: this.waveId });
                 if (res.ok) {
-                    this.$toast.add({ severity: 'success', summary: 'Finalizado', detail: 'Ola completada con éxito.', life: 3000 });
+                    const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                    if (!isManager) {
+                        this.$toast.add({ 
+                            severity: 'success', 
+                            summary: 'Ola Finalizada', 
+                            detail: 'La ola de conteo ha sido completada exitosamente.', 
+                            life: 3000 
+                        });
+                    }
                     this.store.mandatory_uncompleted.doneMandatory();
                 } else {
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 3000 });
+                    this.$toast.add({ 
+                        severity: 'error', 
+                        summary: 'Error al Finalizar', 
+                        detail: 'No se pudo completar el cierre de la ola. Detalle técnico: ' + (res.error || 'Error en el servidor'), 
+                        life: 4000 
+                    });
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo finalizar la ola.', life: 3000 });
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error Crítico', 
+                    detail: 'Ocurrió un error inesperado al intentar finalizar la ola. Detalle técnico: ' + (e.message || 'Error desconocido'), 
+                    life: 4000 
+                });
             } finally {
                 this.loading = false;
             }

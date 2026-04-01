@@ -39,7 +39,7 @@
                             </div>
                         </div>
                         <div class="filter-actions">
-                            <Button label="Buscar" icon="pi pi-search" @click="fetchLocations" :loading="store.loading" :disabled="isRangeInvalid" />
+                            <Button label="Buscar" icon="fa fa-search" @click="fetchLocations" :loading="store.loading" :disabled="isRangeInvalid" />
                         </div>
                     </div>
 
@@ -47,7 +47,7 @@
                         <div class="table-half">
                             <div class="search-bar-container mb-small">
                                 <span class="p-input-icon-left input-full">
-                                    <i class="pi pi-search" />
+                                    <i class="fa fa-search"></i>
                                     <InputText v-model="rawSearchQueryResults" placeholder="Filtrar resultados..." class="input-full p-inputtext-sm" />
                                 </span>
                             </div>
@@ -55,7 +55,7 @@
                                 <template #header>
                                     <div class="flex-between">
                                         <span class="font-bold">Resultados ({{ filteredSearchResults.length }})</span>
-                                        <Button label="Añadir" icon="pi pi-plus" class="p-button-sm p-button-success" @click="addSelected" :disabled="!tempSelection.length" />
+                                        <Button label="Añadir" icon="fa fa-plus" class="p-button-sm p-button-success" @click="addSelected" :disabled="!tempSelection.length" />
                                     </div>
                                 </template>
                                 <Column selectionMode="multiple" headerStyle="width: 3rem" :selectable="isSelectable"></Column>
@@ -65,7 +65,7 @@
                         <div class="table-half">
                             <div class="search-bar-container mb-small">
                                 <span class="p-input-icon-left input-full">
-                                    <i class="pi pi-search" />
+                                    <i class="fa fa-search"></i>
                                     <InputText v-model="rawSearchQuerySelected" placeholder="Filtrar seleccionadas..." class="input-full p-inputtext-sm" />
                                 </span>
                             </div>
@@ -73,7 +73,7 @@
                                 <template #header>
                                     <div class="flex-between">
                                         <span class="font-bold text-primary">Seleccionadas ({{ filteredSelectedLocations.length }})</span>
-                                        <Button label="Quitar" icon="pi pi-trash" class="p-button-sm p-button-danger p-button-outlined" @click="removeSelected" :disabled="!finalSelection.length" />
+                                        <Button label="Quitar" icon="fa fa-trash" class="p-button-sm p-button-danger p-button-outlined" @click="removeSelected" :disabled="!finalSelection.length" />
                                     </div>
                                 </template>
                                 <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
@@ -82,19 +82,19 @@
                         </div>
                     </div>
                     <div class="wizard-footer">
-                        <Button label="Siguiente" icon="pi pi-arrow-right" iconPos="right" @click="currentStep = 2" :disabled="!selectedLocations.length" />
+                        <Button label="Siguiente" icon="fa fa-arrow-right" iconPos="right" @click="currentStep = 2" :disabled="!selectedLocations.length" />
                     </div>
                 </div>
 
                 <div v-if="currentStep === 2" class="fade-in">
                     <div class="card-background mb-medium">
                         <div class="flex-between">
-                            <Button label="Volver" icon="pi pi-arrow-left" class="p-button-text" @click="currentStep = 1" />
+                            <Button label="Volver" icon="fa fa-arrow-left" class="p-button-text" @click="currentStep = 1" />
                             <div class="ref-container">
                                 <label class="filter-label">Referencia / Notas</label>
                                 <InputText v-model="newCount.ref" placeholder="Ej: Auditoría Pasillo A" class="input-ref" />
                             </div>
-                            <Button label="Añadir Ola" icon="pi pi-user-plus" class="p-button-outlined" @click="addOperatorField" />
+                            <Button label="Añadir Ola" icon="fa fa-user-plus" class="p-button-outlined" @click="addOperatorField" />
                         </div>
                     </div>
 
@@ -102,7 +102,7 @@
                         <div v-for="(op, index) in assignedOperators" :key="op.id" class="operator-card card-background">
                             <div class="flex-between mb-small">
                                 <span class="wave-number">Ola #{{ index + 1 }}</span>
-                                <Button icon="pi pi-times"  severity="danger" @click="removeOperatorField(index)" label="X" />
+                                <Button icon="fa fa-times"  severity="danger" @click="removeOperatorField(index)" label="X" />
                             </div>
                             <label class="small-label">Responsable</label>
                             <Dropdown v-model="op.operator_id" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" placeholder="Seleccionar..." class="input-full" filter />
@@ -110,7 +110,7 @@
                     </div>
 
                     <div class="final-footer mt-large">
-                        <Button label="GENERAR CONTEO" icon="pi pi-save" severity="success" size="large" @click="saveFullCount" :loading="store.loading" :disabled="isSaveDisabled" />
+                        <Button label="GENERAR CONTEO" icon="fa fa-save" severity="success" size="large" @click="saveFullCount" :loading="store.loading" :disabled="isSaveDisabled" />
                     </div>
                 </div>
             </div>
@@ -124,14 +124,14 @@
                             <span class="sub-title">Creado por: {{ created_by }}</span>
                         </div>
                         <div v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'">
-                            <Button label="Ver Logs" icon="pi pi-list" severity="secondary" class="mr-2" @click="showLogsReport" />
-                            <Button label="Comparar Conteos" icon="pi pi-chart-bar" severity="help" class="mr-2" @click="showComparisonReport" />
-                            <Button label="Añadir Ola" icon="pi pi-plus" class="p-button-outlined mr-2" @click="showOperatorDialog('add')" />
-                            <Button label="Finalizar Ciclo" icon="pi pi-check-square" severity="success" class="mr-2" @click="closeEntireCount" :loading="store.loading" />
-                            <Button label="Cancelar Ciclo" icon="pi pi-ban" severity="danger" class="p-button-outlined" @click="cancelEntireCount" :loading="store.loading" />
+                            <Button label="Ver Logs" icon="fa fa-list" severity="secondary" class="mr-2" @click="showLogsReport" />
+                            <Button label="Comparar Conteos" icon="fa fa-bar-chart" severity="help" class="mr-2" @click="showComparisonReport" />
+                            <Button label="Añadir Ola" icon="fa fa-plus" class="p-button-outlined mr-2" @click="showOperatorDialog('add')" />
+                            <Button label="Finalizar Ciclo" icon="fa fa-check-square" severity="success" class="mr-2" @click="closeEntireCount" :loading="store.loading" />
+                            <Button label="Cancelar Ciclo" icon="fa fa-ban" severity="danger" class="p-button-outlined" @click="cancelEntireCount" :loading="store.loading" />
                         </div>
                         <div v-else class="flex-row">
-                             <Button label="Ver Logs" icon="pi pi-list" severity="secondary" class="mr-2" @click="showLogsReport" />
+                             <Button label="Ver Logs" icon="fa fa-list" severity="secondary" class="mr-2" @click="showLogsReport" />
                              <span :class="['state-badge', cycleCountState]">
                                 {{ cycleCountState === 'finalized' ? 'FINALIZADO' : 'CANCELADO' }}
                              </span>
@@ -155,15 +155,15 @@
                         <Column header="Acciones" style="width: 25rem">
                             <template #body="slotProps">
                                 <div v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled' && slotProps.data.state !== 'done' && slotProps.data.state !== 'cancelled'">
-                                    <Button label="Reasignar" icon="pi pi-user-edit" class="p-button-text text-orange-500" @click.stop="showOperatorDialog('reassign', slotProps.data)" />
-                                    <Button label="Finalizar" icon="pi pi-check" severity="success" class="p-button-text" @click.stop="finishWave(slotProps.data.id)" />
-                                    <Button label="Cancelar" icon="pi pi-times" severity="danger" class="p-button-text" @click.stop="cancelWave(slotProps.data.id)" />
+                                    <Button label="Reasignar" icon="fa fa-user" class="p-button-text text-orange-500" @click.stop="showOperatorDialog('reassign', slotProps.data)" />
+                                    <Button label="Finalizar" icon="fa fa-check" severity="success" class="p-button-text" @click.stop="finishWave(slotProps.data.id)" />
+                                    <Button label="Cancelar" icon="fa fa-times" severity="danger" class="p-button-text" @click.stop="cancelWave(slotProps.data.id)" />
                                 </div>
                                 <div v-else-if="slotProps.data.state === 'done'" class="flex-row gap-small">
-                                    <span class="text-green-500 font-bold"><i class="pi pi-check-circle"></i> Lista</span>
-                                    <Button label="Reabrir" icon="pi pi-refresh" class="p-button-text p-button-sm" @click.stop="reopenWavePrompt(slotProps.data)" v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'" />
+                                    <span class="text-green-500 font-bold"><i class="fa fa-check-circle"></i> Lista</span>
+                                    <Button label="Reabrir" icon="fa fa-refresh" class="p-button-text p-button-sm" @click.stop="reopenWavePrompt(slotProps.data)" v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'" />
                                 </div>
-                                <span v-else-if="slotProps.data.state === 'cancelled'" class="text-red-500 font-bold"><i class="pi pi-ban"></i> Cancelada</span>
+                                <span v-else-if="slotProps.data.state === 'cancelled'" class="text-red-500 font-bold"><i class="fa fa-ban"></i> Cancelada</span>
                                 <span v-else-if="cycleCountState === 'finalized' || cycleCountState === 'cancelled'" class="text-secondary italic">Sin acciones</span>
                             </template>
                         </Column>
@@ -173,7 +173,7 @@
                 <div v-else-if="detailView === 'wave'">
                      <div class="flex-between mb-medium">
                         <div>
-                            <Button icon="pi pi-arrow-left" label="Volver a Olas" @click="detailView = null" class="p-button-text" />
+                            <Button icon="fa fa-arrow-left" label="Volver a Olas" @click="detailView = null" class="p-button-text" />
                             <h3 class="modal-title no-margin mt-2">Detalle de Ola: {{ selectedWave.name }}</h3>
                         </div>
                     </div>
@@ -188,11 +188,11 @@
                 <div v-else-if="detailView === 'logs'">
                     <div class="flex-between mb-medium">
                         <div>
-                            <Button icon="pi pi-arrow-left" label="Volver" @click="detailView = null" class="p-button-text" />
+                            <Button icon="fa fa-arrow-left" label="Volver" @click="detailView = null" class="p-button-text" />
                             <h3 class="modal-title no-margin mt-2">Log de Actividad: {{ modalData?.name }}</h3>
                         </div>
                         <span class="p-input-icon-left">
-                            <i class="pi pi-search" />
+                            <i class="fa fa-search"></i>
                             <InputText v-model="logSearchQuery" placeholder="Filtrar logs..." class="p-inputtext-sm" />
                         </span>
                     </div>
@@ -207,16 +207,16 @@
                 <div v-else-if="detailView === 'comparison'">
                     <div class="flex-between mb-medium">
                         <div>
-                            <Button icon="pi pi-arrow-left" label="Volver" @click="detailView = null" class="p-button-text" />
+                            <Button icon="fa fa-arrow-left" label="Volver" @click="detailView = null" class="p-button-text" />
                             <h3 class="modal-title no-margin mt-2">Consolidación de Conteos: {{ modalData?.name }}</h3>
                         </div>
                         <div class="flex-row gap-small">
                             <span class="p-input-icon-left mr-2">
-                                <i class="pi pi-search" />
+                                <i class="fa fa-search"></i>
                                 <InputText v-model="comparisonSearchQuery" placeholder="Buscar SKU/Producto..." class="p-inputtext-sm" />
                             </span>
                             <span class="p-input-icon-left mr-2">
-                                <i class="pi pi-map-marker" />
+                                <i class="fa fa-map-marker"></i>
                                 <InputText v-model="comparisonLocationQuery" placeholder="Filtrar Ubicación..." class="p-inputtext-sm" />
                             </span>
                         </div>
@@ -228,11 +228,11 @@
                             <Button label="Discrepancias" :class="comparisonFilter === 'diff' ? 'p-button-danger' : 'p-button-outlined p-button-danger'" @click="comparisonFilter = 'diff'" />
                             <Button label="Coincidencias" :class="comparisonFilter === 'match' ? 'p-button-success' : 'p-button-outlined p-button-success'" @click="comparisonFilter = 'match'" />
                             <Divider layout="vertical" />
-                            <Button label="Seleccionar Discrepancias" icon="pi pi-check-circle" class="p-button-text p-button-sm" @click="selectAllDiscrepancies" />
-                            <Button label="Seleccionar Coincidencias" icon="pi pi-circle" class="p-button-text p-button-sm" @click="selectAllMatches" />
+                            <Button label="Seleccionar Discrepancias" icon="fa fa-check-circle" class="p-button-text p-button-sm" @click="selectAllDiscrepancies" />
+                            <Button label="Seleccionar Coincidencias" icon="fa fa-circle-o" class="p-button-text p-button-sm" @click="selectAllMatches" />
                         </div>
                         <div :title="anyWaveOpen ? 'No están todas las olas cerradas.' : ''">
-                            <Button label="AJUSTAR SELECCIONADOS" icon="pi pi-bolt" severity="success" :disabled="!canBulkAdjust || anyWaveOpen" @click="prepareBulkAdjustment" :loading="store.loading" />
+                            <Button label="AJUSTAR SELECCIONADOS" icon="fa fa-bolt" severity="success" :disabled="!canBulkAdjust || anyWaveOpen" @click="prepareBulkAdjustment" :loading="store.loading" />
                         </div>
                     </div>
 
@@ -241,7 +241,7 @@
                         <Column header="Ubicación" field="location_name" sortable style="min-width: 150px">
                              <template #body="slotProps">
                                 <span :class="['font-bold', slotProps.data.is_blocked ? 'text-secondary line-through' : 'text-primary']">{{ slotProps.data.location_name }}</span>
-                                <i v-if="slotProps.data.is_blocked" class="pi pi-lock ml-2 text-secondary" title="Ubicación Bloqueada"></i>
+                                <i v-if="slotProps.data.is_blocked" class="fa fa-lock ml-2 text-secondary" title="Ubicación Bloqueada"></i>
                              </template>
                         </Column>
                         <Column field="product_sku" header="SKU" sortable></Column>
@@ -294,10 +294,10 @@
                         <Column header="Estado">
                             <template #body="slotProps">
                                 <span v-if="slotProps.data.theoretical_qty === proposedQuantities[slotProps.data.__uid]" class="text-green-500 font-bold">
-                                    <i class="pi pi-check"></i> OK
+                                    <i class="fa fa-check"></i> OK
                                 </span>
                                 <span v-else class="text-red-500 font-bold">
-                                    <i class="pi pi-exclamation-triangle"></i> DIF
+                                    <i class="fa fa-exclamation-triangle"></i> DIF
                                 </span>
                             </template>
                         </Column>
@@ -305,7 +305,7 @@
                         <Column header="Bloquear" headerStyle="width: 5rem">
                             <template #body="slotProps">
                                 <Button 
-                                    :icon="slotProps.data.is_blocked ? 'pi pi-lock' : 'pi pi-lock-open'" 
+                                    :icon="slotProps.data.is_blocked ? 'fa fa-lock' : 'fa fa-unlock'" 
                                     :class="['p-button-rounded p-button-text', slotProps.data.is_blocked ? 'p-button-danger' : 'p-button-secondary']"
                                     @click="toggleLocationBlock(slotProps.data)"
                                     title="Bloquear para nuevas olas"
@@ -321,7 +321,7 @@
         <Dialog v-model:visible="bulkAdjDialog.visible" header="Ajuste Masivo de Inventario" modal class="p-fluid" style="width: 500px">
              <div class="mb-3">
                 <div v-if="anyWaveOpen" class="warning-box mb-3">
-                    <i class="pi pi-exclamation-triangle"></i>
+                    <i class="fa fa-exclamation-triangle"></i>
                     <span>Hay olas que aún no han sido finalizadas. Se recomienda esperar a que todos los operadores terminen.</span>
                 </div>
                 <p>Estás por ajustar <strong>{{ comparisonSelection.length }}</strong> registros de inventario.</p>
@@ -333,8 +333,8 @@
             </div>
             <template #footer>
                 <div :title="anyWaveOpen ? 'No están todas las olas cerradas.' : ''" style="display:inline-block">
-                    <Button label="Cancelar" icon="pi pi-times" @click="bulkAdjDialog.visible = false" class="p-button-text mr-2" />
-                    <Button label="CONFIRMAR TODO" icon="pi pi-check" severity="success" @click="confirmBulkAdjustment" :loading="store.loading" :disabled="anyWaveOpen" />
+                    <Button label="Cancelar" icon="fa fa-times" @click="bulkAdjDialog.visible = false" class="p-button-text mr-2" />
+                    <Button label="CONFIRMAR TODO" icon="fa fa-check" severity="success" @click="confirmBulkAdjustment" :loading="store.loading" :disabled="anyWaveOpen" />
                 </div>
             </template>
         </Dialog>
@@ -343,7 +343,7 @@
         <Dialog v-model:visible="adjDialog.visible" header="Ajustar Stock Manualmente" modal class="p-fluid" style="width: 500px">
             <div v-if="adjDialog.line">
                 <div v-if="anyWaveOpen" class="warning-box mb-3">
-                    <i class="pi pi-exclamation-triangle"></i>
+                    <i class="fa fa-exclamation-triangle"></i>
                     <span>Hay olas abiertas. Los resultados podrían no ser definitivos.</span>
                 </div>
                 <div class="mb-3">
@@ -364,8 +364,8 @@
             </div>
             <template #footer>
                 <div :title="anyWaveOpen ? 'No están todas las olas cerradas.' : ''" style="display:inline-block">
-                    <Button label="Cancelar" icon="pi pi-times" @click="adjDialog.visible = false" class="p-button-text mr-2" />
-                    <Button label="CONFIRMAR AJUSTE" icon="pi pi-check" severity="success" @click="confirmAdjustment" :loading="store.loading" :disabled="!adjDialog.reason || anyWaveOpen" />
+                    <Button label="Cancelar" icon="fa fa-times" @click="adjDialog.visible = false" class="p-button-text mr-2" />
+                    <Button label="CONFIRMAR AJUSTE" icon="fa fa-check" severity="success" @click="confirmAdjustment" :loading="store.loading" :disabled="!adjDialog.reason || anyWaveOpen" />
                 </div>
             </template>
         </Dialog>
@@ -376,16 +376,16 @@
                 <InputText v-model="reopenDialog.reason" placeholder="Ej: Error en conteo de SKU..." autofocus />
             </div>
             <template #footer>
-                <Button label="Cancelar" icon="pi pi-times" @click="reopenDialog.visible = false" class="p-button-text" />
-                <Button label="REABRIR OLA" icon="pi pi-check" severity="warning" @click="confirmReopen" :loading="store.loading" :disabled="!reopenDialog.reason" />
+                <Button label="Cancelar" icon="fa fa-times" @click="reopenDialog.visible = false" class="p-button-text" />
+                <Button label="REABRIR OLA" icon="fa fa-check" severity="warning" @click="confirmReopen" :loading="store.loading" :disabled="!reopenDialog.reason" />
             </template>
         </Dialog>
 
         <Dialog v-model:visible="operatorDialog.visible" :header="operatorDialog.title" modal class="p-fluid" style="width: 450px">
             <Listbox v-model="operatorDialog.selected" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" :multiple="operatorDialog.multiSelect" filter listStyle="max-height:250px" />
             <template #footer>
-                <Button label="Cancelar" icon="pi pi-times" @click="operatorDialog.visible = false" class="p-button-text" />
-                <Button label="Guardar" icon="pi pi-check" @click="handleOperatorSave" :loading="store.loading" />
+                <Button label="Cancelar" icon="fa fa-times" @click="operatorDialog.visible = false" class="p-button-text" />
+                <Button label="Guardar" icon="fa fa-check" @click="handleOperatorSave" :loading="store.loading" />
             </template>
         </Dialog>
     </div>
@@ -662,7 +662,7 @@ export default {
         async confirmBulkAdjustment() {
             if (!this.bulkAdjDialog.reason) return;
             if (this.anyWaveOpen) {
-                this.$toast.add({ severity: 'error', summary: 'Acción Bloqueada', detail: 'No se pueden hacer ajustes si hay olas sin finalizar o cancelar.', life: 5000 });
+                this.$toast.add({ severity: 'error', summary: 'Acción Bloqueada', detail: 'Detalle técnico: No se pueden hacer ajustes si hay olas sin finalizar o cancelar.', life: 5000 });
                 return;
             }
             this.store.loading = true;
@@ -683,11 +683,14 @@ export default {
                     });
                     if (res.ok) count++;
                 }
-                this.$toast.add({ severity: 'success', summary: 'Masivo Finalizado', detail: `${count} ajustes realizados.`, life: 3000 });
+                const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                if (!isManager) {
+                    this.$toast.add({ severity: 'success', summary: 'Masivo Finalizado', detail: 'Detalle técnico: ' + (`${count} ajustes realizados.` || 'Desconocido'), life: 3000 });
+                }
                 this.bulkAdjDialog.visible = false;
                 await this.showComparisonReport();
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error Masivo', detail: 'Hubo un error en el procesamiento masivo.', life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error Masivo', detail: 'Detalle técnico: Hubo un error en el procesamiento masivo.', life: 3000 });
             } finally {
                 this.store.loading = false;
             }
@@ -717,11 +720,14 @@ export default {
             });
 
             if (res.ok) {
-                this.$toast.add({ severity: 'success', summary: 'Éxito', detail: 'Stock ajustado correctamente.', life: 3000 });
+                const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                if (!isManager) {
+                    this.$toast.add({ severity: 'success', summary: 'Éxito', detail: 'Detalle técnico: Stock ajustado correctamente.', life: 3000 });
+                }
                 this.adjDialog.visible = false;
                 await this.showComparisonReport(); // Refrescar reporte
             } else {
-                this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Detalle técnico: ' + (res.error || 'Desconocido'), life: 3000 });
             }
         },
         showOperatorDialog(mode, wave = null) {
@@ -769,7 +775,10 @@ export default {
                         d.is_blocked = res.is_blocked;
                     }
                 });
-                this.$toast.add({ severity: 'success', summary: 'Ubicación Actualizada', detail: `La ubicación ahora está ${res.is_blocked ? 'bloqueada' : 'disponible'}.`, life: 2000 });
+                const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                if (!isManager) {
+                    this.$toast.add({ severity: 'success', summary: 'Ubicación Actualizada', detail: 'Detalle técnico: ' + (`La ubicación ahora está ${res.is_blocked ? 'bloqueada' : 'disponible'}.` || 'Desconocido'), life: 2000 });
+                }
             }
         },
         async handleOperatorSave() {

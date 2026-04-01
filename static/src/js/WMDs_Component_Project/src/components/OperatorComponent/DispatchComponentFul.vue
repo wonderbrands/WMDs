@@ -16,7 +16,7 @@
                     @click="exitFlow"
                     class="p-button-text p-button-danger p-button-sm" 
                     label="Salir / Finalizar" 
-                    icon="pi pi-times"
+                    icon="fa fa-times"
                 />
             </div>
 
@@ -27,11 +27,11 @@
                 
                 <div class="log-list">
                     <div v-if="loading" class="empty-log">
-                        <i class="pi pi-spin pi-spinner search-icon"></i>
+                        <i class="fa fa-spin fa-spinner search-icon"></i>
                         Validando operación...
                     </div>
                     <div v-else class="empty-log">
-                        <i class="pi pi-barcode search-icon"></i>
+                        <i class="fa fa-barcode search-icon"></i>
                         Esperando escaneo de operación WH/DFUL...
                     </div>
                 </div>
@@ -92,9 +92,9 @@ export default {
                         if (this.$toast) {
                             this.$toast.add({ 
                                 severity: 'error', 
-                                summary: 'Error', 
-                                detail: 'No se pudo obtener la URL de la operación.', 
-                                life: 3000 
+                                summary: 'Error de Redirección', 
+                                detail: 'No se pudo obtener la dirección de la operación para el escáner. Detalle técnico: Sin URL de retorno', 
+                                life: 4000 
                             });
                         }
                         this.restartScanner();
@@ -105,8 +105,8 @@ export default {
                         this.$toast.add({ 
                             severity: 'error', 
                             summary: 'Operación Inválida', 
-                            detail: validation.message || 'La operación no es válida para despacho fulfilment.', 
-                            life: 4000 
+                            detail: 'La operación no es válida para despacho fulfillment. Detalle técnico: ' + (validation.message || 'Estado incorrecto o tipo de pick inválido'), 
+                            life: 5000 
                         });
                     }
                     this.restartScanner();
@@ -116,9 +116,9 @@ export default {
                 if (this.$toast) {
                     this.$toast.add({ 
                         severity: 'error', 
-                        summary: 'Error', 
-                        detail: 'Ocurrió un error al procesar el escaneo.', 
-                        life: 3000 
+                        summary: 'Error en Escaneo', 
+                        detail: 'Ocurrió un error al procesar el código escaneado. Detalle técnico: ' + (e.message || 'Error de conexión'), 
+                        life: 4000 
                     });
                 }
                 this.restartScanner();

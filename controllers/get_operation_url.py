@@ -89,6 +89,35 @@ class GetURLOfPick(http.Controller):
                 }
                 return {"valid": False, "message": f"La operación está en estado: {states.get(pick.state, pick.state)}. Debe estar 'Listo'."}
             
+            # Update moves on dock and log dispatch
+            operator_name = request.env.user.name
+            moves_on_dock = pick.move_ids.filtered(lambda m: m.on_dock)
+            
+            if moves_on_dock:
+                for move in moves_on_dock:
+                    dock_name = move.dock_id.name if move.dock_id else "DOCK"
+                    move.sudo().write({
+                        'on_dock': False,
+                        'dock_id': False,
+                        'dispatched': True,
+                        'qty_dispatched': move.quantity
+                    })
+                    
+                    log_msg = f"Despacho Fulfillment: Operación {pick.name}. Producto {move.product_id.display_name} retirado de {dock_name} por {operator_name}."
+                    request.env["wmds.log"].sudo().create({
+                        "pick": pick.id,
+                        "log": log_msg,
+                        "user": request.env.user.id,
+                    })
+            else:
+                # If no moves were on dock, still log the validation/dispatch intent
+                log_msg = f"Despacho Fulfillment: Operación {pick.name} validada para despacho por {operator_name}."
+                request.env["wmds.log"].sudo().create({
+                    "pick": pick.id,
+                    "log": log_msg,
+                    "user": request.env.user.id,
+                })
+
             return {"valid": True, "pick_id": pick.id}
             
         except Exception as e:

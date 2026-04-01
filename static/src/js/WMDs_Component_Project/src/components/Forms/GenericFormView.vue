@@ -10,12 +10,12 @@
                 <FloatLabel v-if="!col.non_blocked_field">
                     <InputText disabled :id="col.field" 
                         :value="col.field.includes('date') ? store.formatDate(form_data[col.field]) : form_data[col.field]" 
-                        :placeholder="col.label" />
+                        class="w-full" />
                     <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
                 
                 <FloatLabel v-else-if="col.type === 'text'">
-                    <InputText :id="col.field" :name="col.field" type="text" autocomplete="off" v-model="form_data[col.field]" :placeholder="col.label" class="w-full" />
+                    <InputText :id="col.field" :name="col.field" type="text" autocomplete="off" v-model="form_data[col.field]" class="w-full" />
                     <label :for="col.field">{{ col.label }}</label>
                 </FloatLabel>
 
@@ -24,7 +24,7 @@
                         :id="col.field"
                         :options="optionsCache[col.source]" 
                         filter
-                        :placeholder="'Selecciona ' + col.label" 
+                        dataKey="id"
                         class="w-full" 
                         display="chip"
                         optionLabel="name"
@@ -48,7 +48,7 @@
                         :options="optionsCache[col.source]" 
                         filter
                         :showClear="true"
-                        :placeholder="'Selecciona ' + col.label" 
+                        dataKey="id"
                         class="w-full" 
                         optionLabel="name"
                         optionValue="id">

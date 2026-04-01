@@ -15,6 +15,7 @@ class ScheduledCycleCount(models.Model):
     ], default='created', string="Estado")
     selected_location_ids = fields.One2many("cycle.count.selected.location", "cycle_count_id", string="Ubicaciones Planificadas")
     wave_ids = fields.One2many("cycle.count.wave", "cycle_count_id", string="Olas de Conteo")
+    wmds_log = fields.One2many("wmds.log", "cycle_count", string="WMDS Log")
 
     @api.model
     def create(self, vals):

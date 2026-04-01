@@ -114,25 +114,26 @@ class Dispatch(http.Controller):
             for tag in ei_tags:
                 log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
                 
-                # Log en Sale Order
-                request.env['wmds.log'].sudo().create({
-                    'sale': tag.so_id.id,
-                    'log': log_msg,
-                    'user': user_id,
-                    'date': fields.Datetime.now(),
-                })
-                
                 # Log en Picking
                 picking = request.env['stock.picking'].sudo().search([
                     ('sale_id', '=', tag.so_id.id),
                     ('state', 'in', ['assigned', 'done']),
                     ('picking_type_id.name', 'ilike', 'Pick')
                 ], order='date_done desc', limit=1)
+                
                 if picking:
                     request.env["wmds.log"].sudo().create({
                         "pick": picking.id,
                         "log": log_msg,
                         "user": user_id,
+                    })
+                else:
+                    # If no picking found (unlikely), log to Sale Order at least
+                    request.env['wmds.log'].sudo().create({
+                        'sale': tag.so_id.id,
+                        'log': log_msg,
+                        'user': user_id,
+                        'date': fields.Datetime.now(),
                     })
                 
                 _logger.info(f"Log creado para paquete {tag.display_name_custom}")

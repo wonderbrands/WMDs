@@ -29,7 +29,7 @@
             <div class="mb-4">
                 <FloatLabel>
                     <Textarea id="aggregate" 
-                        v-model="creation.create_by_aggregate.input_aggregate_data" 
+                        v-model="localInput" 
                         @keyup.enter="splitInput"
                         rows="1"
                         class="w-full"
@@ -45,7 +45,7 @@
                 <Button 
                     v-if="selectedAggregates.length > 0"
                     :label="'Borrar (' + selectedAggregates.length + ')'" 
-                    icon="pi pi-trash" 
+                    icon="fa fa-trash" 
                     severity="danger" 
                     outlined size="small"
                     @click="deleteSelected"
@@ -76,17 +76,17 @@
                 <Column header="Estado / Errores">
                     <template #body="slotProps">
                         <span v-if="slotProps.data.error" class="text-red-600 font-bold text-sm flex align-items-center gap-2">
-                            <i class="pi pi-exclamation-circle"></i> {{ slotProps.data.error }}
+                            <i class="fa fa-exclamation-circle"></i> {{ slotProps.data.error }}
                         </span>
                         <span v-else-if="slotProps.data.validated" class="text-green-600 font-bold text-sm flex align-items-center gap-2">
-                            <i class="pi pi-check-circle"></i> Listo para guardar
+                            <i class="fa fa-check-circle"></i> Listo para guardar
                         </span>
                         <span v-else class="text-gray-400 text-sm">Pendiente de validar...</span>
                     </template>
                 </Column>
                 <Column header="Acciones" headerStyle="width: 5rem; text-align: center">
                     <template #body="slotProps">
-                        <Button icon="pi pi-trash" severity="danger" text rounded @click="removeAggregate(slotProps.data)" />
+                        <Button icon="fa fa-trash" severity="danger" text rounded @click="removeAggregate(slotProps.data)" />
                     </template>
                 </Column>
             </DataTable>
@@ -96,7 +96,7 @@
                     <Button 
                         v-if="hasErrors" 
                         label="Guardar válidos (ignorar errores)" 
-                        icon="pi pi-save" 
+                        icon="fa fa-save" 
                         severity="warning" 
                         @click="saveValidRecords" 
                         v-tooltip="'Guardar solo los verdes'" 
@@ -104,7 +104,7 @@
                     <Button 
                         v-else 
                         label="Confirmar y Guardar Todo" 
-                        icon="pi pi-check-square" 
+                        icon="fa fa-check-square" 
                         severity="success" 
                         @click="saveValidRecords" 
                     />
@@ -112,7 +112,7 @@
                 
                 <Button 
                     label="Validar Datos" 
-                    icon="pi pi-send" 
+                    icon="fa fa-paper-plane" 
                     @click="validateData" 
                     :severity="isValidated ? 'secondary' : 'primary'" 
                 />
@@ -121,7 +121,7 @@
 
         <div v-if="sentAggregates.length > 0" class="p-4 border-round-xl surface-ground border-1 surface-border">
             <h3 class="mt-0 mb-3 text-green-700 flex align-items-center gap-2">
-                <i class="pi pi-verified"></i> 2. Procesados Correctamente
+                <i class="fa fa-check-square-o"></i> 2. Procesados Correctamente
             </h3>
             <DataTable :value="sentAggregates" dataKey="value" stripedRows>
                 <Column field="value" header="Dato Guardado"></Column>
@@ -157,13 +157,15 @@
         data: function() {
             return {
                 store: useGeneralStore(),
+                localInput: '',         
                 aggregates: [],         
                 sentAggregates: [],     
                 selectedAggregates: [], 
                 isValidated: false,
                 extraValues: {},
                 optionsCache: {},
-                triedToSave: false      
+                triedToSave: false,
+                inputDebounceTimer: null
             }
         },
         computed: {
@@ -188,7 +190,7 @@
                 }
             },
             splitInput() {
-                const text = this.creation.create_by_aggregate.input_aggregate_data;
+                const text = this.localInput;
                 if (!text || text.trim().length === 0) return;
                 // Split by newline, tab, or comma
                 const rawValues = text.split(/[\r\n\t,]+/).map(i => i.trim()).filter(i => i !== ''); 
@@ -198,7 +200,7 @@
                         this.aggregates.push({ value: val, error: null, validated: false });
                     }
                 });
-                this.creation.create_by_aggregate.input_aggregate_data = '';
+                this.localInput = '';
                 this.isValidated = false; 
             },
             async validateData() {
@@ -259,9 +261,12 @@
                 this.isValidated = false;
             },
             onInputChange(item) {
-                item.error = null;
-                item.validated = false;
-                this.isValidated = false;
+                if (this.inputDebounceTimer) clearTimeout(this.inputDebounceTimer);
+                this.inputDebounceTimer = setTimeout(() => {
+                    item.error = null;
+                    item.validated = false;
+                    this.isValidated = false;
+                }, 300);
             },
             removeAggregate(itemToRemove) {
                 this.aggregates = this.aggregates.filter(item => item.value !== itemToRemove.value);

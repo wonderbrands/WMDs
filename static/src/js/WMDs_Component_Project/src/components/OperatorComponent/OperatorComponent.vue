@@ -168,7 +168,7 @@ export default {
     overflow-y: scroll; 
     padding: 1em; 
     width: 100%; 
-    height: 90%; 
+    height: 90vh; 
     margin-bottom: 3em;
     display: flex; 
     flex-direction: column;

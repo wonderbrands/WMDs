@@ -65,7 +65,7 @@ export default {
             this.store.loading = true;
             await this.store.role.getUserFromServer(data)
         } catch (e) {
-            this.$toast.add({ severity: 'error', summary: 'Error de Autenticación', detail: e.message, life: 3000 });
+            this.$toast.add({ severity: 'error', summary: 'Error de Autenticación', detail: 'Detalle técnico: ' + (e.message || 'Desconocido'), life: 3000 });
         } finally {
             this.store.loading = false;
         }
@@ -77,7 +77,7 @@ export default {
           const json_persisted = JSON.parse(persisted);
           Object.assign(this.role, json_persisted);
         } catch (e) {
-          this.$toast.add({ severity: 'error', summary: 'Error de Sesión', detail: 'No se pudo restaurar la sesión anterior.', life: 3000 });
+          this.$toast.add({ severity: 'error', summary: 'Error de Sesión', detail: 'Detalle técnico: No se pudo restaurar la sesión anterior.', life: 3000 });
           console.error("Error al restaurar sesión:", e);
         }
       }

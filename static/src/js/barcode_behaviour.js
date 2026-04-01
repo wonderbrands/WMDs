@@ -8,12 +8,19 @@ import { _t } from "@web/core/l10n/translation";
 
 patch(BarcodeModel.prototype, {
 
+    _getQtyDone(line) {
+        return line.qty_done || 0;
+    },
+
+    _getQtyDemand(line) {
+        return line.reserved_uom_qty || line.qty_reserved || 0;
+    },
+
     async _validate() {
         const isBatch = this.resModel === 'stock.picking.batch';
         const recordData = Object.assign({}, this.record);
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
 
-    
         if (isBatch) {
             const linesByPicking = {};
             for (const line of this.currentState.lines) {
@@ -22,23 +29,72 @@ patch(BarcodeModel.prototype, {
                 linesByPicking[pId].push(line);
             }
 
-            for (const [pickingId, pLines] of Object.entries(linesByPicking)) {
-                const hasStarted = pLines.some(l => this.getQtyDone(l) > 0);
-                const isComplete = pLines.every(l => this.getQtyDone(l) >= this.getQtyDemand(l));
+            let partiallyStartedName = null;
+            let untouchedCount = 0;
+            let completeCount = 0;
+            const totalPickings = Object.keys(linesByPicking).length;
 
-                if (hasStarted && !isComplete) {
-                    const pName = pLines[0].picking_id.display_name || `Picking #${pickingId}`;
-                    return this.notification(
-                        _t("La orden %s está incompleta. Debe recolectar todos los productos o no recoger ninguno (regresarlos).", pName),
-                        { type: "danger", title: _t("Orden Incompleta") }
-                    );
+            for (const [pId, pLines] of Object.entries(linesByPicking)) {
+                const pQtyDone = pLines.reduce((acc, l) => acc + this._getQtyDone(l), 0);
+                const pQtyDemand = pLines.reduce((acc, l) => acc + this._getQtyDemand(l), 0);
+                
+                if (pQtyDone > 0 && pQtyDone < pQtyDemand) {
+                    const pickData = await this.orm.read('stock.picking', [parseInt(pId)], ['name', 'origin']);
+                    const name = pickData[0].name;
+                    const origin = pickData[0].origin ? ` - ${pickData[0].origin}` : "";
+                    partiallyStartedName = `${name}${origin}`;
+                    break;
                 }
+                if (pQtyDone === 0) {
+                    untouchedCount++;
+                } else if (pQtyDone >= pQtyDemand) {
+                    completeCount++;
+                }
+            }
+
+            if (partiallyStartedName) {
+                return this.notification(
+                    _t("La orden %s está incompleta. Debe recolectar todos los productos o no recoger ninguno (regresarlos).", partiallyStartedName),
+                    { type: "danger", title: _t("Orden Incompleta") }
+                );
+            }
+
+            if (untouchedCount === totalPickings) {
+                return this.notification(
+                    _t("No ha recolectado ningún producto en este lote. No se puede validar."),
+                    { type: "danger", title: _t("Lote Vacío") }
+                );
+            }
+
+            if (untouchedCount > 0) {
+                // Hay órdenes sin empezar, las excluimos para que Odoo no cree backorders de ellas
+                try {
+                    await this.orm.call('stock.picking.batch', 'action_exclude_unstarted_pickings', [[recordData.id]]);
+                } catch (e) {
+                    console.warn("Error excluyendo no iniciados:", e);
+                }
+            }
+        } else {
+            const hasStarted = this.currentState.lines.some(l => this._getQtyDone(l) > 0);
+            const isComplete = this.currentState.lines.every(l => this._getQtyDone(l) >= this._getQtyDemand(l));
+            
+            if (hasStarted && !isComplete) {
+                const originStr = recordData.origin ? ` - ${recordData.origin}` : "";
+                return this.notification(
+                    _t("La orden %s%s está incompleta. Debe recolectar todos los productos.", recordData.name, originStr),
+                    { type: "danger", title: _t("Orden Incompleta") }
+                );
+            }
+            if (!hasStarted) {
+                return this.notification(
+                    _t("No ha recolectado ningún producto en %s. No se puede validar una orden vacía.", recordData.name),
+                    { type: "danger", title: _t("Orden Vacía") }
+                );
             }
         }
 
 
         if (!isBatch && recordData.name && recordData.name.includes('PACK')) {
-            //Imprimir Guía de Envío
             try {
                 const guiaAction = await this.orm.call(
                     'stock.picking',
@@ -52,7 +108,6 @@ patch(BarcodeModel.prototype, {
                 console.warn("Error imprimiendo guía de envío:", error);
             }
 
-            //Imprimir Etiqueta Interna ZPL
             try {
                 const etiquetaAction = await this.orm.call(
                     'stock.picking',
@@ -163,15 +218,10 @@ patch(BarcodeModel.prototype, {
         }
         
         const isBatch = this.resModel === 'stock.picking.batch';
-        let isOnlyPick = false;
-        let isBatchFull = this.record && this.record.pick_type === "full"
+        const isBatchSale = isBatch && this.record && this.record.pick_type === "sale";
+        const isBatchFull = isBatch && this.record && this.record.pick_type === "full";
 
-        if (isBatch && record.picking_ids && record.picking_ids.length > 0) {
-            const pickings = await this.orm.read('stock.picking', record.picking_ids, ['picking_type_id']);
-            isOnlyPick = pickings.every(p => p.picking_type_id && p.picking_type_id[1].includes('Pick'));
-        }
-
-        if (isBatch && isOnlyPick) {
+        if (isBatchSale) {
             localStorage.setItem("mandatory_uncompleted",
                 JSON.stringify({
                     screen: null,
@@ -189,9 +239,7 @@ patch(BarcodeModel.prototype, {
                     user: user
                 })
             );
-        }
-
-        if (isBatch && isBatchFull) {
+        } else if (isBatchFull) {
             localStorage.setItem("mandatory_uncompleted",
                 JSON.stringify({
                     screen: null,
@@ -225,23 +273,23 @@ patch(BarcodeModel.prototype, {
     async _processBarcode(barcode) {
         const barcodeData = await this._parseBarcode(barcode, {});
         if (barcodeData.product && (this.resModel === 'stock.picking.batch' || this.resModel === 'stock.picking')) {
-            // Check if the product belongs to the order
+            // No permitir productos extra
             const existingLine = this._findLine(barcodeData);
-            if (this.resModel === 'stock.picking.batch' && !existingLine) {
+            if (!existingLine) {
                 return this.notification(
-                    _t("El producto escaneado no pertenece a este Plan de pickeo."),
+                    _t("El producto escaneado no pertenece a esta Orden/Plan de pickeo."),
                     { type: "danger", title: _t("Producto no permitido") }
                 );
             }
 
-            // Manually get all lines for this product to check if they are all full
+            // No permitir cantidades extra
             const lines = this.currentState.lines.filter(l => {
                 const lineProductId = (typeof l.product_id === 'object') ? l.product_id.id : l.product_id;
                 return lineProductId === barcodeData.product.id;
             });
 
             if (lines.length > 0) {
-                const allFull = lines.every(line => this.getQtyDone(line) >= this.getQtyDemand(line));
+                const allFull = lines.every(line => this._getQtyDone(line) >= this._getQtyDemand(line));
                 if (allFull) {
                     return this.notification(
                         _t("Ya se ha completado la cantidad solicitada para el producto: %s.", barcodeData.product.display_name),

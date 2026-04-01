@@ -243,19 +243,39 @@ export const useGeneralStore = defineStore('general_store', {
             const result = await this.odoo_middleware.getFromOdoo(context, term, params);
 
             if (result && result.error) {
-                const errorMessage = result.error.data?.message || result.error.message || 'Ocurrió un error no especificado.';
-                this.toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 4000 });
+                const errorMessage = result.error.data?.message || result.error.message || 'Ocurrió un error inesperado al procesar la solicitud.';
+                const errorDetail = result.error.data?.debug ? `Detalle: ${result.error.data.debug.split('\n')[0]}` : '';
+                
+                this.toast.add({ 
+                    severity: 'error', 
+                    summary: `Error en ${context}`, 
+                    detail: `${errorMessage} ${errorDetail}`, 
+                    life: 5000 
+                });
                 return result; 
             }
             
+            // Omit success toast if user is admin/manager
+            const isManager = this.role && (this.role.role === 'WMDs Manager' || (this.role.permissions && this.role.permissions.includes('WMDs Manager')));
+            
             const endpointConfig = this.odoo_middleware.endpointMap[context];
-            if (endpointConfig && endpointConfig.url.includes('/post/')) {
-                this.toast.add({ severity: 'success', summary: 'Éxito', detail: 'Operación completada.', life: 3000 });
+            if (endpointConfig && endpointConfig.url.includes('/post/') && !isManager) {
+                this.toast.add({ 
+                    severity: 'success', 
+                    summary: 'Operación Exitosa', 
+                    detail: `La acción '${context}' se completó correctamente en el servidor.`, 
+                    life: 3000 
+                });
             }
 
             return result;
         } catch (e) {
-            this.toast.add({ severity: 'error', summary: 'Error de Conexión', detail: 'No se pudo contactar al servidor.', life: 4000 });
+            this.toast.add({ 
+                severity: 'error', 
+                summary: 'Error de Red / Servidor', 
+                detail: 'No se pudo establecer conexión con Odoo o el servidor devolvió un error interno.', 
+                life: 5000 
+            });
             console.error("Error en callOdoo:", e);
             return { error: { message: 'Error de Conexión: No se pudo contactar al servidor.' } };
         }
@@ -310,11 +330,26 @@ export const useGeneralStore = defineStore('general_store', {
                 if (response.valid) {
                     const state = response.state;
                     if (state.dispatched) {
-                        this.toast.add({ severity: 'error', summary: 'Error', detail: 'Esta guía ya ha sido despachada.', life: 3000 });
+                        this.toast.add({ 
+                            severity: 'error', 
+                            summary: 'Guía Despachada', 
+                            detail: `La guía ${scannedData} ya ha sido entregada a paquetería anteriormente.`, 
+                            life: 4000 
+                        });
                     } else if (state.on_bin) {
-                        this.toast.add({ severity: 'error', summary: 'Error', detail: `Esta guía ya está en el BIN ${state.bin_name}.`, life: 3000 });
+                        this.toast.add({ 
+                            severity: 'error', 
+                            summary: 'Guía en BIN', 
+                            detail: `La guía ${scannedData} ya se encuentra registrada en el BIN ${state.bin_name}.`, 
+                            life: 4000 
+                        });
                     } else if (state.on_dock) {
-                        this.toast.add({ severity: 'error', summary: 'Error', detail: `Esta guía ya está en el DOCK ${state.dock_name}.`, life: 3000 });
+                        this.toast.add({ 
+                            severity: 'error', 
+                            summary: 'Guía en DOCK', 
+                            detail: `La guía ${scannedData} ya se encuentra ubicada en el DOCK ${state.dock_name}.`, 
+                            life: 4000 
+                        });
                     } else {
                         component.so.push({
                             name: response.name,
@@ -325,7 +360,12 @@ export const useGeneralStore = defineStore('general_store', {
                         });
                     }
                 } else {
-                    this.toast.add({ severity: 'error', summary: 'Guía Inválida', detail: 'La guía no es válida o ya fue procesada.', life: 3000 });
+                    this.toast.add({ 
+                        severity: 'error', 
+                        summary: 'Guía Inválida', 
+                        detail: 'El código escaneado no corresponde a una guía válida para esta operación. Detalle técnico: Validación fallida en servidor.', 
+                        life: 4000 
+                    });
                 }
                 component.restartScanner();
             },
@@ -342,11 +382,21 @@ export const useGeneralStore = defineStore('general_store', {
                         component.packageCount = response.total_packages || 0;
                         component.packageDetails = response.package_details || [];
                     } else {
-                        this.toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
+                        this.toast.add({ 
+                            severity: 'error', 
+                            summary: 'BIN Inválido', 
+                            detail: 'No se puede procesar el BIN seleccionado. Detalle técnico: ' + (response.error || 'Ubicación vacía o no encontrada'), 
+                            life: 4000 
+                        });
                         component.scannerKey++;
                     }
                 } catch (e) {
-                    this.toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'El código del bin no es válido.', life: 3000 });
+                    this.toast.add({ 
+                        severity: 'error', 
+                        summary: 'Error de Lectura', 
+                        detail: 'El código del BIN no pudo ser interpretado. Detalle técnico: ' + (e.message || 'Formato inválido'), 
+                        life: 4000 
+                    });
                     component.scannerKey++;
                 }
             },
@@ -406,18 +456,46 @@ export const useGeneralStore = defineStore('general_store', {
             
                             if (moveResponse.ok) {
                                 this.mandatory_uncompleted.doneMandatory();
-                                this.toast.add({ severity: 'success', summary: 'Éxito', detail: 'Movimiento a BIN completado.', life: 3000 });
+                                const isManager = this.role && (this.role.role === 'WMDs Manager' || (this.role.permissions && this.role.permissions.includes('WMDs Manager')));
+                                if (!isManager) {
+                                    this.toast.add({ 
+                                        severity: 'success', 
+                                        summary: 'Movimiento a BIN Exitoso', 
+                                        detail: `El lote ha sido trasladado correctamente al BIN ${binName}.`, 
+                                        life: 3000 
+                                    });
+                                }
                             } else {
-                                this.toast.add({ severity: 'error', summary: 'Error', detail: moveResponse.error || 'No se pudo realizar el movimiento.', life: 3000 });
+                                this.toast.add({ 
+                                    severity: 'error', 
+                                    summary: 'Error de Traslado', 
+                                    detail: 'No se pudo completar el movimiento en Odoo. Detalle técnico: ' + (moveResponse.error || 'Error en proceso de guardado'), 
+                                    life: 4000 
+                                });
                             }
                         } catch (e) {
-                            this.toast.add({ severity: 'error', summary: 'Error de Servidor', detail: 'No se pudo realizar el movimiento en Odoo.', life: 3000 });
+                            this.toast.add({ 
+                                severity: 'error', 
+                                summary: 'Error de Servidor', 
+                                detail: 'Ocurrió un fallo al intentar registrar el movimiento en el servidor. Detalle técnico: ' + (e.message || 'Fallo de conexión'), 
+                                life: 4000 
+                            });
                         }
                     } else {
-                        this.toast.add({ severity: 'error', summary: 'Error de BIN', detail: response.error || 'BIN no válido.', life: 3000 });
+                        this.toast.add({ 
+                            severity: 'error', 
+                            summary: 'BIN No Válido', 
+                            detail: 'El BIN seleccionado no está disponible para esta operación. Detalle técnico: ' + (response.error || 'Ubicación bloqueada o inexistente'), 
+                            life: 4000 
+                        });
                     }
                 } catch (e) {
-                    this.toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'El código del bin no es válido.', life: 3000 });
+                    this.toast.add({ 
+                        severity: 'error', 
+                        summary: 'Error de Lectura BIN', 
+                        detail: 'El código QR del BIN no pudo ser leído. Detalle técnico: ' + (e.message || 'Formato no reconocido'), 
+                        life: 4000 
+                    });
                 }
             },
         };

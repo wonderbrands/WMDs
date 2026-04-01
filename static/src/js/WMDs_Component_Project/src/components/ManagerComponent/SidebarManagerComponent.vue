@@ -1,6 +1,6 @@
 <template>
     <div class="sidebar_manager">
-        <Button class="toggle_sidebar" icon="pi pi-bars" />
+        <Button class="toggle_sidebar" icon="fa fa-bars" />
         <div class="sidebar_content">
             <div style="margin-top: 1em; width: 100%; margin-bottom: 5em;">
                 <img src="https://mma.prnewswire.com/media/1447948/LogoWonderBrands_Logo.jpg?p=facebook" style="max-width: 100%;">

@@ -201,21 +201,22 @@ class DockNBin(http.Controller):
                         })
 
                         if ei_tag.so_id:
-                            request.env["wmds.log"].sudo().create({
-                                "sale": ei_tag.so_id.id,
-                                "log": log_msg,
-                                "user": operator_orm.id if operator_orm else False,
-                            })
-
-                            # Intentar loguear en el picking correspondiente (el último pick activo o validado)
+                            # Propagación automática desde pick -> sale y batch
                             picking = request.env['stock.picking'].sudo().search([
                                 ('sale_id', '=', ei_tag.so_id.id),
                                 ('state', 'in', ['assigned', 'done']),
                                 ('picking_type_id.name', 'ilike', 'Pick')
                             ], order='date_done desc', limit=1)
+                            
                             if picking:
                                 request.env["wmds.log"].sudo().create({
                                     "pick": picking.id,
+                                    "log": log_msg,
+                                    "user": operator_orm.id if operator_orm else False,
+                                })
+                            else:
+                                request.env["wmds.log"].sudo().create({
+                                    "sale": ei_tag.so_id.id,
                                     "log": log_msg,
                                     "user": operator_orm.id if operator_orm else False,
                                 })
@@ -354,21 +355,22 @@ class DockNBin(http.Controller):
                 })
 
                 if tag.so_id:
-                    request.env["wmds.log"].sudo().create({
-                        "sale": tag.so_id.id,
-                        "log": log_msg,
-                        "user": operator_orm.id if operator_orm else False,
-                    })
-                    
-                    # Log en picking
+                    # Propagación automática desde pick -> sale y batch
                     picking = request.env['stock.picking'].sudo().search([
                         ('sale_id', '=', tag.so_id.id),
                         ('state', 'in', ['assigned', 'done']),
                         ('picking_type_id.name', 'ilike', 'Pick')
                     ], order='date_done desc', limit=1)
+                    
                     if picking:
                         request.env["wmds.log"].sudo().create({
                             "pick": picking.id,
+                            "log": log_msg,
+                            "user": operator_orm.id if operator_orm else False,
+                        })
+                    else:
+                        request.env["wmds.log"].sudo().create({
+                            "sale": tag.so_id.id,
                             "log": log_msg,
                             "user": operator_orm.id if operator_orm else False,
                         })

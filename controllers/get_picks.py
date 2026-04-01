@@ -181,19 +181,23 @@ class GetPicks(http.Controller):
                         "field": "product_id",
                     },
                     {
-                        "name": "Código de barras",
-                        "field": "barcode"
-                    },
-                    {
                         "name": "SKU",
                         "field": "sku"
                     },	
                     {
-                        "name": "Unidades esperadas",
+                        "name": "Stock Disponible",
+                        "field": "stock_qty"
+                    },
+                    {
+                        "name": "Esperado",
                         "field": "product_uom_qty",
                     },
                     {
-                        "name": "Unidades trasladadas",
+                        "name": "Trasladado",
+                        "field": "quantity",
+                    },
+                    {
+                        "name": "U.M.",
                         "field": "product_uom",
                     },
                 ],
@@ -203,7 +207,9 @@ class GetPicks(http.Controller):
                         "product_id": product.product_id.name,
                         "barcode": product.product_id.barcode,
                         "sku": product.product_id.default_code,
+                        "stock_qty": product.product_id.qty_available,
                         "product_uom_qty": product.product_uom_qty,
+                        "quantity": getattr(product, 'quantity', getattr(product, 'quantity_done', 0.0)),
                         "product_uom": product.product_uom.name
                     } for product in picking.move_ids
                 ],

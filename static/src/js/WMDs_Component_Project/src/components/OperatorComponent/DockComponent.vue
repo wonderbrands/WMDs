@@ -13,7 +13,7 @@
             
             <div v-else-if="ready && scannedBin && !showDockConfirmation" class="scanner-wrapper">
                 <Button 
-                    icon="pi pi-arrow-left" 
+                    icon="fa fa-arrow-left" 
                     @click="resetScan" 
                     class="p-button-rounded p-button-secondary back-button" 
                 />
@@ -26,14 +26,14 @@
 
             <div v-else-if="showDockConfirmation" class="confirmation-wrapper">
                 <div class="confirmation-content">
-                    <i class="pi pi-directions-alt confirmation-icon"></i>
+                    <i class="fa fa-map-signs confirmation-icon"></i>
                     <h3>Confirmar Traslado a DOCK</h3>
                     <div class="route-summary">
                         <div class="route-point">
                             <span class="label">ORIGEN</span>
                             <span class="value">{{ scannedBin }}</span>
                         </div>
-                        <i class="pi pi-arrow-right"></i>
+                        <i class="fa fa-arrow-right"></i>
                         <div class="route-point">
                             <span class="label">DESTINO</span>
                             <span class="value">{{ targetDock }}</span>
@@ -41,8 +41,8 @@
                     </div>
                     <p class="packages-alert">Se moverán <b>{{ packageCount }}</b> paquetes en total.</p>
                     <div class="confirmation-buttons">
-                        <Button label="Confirmar Envío" icon="pi pi-check" class="p-button-success" @click="confirmDockMove" />
-                        <Button label="Corregir DOCK" icon="pi pi-refresh" class="p-button-secondary" @click="cancelDockConfirmation" />
+                        <Button label="Confirmar Envío" icon="fa fa-check" class="p-button-success" @click="confirmDockMove" />
+                        <Button label="Corregir DOCK" icon="fa fa-refresh" class="p-button-secondary" @click="cancelDockConfirmation" />
                     </div>
                 </div>
             </div>
@@ -53,7 +53,7 @@
                 @click="exitFlow"
                 class="p-button-text p-button-danger p-button-sm" 
                 label="Salir / Finalizar" 
-                icon="pi pi-times"
+                icon="fa fa-times"
             />
         </div>
 
@@ -64,21 +64,21 @@
 
             <div class="status-content">
                 <div v-if="!scannedBin" class="empty-status">
-                    <i class="pi pi-box status-icon"></i>
+                    <i class="fa fa-archive status-icon"></i>
                     Esperando escaneo del BIN origen...
                 </div>
 
                 <div v-else class="active-status">
                     <div class="bin-scanned">
-                        <i class="pi pi-box me-2"></i> {{ scannedBin }}
+                        <i class="fa fa-archive me-2"></i> {{ scannedBin }}
                     </div>
                     <div class="package-count">
-                        <i class="pi pi-check-circle me-1"></i> {{ packageCount }} paquetes detectados
+                        <i class="fa fa-check-circle me-1"></i> {{ packageCount }} paquetes detectados
                     </div>
                     
                     <div class="package-list-dock" v-if="packageDetails.length > 0">
                         <div v-for="pkg in packageDetails" :key="pkg.name" class="package-item-dock">
-                            <i class="pi pi-barcode me-2"></i> {{ pkg.name }} <small>({{ pkg.so }})</small>
+                            <i class="fa fa-barcode me-2"></i> {{ pkg.name }} <small>({{ pkg.so }})</small>
                         </div>
                     </div>
                     
@@ -86,10 +86,10 @@
                         <div class="status-instruction">
                             Listo para mover. <br> Escanea el DOCK de destino.
                         </div>
-                        <i class="pi pi-arrow-down bounce-icon"></i>
+                        <i class="fa fa-arrow-down bounce-icon"></i>
                     </div>
                     <div v-else class="status-confirmed">
-                        <i class="pi pi-spin pi-spinner me-2"></i> Esperando confirmación de despacho...
+                        <i class="fa fa-spin fa-spinner me-2"></i> Esperando confirmación de despacho...
                     </div>
                 </div>
             </div>
@@ -144,12 +144,22 @@ export default {
                     this.showDockConfirmation = true;
                     console.log("Action: Showing confirmation screen for dock:", this.targetDock);
                 } else {
-                    this.$toast.add({ severity: 'error', summary: 'Error de DOCK', detail: response.error || 'DOCK no válido.', life: 3000 });
+                    this.$toast.add({ 
+                        severity: 'error', 
+                        summary: 'DOCK No Válido', 
+                        detail: 'La ubicación escaneada no es un DOCK disponible o válido. Detalle técnico: ' + (response.error || 'Ubicación no encontrada'), 
+                        life: 4000 
+                    });
                     this.scannerKey++;
                 }
             } catch (e) {
                 console.log("Action: Error parsing dock data", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'Código de DOCK no reconocido.', life: 3000 });
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Lectura QR', 
+                    detail: 'El código QR del DOCK no pudo ser interpretado correctamente. Detalle técnico: ' + (e.message || 'Formato inválido'), 
+                    life: 4000 
+                });
                 this.scannerKey++;
             }
         },
@@ -166,18 +176,36 @@ export default {
 
                 if (response.ok) {
                     console.log("Action: Move successful");
-                    this.$toast.add({ severity: 'success', summary: 'Éxito', detail: `Se movieron ${response.moved_packages} paquetes al DOCK ${this.targetDock}`, life: 3000 });
+                    const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                    if (!isManager) {
+                        this.$toast.add({ 
+                            severity: 'success', 
+                            summary: 'Traslado Exitoso', 
+                            detail: `Se han movido ${response.moved_packages} paquetes desde ${this.scannedBin} al DOCK ${this.targetDock} correctamente.`, 
+                            life: 4000 
+                        });
+                    }
                     this.resetScan();
                     this.showDockConfirmation = false;
                     this.targetDock = null;
                 } else {
                     console.log("Action: Move failed", response.error);
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: response.error, life: 3000 });
+                    this.$toast.add({ 
+                        severity: 'error', 
+                        summary: 'Error en Traslado', 
+                        detail: 'No se pudo completar el movimiento al DOCK. Detalle técnico: ' + (response.error || 'Error en el servidor'), 
+                        life: 4000 
+                    });
                 }
 
             } catch (e) {
                 console.log("Action: Error in confirmDockMove", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Conexión', detail: 'No se pudo contactar al servidor.', life: 3000 });
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Conexión', 
+                    detail: 'No se pudo establecer comunicación con el servidor para confirmar el traslado. Detalle técnico: ' + (e.message || 'Error de red'), 
+                    life: 4000 
+                });
             }
         },
 

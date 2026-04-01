@@ -17,13 +17,13 @@
                     @click="dispatchToCarrier"
                     class="p-button-success p-button-sm" 
                     label="Entregar a paquetería" 
-                    icon="pi pi-truck"
+                    icon="fa fa-truck"
                 />
                 <Button 
                     @click="exitFlow"
                     class="p-button-text p-button-danger p-button-sm" 
                     label="Salir / Finalizar" 
-                    icon="pi pi-times"
+                    icon="fa fa-times"
                 />
             </div>
 
@@ -31,7 +31,7 @@
                 <div class="log-header">
                     <div class="log-header-info">
                         <span class="log-title">Resumen de Despacho</span>
-                        <Button icon="pi pi-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0"/>
+                        <Button icon="fa fa-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0"/>
                     </div>
                 </div>
 
@@ -51,15 +51,15 @@
                 <div class="log-list">
                     <div v-for="(order, index) in so" :key="index" class="log-item">
                         <div>
-                            <i class="pi pi-barcode barcode-icon"></i>
+                            <i class="fa fa-barcode barcode-icon"></i>
                             {{ order.name }}
                             <small class="text-info ml-2">({{ order.current }}/{{ order.total }})</small>
                         </div>
-                        <Button icon="pi pi-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
+                        <Button icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
                     </div>
                     
                     <div v-if="so.length === 0" class="empty-log">
-                        <i class="pi pi-box search-icon"></i>
+                        <i class="fa fa-archive search-icon"></i>
                         Esperando escaneo de etiqueta EI (SOXXXX/N)...
                     </div>
                 </div>
@@ -155,7 +155,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'warn', 
                     summary: 'Cantidad Ajustada', 
-                    detail: 'No puedes despachar más de lo pendiente. Se ajustó al máximo.', 
+                    detail: 'No puedes despachar más de la cantidad pendiente. Se ha ajustado automáticamente al máximo disponible.', 
                     life: 3000 
                 });
             }
@@ -167,11 +167,24 @@ export default {
                 });
                 
                 if (response.status === "success") {
-                    this.$toast.add({ severity: 'success', summary: 'Despachado', detail: `${item.product} despachado.`, life: 2000 });
+                    const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                    if (!isManager) {
+                        this.$toast.add({ 
+                            severity: 'success', 
+                            summary: 'Producto Despachado', 
+                            detail: `El producto ${item.product} ha sido marcado como despachado correctamente.`, 
+                            life: 2000 
+                        });
+                    }
                     this.fetchPendingFullItems();
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo despachar el item.', life: 3000 });
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Despacho', 
+                    detail: 'Ocurrió un error al intentar despachar el producto. Detalle técnico: ' + (e.message || 'Error desconocido'), 
+                    life: 4000 
+                });
             }
         },
         async dispatchSelectedFull() {
@@ -192,7 +205,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'warn', 
                     summary: 'Ajuste de Cantidades', 
-                    detail: 'Algunas cantidades excedían lo pendiente y fueron ajustadas.', 
+                    detail: 'Algunas cantidades excedían lo pendiente y fueron ajustadas automáticamente.', 
                     life: 3000 
                 });
             }
@@ -204,11 +217,24 @@ export default {
                 });
                 
                 if (response.status === "success") {
-                    this.$toast.add({ severity: 'success', summary: 'Éxito', detail: 'Items despachados correctamente.', life: 3000 });
+                    const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                    if (!isManager) {
+                        this.$toast.add({ 
+                            severity: 'success', 
+                            summary: 'Despacho Exitoso', 
+                            detail: 'Los productos seleccionados han sido despachados correctamente.', 
+                            life: 3000 
+                        });
+                    }
                     this.fetchPendingFullItems();
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo realizar el despacho.', life: 3000 });
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error en Despacho Masivo', 
+                    detail: 'No se pudo completar el despacho de los items seleccionados. Detalle técnico: ' + (e.message || 'Error desconocido'), 
+                    life: 4000 
+                });
             }
         },
         async searchAndValidateSO(data) {
@@ -229,12 +255,22 @@ export default {
                     if (response.state && response.state.dispatched) {
                         console.log("Action: Guide already dispatched");
                         if(this.$toast) {
-                            this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Esta guía ya ha sido despachada.', life: 3000 });
+                            this.$toast.add({ 
+                                severity: 'error', 
+                                summary: 'Guía ya Despachada', 
+                                detail: `La guía ${data} ya ha sido procesada anteriormente.`, 
+                                life: 4000 
+                            });
                         }
                     } else if (response.state && !response.state.on_dock) {
                         console.log("Action: Guide not on dock");
                         if(this.$toast) {
-                            this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Esta guía no está en un DOCK.', life: 3000 });
+                            this.$toast.add({ 
+                                severity: 'error', 
+                                summary: 'Ubicación Incorrecta', 
+                                detail: `La guía ${data} no se encuentra en un DOCK y no puede ser despachada.`, 
+                                life: 4000 
+                            });
                         }
                     } else {
                         console.log("Action: Validation successful, pushing to array");
@@ -249,7 +285,12 @@ export default {
                 } else {
                     console.log("Action: Validation failed");
                     if(this.$toast) {
-                        this.$toast.add({ severity: 'error', summary: 'Guía Inválida', detail: 'La guía no es válida para despacho.', life: 3000 });
+                        this.$toast.add({ 
+                            severity: 'error', 
+                            summary: 'Guía Inválida', 
+                            detail: 'El código escaneado no corresponde a una guía válida para despacho o el formato es incorrecto.', 
+                            life: 4000 
+                        });
                     }
                 }
                 
@@ -285,17 +326,20 @@ export default {
                         this.$toast.add({ 
                             severity: 'warn', 
                             summary: 'Entrega Parcial', 
-                            detail: response.warning, 
+                            detail: 'Se procesaron las guías, pero hay advertencias: ' + response.warning, 
                             life: 6000 
                         });
                     } else {
                         console.log("Action: Dispatch fully completed");
-                        this.$toast.add({ 
-                            severity: 'success', 
-                            summary: 'Éxito', 
-                            detail: 'Todas las órdenes han sido completadas y cerradas.', 
-                            life: 3000 
-                        });
+                        const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                        if (!isManager) {
+                            this.$toast.add({ 
+                                severity: 'success', 
+                                summary: 'Despacho Completado', 
+                                detail: 'Todas las órdenes han sido entregadas a paquetería y cerradas exitosamente.', 
+                                life: 4000 
+                            });
+                        }
                     }
 
                     this.so = [];
@@ -309,9 +353,9 @@ export default {
                 if(this.$toast) {
                     this.$toast.add({ 
                         severity: 'error', 
-                        summary: 'Error de Despacho', 
-                        detail: e.message || 'No se pudo completar la entrega.', 
-                        life: 4000 
+                        summary: 'Error de Entrega', 
+                        detail: 'No se pudo completar la entrega a paquetería. Detalle técnico: ' + (e.message || 'Error desconocido'), 
+                        life: 5000 
                     });
                 }
             }

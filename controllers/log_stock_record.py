@@ -27,22 +27,26 @@ class LogStockRecord(http.Controller):
             operator_id = request.env['res.users'].sudo().search([('login', '=', operator_mail)], limit=1)
             
             # --- EXTRACCIÓN DE CANTIDADES SEGURA ---
+            # Agregamos por producto para evitar duplicados si hay varias líneas del mismo
+            product_data = {}
             lines = picking.move_line_ids or picking.move_ids_without_package
-            product_list_arr = []
             
             for m in lines:
-                # 1. Buscamos lo procesado (qty_done en move_line, quantity_done en move)
-                qty = getattr(m, 'qty_done', 0)
-                if not qty:
-                    qty = getattr(m, 'quantity_done', 0)
+                p_id = m.product_id.id
+                p_name = m.product_id.display_name
                 
-                # 2. Si es 0 (como en backorders nuevas), buscamos lo demandado/reservado
-                if not qty:
-                    qty = getattr(m, 'product_uom_qty', getattr(m, 'reserved_uom_qty', 0))
-                    
-                product_list_arr.append(f"- {m.product_id.display_name}: {qty}")
+                # Odoo 19: quantity es el campo estándar. quantity_done en moves.
+                done = getattr(m, 'quantity', getattr(m, 'qty_done', getattr(m, 'quantity_done', 0.0)))
+                demand = getattr(m, 'reserved_uom_qty', getattr(m, 'qty_reserved', getattr(m, 'product_uom_qty', 0.0)))
                 
-            product_list = "; ".join(product_list_arr)
+                if p_id not in product_data:
+                    product_data[p_id] = {'name': p_name, 'done': 0.0, 'demand': 0.0}
+                
+                product_data[p_id]['done'] += done
+                product_data[p_id]['demand'] += demand
+            
+            product_list_arr = [f"{data['name']}: {data['done']}/{data['demand']}" for data in product_data.values()]
+            product_list = " | ".join(product_list_arr)
             # ---------------------------------------
             
             p_type_name = picking.picking_type_id.name or ""
@@ -52,30 +56,36 @@ class LogStockRecord(http.Controller):
             
             location_header = ""
             if not is_storage and picking.location_dest_id:
-                location_header = f"Hacia la ubicación {picking.location_dest_id.name}, "
+                location_header = f"Hacia {picking.location_dest_id.name}, "
 
-            detail_header = f"{location_header}se han trasladado los siguientes productos: {product_list}"
+            detail_header = f"{location_header}Productos: {product_list}"
 
+            is_done = picking.state == 'done'
+            
             if type_of_log == "external":
+                status_str = "completado" if is_done else "procesado/excluido"
                 if is_storage:
-                    base_log = f"El rackeo {picking.name} ha sido completado."
+                    base_log = f"Rackeo {picking.name} {status_str}."
                 elif p_type_code == 'incoming':
-                    base_log = f"Se ha ejecutado la recepción {picking.name}."
+                    base_log = f"Recepción {picking.name} {status_str}."
                 elif "Pick" in p_type_name:
-                    base_log = f"Se ha ejecutado el pick {picking.name}."
+                    base_log = f"Pick {picking.name} {status_str}."
                 elif "Pack" in p_type_name:
-                    base_log = f"Se ha ejecutado el pack {picking.name}."
+                    base_log = f"Pack {picking.name} {status_str}."
                 elif p_type_code == 'outgoing':
-                    base_log = f"Se ha ejecutado el out {picking.name}, despacho completado."
+                    base_log = f"Out {picking.name} despacho {status_str}."
                 else:
-                    base_log = f"Operación {picking.name} completada."
+                    base_log = f"Operación {picking.name} {status_str}."
                 log_msg = f"{base_log} {detail_header}"
             
             elif type_of_log == "backorder":
-                log_msg = f"Backorder creada para {picking.name}. {detail_header}"
+                log_msg = f"Backorder para {picking.name}. {detail_header}"
             
             else:
                 log_msg = f"{message} {detail_header}" if message else detail_header
+
+            # Limpiar saltos de línea por si acaso
+            log_msg = log_msg.replace('\n', ' ').replace('\r', ' ').strip()
 
             from odoo import fields
             request.env["wmds.log"].sudo().create({
