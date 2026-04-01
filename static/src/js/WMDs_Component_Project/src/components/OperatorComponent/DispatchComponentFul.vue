@@ -93,7 +93,7 @@ export default {
                             this.$toast.add({ 
                                 severity: 'error', 
                                 summary: 'Error de Redirección', 
-                                detail: 'No se pudo obtener la dirección de la operación para el escáner. Detalle técnico: Sin URL de retorno', 
+                                detail: 'No se pudo obtener la dirección de la operación. Sin URL de retorno.', 
                                 life: 4000 
                             });
                         }
@@ -105,7 +105,7 @@ export default {
                         this.$toast.add({ 
                             severity: 'error', 
                             summary: 'Operación Inválida', 
-                            detail: 'La operación no es válida para despacho fulfillment. Detalle técnico: ' + (validation.message || 'Estado incorrecto o tipo de pick inválido'), 
+                            detail: 'La operación no es válida para despacho fulfillment. ' + (validation.message || 'Estado incorrecto o tipo de pick inválido'), 
                             life: 5000 
                         });
                     }
@@ -117,7 +117,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Error en Escaneo', 
-                        detail: 'Ocurrió un error al procesar el código escaneado. Detalle técnico: ' + (e.message || 'Error de conexión'), 
+                        detail: 'Ocurrió un error al procesar el código escaneado. ' + (e.message || 'Error de conexión'), 
                         life: 4000 
                     });
                 }

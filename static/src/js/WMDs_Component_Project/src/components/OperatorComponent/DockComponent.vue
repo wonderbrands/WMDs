@@ -147,7 +147,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'DOCK No Válido', 
-                        detail: 'La ubicación escaneada no es un DOCK disponible o válido. Detalle técnico: ' + (response.error || 'Ubicación no encontrada'), 
+                        detail: 'La ubicación escaneada no es un DOCK disponible o válido. ' + (response.error || 'Ubicación no encontrada'), 
                         life: 4000 
                     });
                     this.scannerKey++;
@@ -157,7 +157,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'error', 
                     summary: 'Error de Lectura QR', 
-                    detail: 'El código QR del DOCK no pudo ser interpretado correctamente. Detalle técnico: ' + (e.message || 'Formato inválido'), 
+                    detail: 'El código QR del DOCK no pudo ser interpretado correctamente. ' + (e.message || 'Formato inválido'), 
                     life: 4000 
                 });
                 this.scannerKey++;
@@ -181,7 +181,7 @@ export default {
                         this.$toast.add({ 
                             severity: 'success', 
                             summary: 'Traslado Exitoso', 
-                            detail: `Se han movido ${response.moved_packages} paquetes desde ${this.scannedBin} al DOCK ${this.targetDock} correctamente.`, 
+                            detail: `Se han movido ${response.moved_packages} paquetes desde ${this.scannedBin} al DOCK ${this.targetDock}.`, 
                             life: 4000 
                         });
                     }
@@ -193,7 +193,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Error en Traslado', 
-                        detail: 'No se pudo completar el movimiento al DOCK. Detalle técnico: ' + (response.error || 'Error en el servidor'), 
+                        detail: 'No se pudo completar el movimiento al DOCK. ' + (response.error || 'Error en el servidor'), 
                         life: 4000 
                     });
                 }
@@ -203,7 +203,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'error', 
                     summary: 'Error de Conexión', 
-                    detail: 'No se pudo establecer comunicación con el servidor para confirmar el traslado. Detalle técnico: ' + (e.message || 'Error de red'), 
+                    detail: 'No se pudo establecer comunicación con el servidor. ' + (e.message || 'Error de red'), 
                     life: 4000 
                 });
             }

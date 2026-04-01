@@ -662,7 +662,7 @@ export default {
         async confirmBulkAdjustment() {
             if (!this.bulkAdjDialog.reason) return;
             if (this.anyWaveOpen) {
-                this.$toast.add({ severity: 'error', summary: 'Acción Bloqueada', detail: 'Detalle técnico: No se pueden hacer ajustes si hay olas sin finalizar o cancelar.', life: 5000 });
+                this.$toast.add({ severity: 'error', summary: 'Acción Bloqueada', detail: 'No se pueden hacer ajustes si hay olas sin finalizar o cancelar.', life: 5000 });
                 return;
             }
             this.store.loading = true;
@@ -685,12 +685,12 @@ export default {
                 }
                 const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
                 if (!isManager) {
-                    this.$toast.add({ severity: 'success', summary: 'Masivo Finalizado', detail: 'Detalle técnico: ' + (`${count} ajustes realizados.` || 'Desconocido'), life: 3000 });
+                    this.$toast.add({ severity: 'success', summary: 'Masivo Finalizado', detail: `${count} ajustes realizados.`, life: 3000 });
                 }
                 this.bulkAdjDialog.visible = false;
                 await this.showComparisonReport();
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error Masivo', detail: 'Detalle técnico: Hubo un error en el procesamiento masivo.', life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error Masivo', detail: 'Hubo un error en el procesamiento masivo.', life: 3000 });
             } finally {
                 this.store.loading = false;
             }
@@ -722,12 +722,12 @@ export default {
             if (res.ok) {
                 const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
                 if (!isManager) {
-                    this.$toast.add({ severity: 'success', summary: 'Éxito', detail: 'Detalle técnico: Stock ajustado correctamente.', life: 3000 });
+                    this.$toast.add({ severity: 'success', summary: 'Éxito', detail: 'Stock ajustado correctamente.', life: 3000 });
                 }
                 this.adjDialog.visible = false;
                 await this.showComparisonReport(); // Refrescar reporte
             } else {
-                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Detalle técnico: ' + (res.error || 'Desconocido'), life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: (res.error || 'Error desconocido'), life: 3000 });
             }
         },
         showOperatorDialog(mode, wave = null) {
@@ -777,7 +777,7 @@ export default {
                 });
                 const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
                 if (!isManager) {
-                    this.$toast.add({ severity: 'success', summary: 'Ubicación Actualizada', detail: 'Detalle técnico: ' + (`La ubicación ahora está ${res.is_blocked ? 'bloqueada' : 'disponible'}.` || 'Desconocido'), life: 2000 });
+                    this.$toast.add({ severity: 'success', summary: 'Ubicación Actualizada', detail: `La ubicación ahora está ${res.is_blocked ? 'bloqueada' : 'disponible'}.`, life: 2000 });
                 }
             }
         },

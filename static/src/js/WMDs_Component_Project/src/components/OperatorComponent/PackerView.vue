@@ -108,7 +108,7 @@ export default {
             this.$toast.add({ 
                 severity: 'error', 
                 summary: 'Error de Carga', 
-                detail: 'No se pudieron recuperar las tareas de empaque asignadas. Detalle técnico: ' + (error.message || 'Error de conexión con el servidor'), 
+                detail: 'No se pudieron recuperar las tareas de empaque. ' + (error.message || 'Error de conexión'), 
                 life: 5000 
             });
         }

@@ -186,11 +186,11 @@ export default {
                     this.showConfirmation = true;
                     console.log("Action: Confirmation screen displayed for bin:", this.targetBin);
                 } else {
-                    this.$toast.add({ severity: 'error', summary: 'Error de BIN', detail: 'Detalle técnico: ' + (response.error || 'BIN no válido.'), life: 3000 });
+                    this.$toast.add({ severity: 'error', summary: 'Error de BIN', detail: (response.error || 'BIN no válido.'), life: 3000 });
                 }
             } catch (e) {
                 console.log("Action: Error parsing bin data", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'Detalle técnico: El código del bin no es válido.', life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error de Lectura', detail: 'El código del bin no es válido.', life: 3000 });
             }
         },
         async confirmMove() {
@@ -213,7 +213,7 @@ export default {
                 }
             } catch (e) {
                 console.log("Action: Error in confirmMove", e);
-                this.$toast.add({ severity: 'error', summary: 'Error de Servidor', detail: 'Detalle técnico: No se pudo realizar el movimiento en Odoo.', life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error de Servidor', detail: 'No se pudo realizar el movimiento en Odoo.', life: 3000 });
             }
         },
         cancelConfirmation() {

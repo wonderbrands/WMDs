@@ -27,7 +27,7 @@
                     this.store.setCurrentScreen("operator_screen");
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error de Permisos', detail: 'Detalle técnico: ' + (e.message || 'Desconocido'), life: 3000 });
+                this.$toast.add({ severity: 'error', summary: 'Error de Permisos', detail: (e.message || 'Error desconocido'), life: 3000 });
             } finally {
                 this.store.loading = false;
             }

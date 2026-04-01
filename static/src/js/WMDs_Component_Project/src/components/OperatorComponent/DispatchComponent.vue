@@ -182,7 +182,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'error', 
                     summary: 'Error de Despacho', 
-                    detail: 'Ocurrió un error al intentar despachar el producto. Detalle técnico: ' + (e.message || 'Error desconocido'), 
+                    detail: (e.message || 'Error al intentar despachar el producto.'), 
                     life: 4000 
                 });
             }
@@ -232,7 +232,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'error', 
                     summary: 'Error en Despacho Masivo', 
-                    detail: 'No se pudo completar el despacho de los items seleccionados. Detalle técnico: ' + (e.message || 'Error desconocido'), 
+                    detail: (e.message || 'No se pudo completar el despacho de los items seleccionados.'), 
                     life: 4000 
                 });
             }
@@ -354,7 +354,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Error de Entrega', 
-                        detail: 'No se pudo completar la entrega a paquetería. Detalle técnico: ' + (e.message || 'Error desconocido'), 
+                        detail: (e.message || 'No se pudo completar la entrega a paquetería.'), 
                         life: 5000 
                     });
                 }

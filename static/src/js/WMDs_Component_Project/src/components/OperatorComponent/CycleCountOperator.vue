@@ -259,7 +259,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Ubicación Inválida', 
-                        detail: 'La ubicación escaneada no es válida para esta ola. Detalle técnico: ' + (res.error || 'Ubicación no encontrada o no asignada'), 
+                        detail: (res.error || 'La ubicación escaneada no es válida para esta ola.'), 
                         life: 4000 
                     });
                     this.scannerKey++;
@@ -268,7 +268,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'error', 
                     summary: 'Error de Validación', 
-                    detail: 'Ocurrió un error al validar la ubicación en el servidor. Detalle técnico: ' + (e.message || 'Error de conexión'), 
+                    detail: (e.message || 'Error al validar la ubicación.'), 
                     life: 4000 
                 });
                 this.scannerKey++;
@@ -294,7 +294,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Producto no Encontrado', 
-                        detail: 'El código de barras no corresponde a ningún producto registrado. Detalle técnico: ' + (res.error || 'Sin coincidencia'), 
+                        detail: (res.error || 'Producto no encontrado.'), 
                         life: 4000 
                     });
                     this.scannerKey++;
@@ -303,7 +303,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'error', 
                     summary: 'Error de Búsqueda', 
-                    detail: 'Ocurrió un error al buscar el producto. Detalle técnico: ' + (e.message || 'Error de comunicación'), 
+                    detail: (e.message || 'Error al buscar el producto.'), 
                     life: 4000 
                 });
                 this.scannerKey++;
@@ -349,7 +349,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Error de Registro', 
-                        detail: 'No se pudo marcar la ubicación como vacía. Detalle técnico: ' + (res.error || 'Error en el servidor'), 
+                        detail: (res.error || 'No se pudo marcar la ubicación como vacía.'), 
                         life: 4000 
                     });
                 }
@@ -357,7 +357,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'error', 
                     summary: 'Error de Comunicación', 
-                    detail: 'No se pudo completar la acción de vaciado. Detalle técnico: ' + (e.message || 'Error de red'), 
+                    detail: (e.message || 'Error al completar la acción de vaciado.'), 
                     life: 4000 
                 });
             } finally {
@@ -407,7 +407,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Error al Guardar', 
-                        detail: 'No se pudo guardar el registro del conteo. Detalle técnico: ' + (res.error || 'Error desconocido'), 
+                        detail: (res.error || 'Error al guardar el conteo.'), 
                         life: 4000 
                     });
                 }
@@ -415,7 +415,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'error', 
                     summary: 'Error de Conexión', 
-                    detail: 'Hubo un problema al enviar el conteo al servidor. Detalle técnico: ' + (e.message || 'Error de red'), 
+                    detail: (e.message || 'Error al enviar el conteo.'), 
                     life: 4000 
                 });
             } finally {
@@ -452,7 +452,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Error al Finalizar', 
-                        detail: 'No se pudo completar el cierre de la ola. Detalle técnico: ' + (res.error || 'Error en el servidor'), 
+                        detail: 'No se pudo completar el cierre de la ola. ' + (res.error || 'Error en el servidor'), 
                         life: 4000 
                     });
                 }
@@ -460,7 +460,7 @@ export default {
                 this.$toast.add({ 
                     severity: 'error', 
                     summary: 'Error Crítico', 
-                    detail: 'Ocurrió un error inesperado al intentar finalizar la ola. Detalle técnico: ' + (e.message || 'Error desconocido'), 
+                    detail: 'Ocurrió un error inesperado al intentar finalizar la ola. ' + (e.message || 'Error desconocido'), 
                     life: 4000 
                 });
             } finally {
