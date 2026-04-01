@@ -79,10 +79,8 @@ class DockStorage(models.Model):
     @api.depends('ei', 'moves')
     def _compute_state(self):
         for record in self:
-            if record.ei or record.moves:
-                record.state = 'blocked'
-            else:
-                record.state = 'available'
+            # Docks are always available for more items
+            record.state = 'available'
 
     qr_code_structure = fields.Char(
         string='QR Code',

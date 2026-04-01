@@ -80,6 +80,14 @@ class StockWMDS(models.Model):
                                 move[2]['location_dest_id'] = pful_pick.marketplace_location.id
 
         res = super(StockWMDS, self).create(vals)
+        # Log propagation if it happened
+        if res.marketplace_location and res.picking_type_id.name and 'Resurtido a Ful: Despacho' in res.picking_type_id.name:
+            self.env['wmds.log'].sudo().create({
+                'pick': res.id,
+                'log': f"Ubicación de destino del marketplace asignada automáticamente: {res.marketplace_location.complete_name}",
+                'user': self.env.user.id,
+            })
+
         # For existing moves not in vals['move_ids'] (if any, though unlikely for create)
         if res.marketplace_location and res.picking_type_id.name and 'Resurtido a Ful: Despacho' in res.picking_type_id.name:
             res.move_ids.write({'location_dest_id': res.marketplace_location.id})
