@@ -33,34 +33,63 @@ class StockWMDS(models.Model):
         if 'picking_type_id' in vals:
             picking_type = self.env['stock.picking.type'].browse(vals['picking_type_id'])
             if picking_type.name and 'Resurtido a Ful: Despacho' in picking_type.name:
-                # Look for a related PFUL picking via Sale Order or Origin
+                # Look for related PFUL pickings via Moves, Sale Order, or Origin
                 sale_id = vals.get('sale_id')
                 origin = vals.get('origin')
-                domain = [
-                    ('picking_type_id.name', '=', 'Resurtido a Ful: Pick'),
-                    ('marketplace_location', '!=', False)
-                ]
-                if sale_id:
-                    domain.append(('sale_id', '=', sale_id))
-                elif origin:
-                    domain.append(('origin', '=', origin))
-                else:
-                    domain = [] # Can't link if both are missing
-                
-                if domain:
-                    pful_pick = self.env['stock.picking'].search(domain, limit=1)
-                    if pful_pick:
-                        vals['marketplace_location'] = pful_pick.marketplace_location.id
-                        vals['location_dest_id'] = pful_pick.marketplace_location.id
-                        # If moves are in vals, update their destination location too
-                        if 'move_ids' in vals:
-                            for move in vals['move_ids']:
-                                if move[0] in (0, 1): # Create or Update
-                                    move[2]['location_dest_id'] = pful_pick.marketplace_location.id
+                pful_pick = self.env['stock.picking']
+
+                # 1. Try finding via moves in vals (most direct link)
+                if 'move_ids' in vals:
+                    orig_move_ids = []
+                    for move_cmd in vals['move_ids']:
+                        if move_cmd[0] in (0, 1) and isinstance(move_cmd[2], dict) and 'move_orig_ids' in move_cmd[2]:
+                            for orig_cmd in move_cmd[2]['move_orig_ids']:
+                                if orig_cmd[0] == 4:
+                                    orig_move_ids.append(orig_cmd[1])
+                                elif orig_cmd[0] == 6:
+                                    orig_move_ids.extend(orig_cmd[2])
+                    
+                    if orig_move_ids:
+                        # Find PFUL pickings that contain these origin moves
+                        pful_pick = self.env['stock.move'].sudo().browse(orig_move_ids).mapped('picking_id').filtered(
+                            lambda p: 'Resurtido a Ful: Pick' in (p.picking_type_id.name or '') and p.marketplace_location
+                        )
+
+                # 2. If not found via moves, try sale_id or origin
+                if not pful_pick:
+                    domain = [
+                        ('picking_type_id.name', 'ilike', 'Resurtido a Ful: Pick'),
+                        ('marketplace_location', '!=', False)
+                    ]
+                    if sale_id:
+                        domain.append(('sale_id', '=', sale_id))
+                        pful_pick = self.env['stock.picking'].search(domain, order='id asc', limit=1)
+                    elif origin:
+                        domain.append(('origin', '=', origin))
+                        pful_pick = self.env['stock.picking'].search(domain, order='id asc', limit=1)
+
+                if pful_pick:
+                    # If multiple found (e.g. via moves), take the first one as requested
+                    pful_pick = pful_pick[0]
+                    vals['marketplace_location'] = pful_pick.marketplace_location.id
+                    vals['location_dest_id'] = pful_pick.marketplace_location.id
+                    # If moves are in vals, update their destination location too
+                    if 'move_ids' in vals:
+                        for move in vals['move_ids']:
+                            if move[0] in (0, 1) and isinstance(move[2], dict):
+                                move[2]['location_dest_id'] = pful_pick.marketplace_location.id
 
         res = super(StockWMDS, self).create(vals)
+        # Log propagation if it happened
+        if res.marketplace_location and res.picking_type_id.name and 'Resurtido a Ful: Despacho' in res.picking_type_id.name:
+            self.env['wmds.log'].sudo().create({
+                'pick': res.id,
+                'log': f"Ubicación de destino del marketplace asignada automáticamente: {res.marketplace_location.complete_name}",
+                'user': self.env.user.id,
+            })
+
         # For existing moves not in vals['move_ids'] (if any, though unlikely for create)
-        if res.marketplace_location and res.picking_type_id_name == 'Resurtido a Ful: Despacho':
+        if res.marketplace_location and res.picking_type_id.name and 'Resurtido a Ful: Despacho' in res.picking_type_id.name:
             res.move_ids.write({'location_dest_id': res.marketplace_location.id})
 
         if not res.operator:

@@ -25,17 +25,83 @@ export const useGeneralStore = defineStore('general_store', {
         ingresos: {
             title: "Recepciones",
             description: "Validación de los productos ingresados a almacén.",
-            value: "ingresos"
+            value: "ingreso",
+            map_columns:[
+                {name: "id", label: "ID"},
+                {name: "origin", label: "Pedido"},
+                {name: "name", label: "Nombre"},
+                {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
+                {name: "scheduled_date", label: "Fecha"},
+                {name: "state", label: "Estado"},
+                {name: "wmds_status", label: "Estado WMDS"}
+            ],
+            form_config: {
+                save_context: "assign_pick",
+                on_save_actions: [
+                    {
+                        context: "log_record",
+                        params: {
+                            pick_id: "{id}",
+                            operator_mail: "{user_email}",
+                            message: "Recepción {name} asignada a {operator.name}"
+                        }
+                    }
+                ]
+            }
         },
         disponibilizar: {
             title: "Rackeo",
             description: "Traslado de productos desde posición de ingreso a alguna ubicación de almacén",
-            value: "disponibilizar"
+            value: "disponibilizar",
+            map_columns:[
+                {name: "id", label: "ID"},
+                {name: "origin", label: "Pedido"},
+                {name: "name", label: "Nombre"},
+                {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
+                {name: "scheduled_date", label: "Fecha"},
+                {name: "state", label: "Estado"},
+                {name: "wmds_status", label: "Estado WMDS"}
+            ],
+            form_config: {
+                save_context: "assign_pick",
+                on_save_actions: [
+                    {
+                        context: "log_record",
+                        params: {
+                            pick_id: "{id}",
+                            operator_mail: "{user_email}",
+                            message: "Rackeo {name} asignado a {operator.name}"
+                        }
+                    }
+                ]
+            }
         },
         traslado: {
             title: "Traslados",
             description: "Traslado de una ubicación interna de almacen a otra",
-            value: "traslado"
+            value: "traslado",
+            map_columns:[
+                {name: "id", label: "ID"},
+                {name: "origin", label: "Pedido"},
+                {name: "name", label: "Nombre"},
+                {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
+                {name: "scheduled_date", label: "Fecha"},
+                {name: "state", label: "Estado"},
+                {name: "wmds_status", label: "Estado WMDS"}
+            ],
+            form_config: {
+                save_context: "assign_pick",
+                on_save_actions: [
+                    {
+                        context: "log_record",
+                        params: {
+                            pick_id: "{id}",
+                            operator_mail: "{user_email}",
+                            message: "Traslado {name} asignado a {operator.name}"
+                        }
+                    }
+                ]
+            }
         },
         pick: {
             title: "Picks",
@@ -48,11 +114,12 @@ export const useGeneralStore = defineStore('general_store', {
                     form_title: "Asignación de Pick:",
                     map_columns:[
                         {name: "id", label: "ID"},
-                        {name: "sale_order", label: "Pedido"},
+                        {name: "origin", label: "Pedido"},
                         {name: "name", label: "Nombre"},
-                        {name: "responsible", label: "Responsable", non_blocked_field: true, source: "operadores"},
-                        {name: "date", label: "Fecha"},
-                        {name: "status", label: "Estado"}
+                        {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
+                        {name: "scheduled_date", label: "Fecha"},
+                        {name: "state", label: "Estado"},
+                        {name: "wmds_status", label: "Estado WMDS"}
                     ],
                     form_config: {
                         save_context: "assign_pick",
@@ -63,7 +130,7 @@ export const useGeneralStore = defineStore('general_store', {
                                 params: {
                                     pick_id: "{id}",
                                     operator_mail: "{user_email}",
-                                    message: "Traslado {name} asignado a {responsible.name}"
+                                    message: "Traslado {name} asignado a {operator.name}"
                                 }
                             },
                             {
@@ -140,11 +207,12 @@ export const useGeneralStore = defineStore('general_store', {
             form_title: "Asignación de Pack:",
             map_columns:[
                 {name: "id", label: "ID"},
-                {name: "sale_order", label: "Pedido"},
+                {name: "origin", label: "Pedido"},
                 {name: "name", label: "Nombre"},
-                {name: "responsible", label: "Responsable", non_blocked_field: true, source: "operadores"},
-                {name: "date", label: "Fecha"},
-                {name: "status", label: "Estado"}
+                {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
+                {name: "scheduled_date", label: "Fecha"},
+                {name: "state", label: "Estado"},
+                {name: "wmds_status", label: "Estado WMDS"}
             ],
             form_config: {
                 save_context: "assign_pack",
@@ -155,7 +223,7 @@ export const useGeneralStore = defineStore('general_store', {
                         params: {
                             pick_id: "{id}",
                             operator_mail: "{user_email}",
-                            message: "Traslado {name} asignado a {responsible.name}"
+                            message: "Traslado {name} asignado a {operator.name}"
                         }
                     },
                     {
@@ -189,7 +257,9 @@ export const useGeneralStore = defineStore('general_store', {
                 { name: "id", label: "ID" },
                 { name: "name", label: "Código" },
                 { name: "notes", label: "Referencia" },
-                { name: "state_label", label: "Estado" }
+                { name: "create_date", label: "Fecha Creación" },
+                { name: "create_uid", label: "Creado por" },
+                { name: "state", label: "Estado" }
             ],
         },
         devolucion: {

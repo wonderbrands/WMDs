@@ -78,19 +78,6 @@ patch(BarcodeModel.prototype, {
             const hasStarted = this.currentState.lines.some(l => this._getQtyDone(l) > 0);
             const isComplete = this.currentState.lines.every(l => this._getQtyDone(l) >= this._getQtyDemand(l));
             
-            if (hasStarted && !isComplete) {
-                const originStr = recordData.origin ? ` - ${recordData.origin}` : "";
-                return this.notification(
-                    _t("La orden %s%s está incompleta. Debe recolectar todos los productos.", recordData.name, originStr),
-                    { type: "danger", title: _t("Orden Incompleta") }
-                );
-            }
-            if (!hasStarted) {
-                return this.notification(
-                    _t("No ha recolectado ningún producto en %s. No se puede validar una orden vacía.", recordData.name),
-                    { type: "danger", title: _t("Orden Vacía") }
-                );
-            }
         }
 
 

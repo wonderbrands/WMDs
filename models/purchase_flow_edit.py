@@ -70,6 +70,13 @@ class StockWMDSPurchase(models.Model):
                             line.location_dest_id = location.id
 
                         move.location_dest_id = location.id
+                
+                # Log the change
+                self.env['wmds.log'].sudo().create({
+                    'pick': picking.id,
+                    'log': f"Destino de rackeo cambiado a cuarentena automáticamente por falta de Vo.Bo COMEX. Nueva ubicación: {location.complete_name}",
+                    'user': self.env.user.id,
+                })
 
                 else:
                     # VoBo TRUE: si el destino apunta a Cuarentena,
