@@ -1,5 +1,15 @@
 <template>
-    <div class="scanner-wrapper" @click="focusLaserInput">
+    <div 
+        class="scanner-wrapper" 
+        @click="focusLaserInput"
+        @touchstart="handleTouchStart"
+        @touchmove="handleTouchMove"
+        @touchend="handleTouchEnd"
+    >
+        <div v-if="pulling" class="pull-to-refresh-indicator" :style="{ height: pullDistance + 'px', opacity: pullDistance / 100 }">
+            <i class="fa fa-refresh" :class="{ 'fa-spin': refreshing }"></i>
+            <span>{{ refreshing ? 'Actualizando...' : 'Tire para actualizar' }}</span>
+        </div>
         <div class="controls-overlay">
             <ButtonCamera @click="setReader('camera')" class="control-btn" />
             <ButtonScanner @click="setReader('laser')" class="control-btn" />
@@ -52,7 +62,13 @@ export default {
             laser_input: "",
             scan_lockout: false,
             inputTimeout: null,
-            quagga_running: false
+            quagga_running: false,
+            // Pull to refresh state
+            startY: 0,
+            pullDistance: 0,
+            pulling: false,
+            refreshing: false,
+            maxPullDistance: 100
         }
     },
     props: {
@@ -235,6 +251,31 @@ export default {
                 console.log("scan_lockout lifted");
                 this.scan_lockout = false;
             }, 3000);
+        },
+        handleTouchStart(e) {
+            if (this.$el.scrollTop === 0) {
+                this.startY = e.touches[0].pageY;
+                this.pulling = true;
+            }
+        },
+        handleTouchMove(e) {
+            if (!this.pulling || this.refreshing) return;
+            const currentY = e.touches[0].pageY;
+            const diff = currentY - this.startY;
+            if (diff > 0) {
+                this.pullDistance = Math.min(diff, this.maxPullDistance);
+                if (diff > 10) e.preventDefault(); // Prevent native scroll
+            }
+        },
+        async handleTouchEnd() {
+            if (!this.pulling) return;
+            if (this.pullDistance >= 60) {
+                this.refreshing = true;
+                await this.store.executeBeforeMount();
+                this.refreshing = false;
+            }
+            this.pulling = false;
+            this.pullDistance = 0;
         }
     },
     components: { Button, Message, ButtonCamera, ButtonScanner }
@@ -250,6 +291,31 @@ export default {
     flex-direction: column; 
     position: relative;
     box-sizing: border-box;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+}
+
+.pull-to-refresh-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3B82F6;
+    z-index: 1000;
+    transition: height 0.1s ease;
+    font-size: 0.8rem;
+    font-weight: bold;
+    gap: 5px;
+}
+
+.pull-to-refresh-indicator i {
+    font-size: 1.2rem;
 }
 
 .controls-overlay {

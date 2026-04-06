@@ -246,10 +246,10 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    height: 80vh;
-    max-height: 80%;
+    min-height: 80vh;
     padding: 10px;
     box-sizing: border-box;
+    overflow-y: auto;
 }
 
 .scanner-col {

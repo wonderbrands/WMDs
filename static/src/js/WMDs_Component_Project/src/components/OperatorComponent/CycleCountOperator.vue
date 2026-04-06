@@ -514,11 +514,12 @@ export default {
 .cycle-count-operator-container {
     display: flex;
     flex-direction: column;
-    height: 80vh;
+    min-height: 80vh;
     padding: 10px;
     box-sizing: border-box;
     background: #f4f7f6;
     gap: 10px;
+    overflow-y: auto;
 }
 
 .operator-header {

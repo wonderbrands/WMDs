@@ -21,10 +21,13 @@ patch(BarcodeModel.prototype, {
             this.notificationCache.clear();
         }
         const isBatch = this.resModel === 'stock.picking.batch';
+        const isBatchSale = isBatch && this.record && this.record.pick_type === "sale";
+        const isBatchFull = isBatch && this.record && this.record.pick_type === "full";
         const recordData = Object.assign({}, this.record);
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
 
-        if (isBatch) {
+        //para pack ni para plan de pick de pedidos se admiten parciales/incompletos/extras
+        if (isBatchSale || recordData.name.includes('PACK')) {
             const linesByPicking = {};
             for (const line of this.currentState.lines) {
                 const pId = line.picking_id.id || line.picking_id;
@@ -220,6 +223,7 @@ patch(BarcodeModel.prototype, {
                         context: "assign_pack_for_operator",
                         instructions: "Escanea la linea de empaque para asignar el Pack",
                         can_close: false,
+                        before_mount: "check_pack_assigned",
                         extra_data: {
                             pick_id: record.id,
                             is_batch: isBatch,
@@ -238,6 +242,7 @@ patch(BarcodeModel.prototype, {
                         context: "assign_bin_for_ful",
                         instructions: "Escanea el Bin para almacenar el pedido",
                         can_close: false,
+                        before_mount: "check_bin_assigned",
                         extra_data: {
                             pick_id: record.id,
                         }

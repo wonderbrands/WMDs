@@ -129,6 +129,11 @@ export default {
   },
   async mounted() {
     this.store.mandatory_uncompleted.loadFromStorage(this.role);
+
+    if (this.store.mandatory_uncompleted.component) {
+        await this.store.executeBeforeMount();
+    }
+
     if (this.store.mandatory_uncompleted.screen) {
         this.store.setCurrentScreen(this.store.mandatory_uncompleted.screen);
         return;
@@ -170,7 +175,7 @@ export default {
   width: 100vw;
   margin: 0px;
   padding: 0px;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 :root {

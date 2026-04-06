@@ -422,6 +422,12 @@ export const useGeneralStore = defineStore('general_store', {
         }
         this.saveStateToLocalStorage()
     },
+    async executeBeforeMount() {
+        const props = this.mandatory_uncompleted.component_props;
+        if (props && props.before_mount) {
+            await this.executeActionByContext(props.before_mount, null, props.extra_data);
+        }
+    },
     executeActionByContext(context, data, extra) {
         const actionsMap = {
             'bin_scan_so': async (scannedData, component) => {
@@ -601,6 +607,23 @@ export const useGeneralStore = defineStore('general_store', {
                         detail: 'El código QR del BIN no pudo ser leído. ' + (e.message || 'Formato no reconocido'), 
                         life: 4000 
                     });
+                }
+            },
+            'check_pack_assigned': async (extra) => {
+                const response = await this.callOdoo("check_pack_assigned", "", {
+                    pick_id: extra.pick_id,
+                    is_batch: extra.is_batch
+                });
+                if (response.assigned) {
+                    this.mandatory_uncompleted.doneMandatory();
+                }
+            },
+            'check_bin_assigned': async (extra) => {
+                const response = await this.callOdoo("check_bin_assigned", "", {
+                    pick_id: extra.pick_id
+                });
+                if (response.assigned) {
+                    this.mandatory_uncompleted.doneMandatory();
                 }
             },
         };
