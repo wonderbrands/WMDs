@@ -17,6 +17,9 @@ patch(BarcodeModel.prototype, {
     },
 
     async _validate() {
+        if (this.notificationCache) {
+            this.notificationCache.clear();
+        }
         const isBatch = this.resModel === 'stock.picking.batch';
         const recordData = Object.assign({}, this.record);
         const originalPickingIds = isBatch ? (recordData.picking_ids || []) : [recordData.id];
@@ -258,6 +261,9 @@ patch(BarcodeModel.prototype, {
     },
     
     async _processBarcode(barcode) {
+        if (this.notificationCache) {
+            this.notificationCache.clear();
+        }
         const barcodeData = await this._parseBarcode(barcode, {});
         if (barcodeData.product && (this.resModel === 'stock.picking.batch' || this.resModel === 'stock.picking')) {
             // No permitir productos extra
