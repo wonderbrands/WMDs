@@ -27,6 +27,7 @@
                     label="Ubicaciones"
                 />
                 <Button 
+                    v-if="pending_locations.length === 0"
                     @click="finishWave"
                     class="p-button-text p-button-success p-button-sm mr-2" 
                     label="Finalizar" 
@@ -249,6 +250,18 @@ export default {
                 });
 
                 if (res.ok) {
+                    const isDone = this.done_locations.some(l => l.id === res.location_id);
+                    if (isDone) {
+                        this.$toast.add({ 
+                            severity: 'warn', 
+                            summary: 'Ubicación ya contada', 
+                            detail: 'Esta ubicación ya fue procesada y no puede volver a escanearse.', 
+                            life: 4000 
+                        });
+                        this.scannerKey++;
+                        return;
+                    }
+
                     this.current_location = {
                         id: res.location_id,
                         name: res.location_name
@@ -311,7 +324,12 @@ export default {
         },
 
         async markEmpty() {
-            if (!confirm(`¿Confirmas que la ubicación ${this.current_location.name} está totalmente vacía?`)) return;
+            const isLast = this.pending_locations.length === 1 && this.pending_locations[0].id === this.current_location.id;
+            const confirmMsg = isLast 
+                ? "Si se pone esta ubicación vacía, se cerrará la ola en automático ya que es la última. ¿Desea continuar?"
+                : `¿Confirmas que la ubicación ${this.current_location.name} está totalmente vacía?`;
+
+            if (!confirm(confirmMsg)) return;
             
             this.loading = true;
             try {
@@ -343,8 +361,13 @@ export default {
                         qty: 0
                     });
 
-                    // Reset to location step to scan next location
-                    this.resetToLocation();
+                    if (isLast) {
+                        // Automáticamente finalizar ola
+                        await this.finishWave(true);
+                    } else {
+                        // Reset to location step to scan next location
+                        this.resetToLocation();
+                    }
                 } else {
                     this.$toast.add({ 
                         severity: 'error', 
@@ -423,7 +446,7 @@ export default {
             }
         },
 
-        async finishWave() {
+        async finishWave(autoFinish = false) {
             if (this.pending_locations.length > 0) {
                 this.$toast.add({ 
                     severity: 'warn', 
@@ -433,7 +456,7 @@ export default {
                 });
                 return;
             }
-            if (!confirm("¿Estás seguro de que quieres finalizar esta ola? Ya no podrás registrar más productos.")) return;
+            if (!autoFinish && !confirm("¿Estás seguro de que quieres finalizar esta ola? Ya no podrás registrar más productos.")) return;
             this.loading = true;
             try {
                 let res = await this.store.callOdoo("finish_cycle_count_wave", "", { wave_id: this.waveId });

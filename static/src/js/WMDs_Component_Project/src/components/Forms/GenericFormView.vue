@@ -1,7 +1,10 @@
 <template>
     <div class="pick_component" v-if="form_data">
         <div class="title_section">
-            <h1>{{ store.main_manager_screen.form_title }} {{ form_data.name }}</h1>
+            <div class="flex-between w-full px-4">
+                <h1>{{ store.main_manager_screen.form_title }} {{ form_data.name }}</h1>
+                <Button icon="fa fa-refresh" severity="secondary" rounded text @click="loadData" :loading="store.loading" title="Recargar datos" />
+            </div>
         </div>
         
         <div class="form_items">
@@ -309,61 +312,65 @@
                         });
                     }
                 }
+            },
+
+            async loadData() {
+                const formConfig = this.store.main_manager_screen.form_config;
+                const frontendCols = this.store.main_manager_screen.map_columns || [];
+                
+                this.form_data = { ...this.store.form_context.data };
+                delete this.form_data.map_cols;
+                
+                // 1. Initial columns from config
+                this.merged_cols = frontendCols.map(col => ({
+                    field: col.name,
+                    label: col.label,
+                    non_blocked_field: col.non_blocked_field || false,
+                    source: col.source || null,
+                    type: col.type || (col.source ? 'select' : 'text')
+                }));
+
+                // 2. Add remaining fields from form_data as blocked
+                const mappedFields = new Set(this.merged_cols.map(c => c.field));
+                Object.keys(this.form_data).forEach(key => {
+                    if (!mappedFields.has(key) && !['id', 'qr_image'].includes(key) && !key.startsWith('_')) {
+                        this.merged_cols.push({
+                            field: key,
+                            label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
+                            non_blocked_field: false,
+                            source: null,
+                            type: 'text'
+                        });
+                    }
+                });
+
+                // 3. Initialize optionsCache
+                for (const col of this.merged_cols) {
+                    if (col.source && !this.optionsCache[col.source]) {
+                        this.optionsCache[col.source] = [];
+                    }
+                }
+
+                // 4. Load options for non-blocked columns
+                const nonBlockedCols = this.merged_cols.filter(col => col.non_blocked_field);
+                for (const col of nonBlockedCols) {
+                    if (col.source) {
+                        await this.loadOptions("*", col.source);
+                    }
+                }
+                
+                // 5. Normalize data for ALL columns (handle objects/relations)
+                await this.normalizeFormData();
+                
+                // 6. Load extra data if configured
+                if (formConfig && formConfig.related_data_endpoint) {
+                    this.extra_data = await this.store.callOdoo(formConfig.related_data_endpoint, "", { id: this.form_data.id });
+                }
             }
         },
 
         async mounted() {
-            const formConfig = this.store.main_manager_screen.form_config;
-            const frontendCols = this.store.main_manager_screen.map_columns || [];
-            
-            this.form_data = { ...this.store.form_context.data };
-            delete this.form_data.map_cols;
-            
-            // 1. Initial columns from config
-            this.merged_cols = frontendCols.map(col => ({
-                field: col.name,
-                label: col.label,
-                non_blocked_field: col.non_blocked_field || false,
-                source: col.source || null,
-                type: col.type || (col.source ? 'select' : 'text')
-            }));
-
-            // 2. Add remaining fields from form_data as blocked
-            const mappedFields = new Set(this.merged_cols.map(c => c.field));
-            Object.keys(this.form_data).forEach(key => {
-                if (!mappedFields.has(key) && !['id', 'qr_image'].includes(key) && !key.startsWith('_')) {
-                    this.merged_cols.push({
-                        field: key,
-                        label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
-                        non_blocked_field: false,
-                        source: null,
-                        type: 'text'
-                    });
-                }
-            });
-
-            // 3. Initialize optionsCache
-            for (const col of this.merged_cols) {
-                if (col.source && !this.optionsCache[col.source]) {
-                    this.optionsCache[col.source] = [];
-                }
-            }
-
-            // 4. Load options for non-blocked columns
-            const nonBlockedCols = this.merged_cols.filter(col => col.non_blocked_field);
-            for (const col of nonBlockedCols) {
-                if (col.source) {
-                    await this.loadOptions("*", col.source);
-                }
-            }
-            
-            // 5. Normalize data for ALL columns (handle objects/relations)
-            await this.normalizeFormData();
-            
-            // 6. Load extra data if configured
-            if (formConfig && formConfig.related_data_endpoint) {
-                this.extra_data = await this.store.callOdoo(formConfig.related_data_endpoint, "", { id: this.form_data.id });
-            }
+            await this.loadData();
         },
 
         components: {

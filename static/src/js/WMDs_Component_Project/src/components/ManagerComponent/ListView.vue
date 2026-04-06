@@ -1,22 +1,29 @@
 <template>
   <div class="list_view">
     <div class="title_section">
-      <h1>{{ store.main_manager_screen.title }}</h1>
-      <p>{{ store.main_manager_screen.description }}</p>
-      <div v-if="store.main_manager_screen.create_by_aggregate">
-        <Button 
-        :label="store.main_manager_screen.create_by_aggregate.button_string" 
-        @click="onRowClick($event, store.main_manager_screen)"/> 
-      </div>
-      <div v-else-if="store.main_manager_screen.cycle_count">
-        <Button 
-        :label="store.main_manager_screen.cycle_count.button_string" 
-        @click="cycleCountCreate($event, store.main_manager_screen)"/> 
-      </div>
-      <div v-else-if="store.main_manager_screen.create_new">
-        <Button 
-        :label="store.main_manager_screen.create_new.button_string" 
-        @click="onRowClick({data: {}}, store.main_manager_screen)"/> 
+      <div class="flex-between">
+        <div>
+          <h1>{{ store.main_manager_screen.title }}</h1>
+          <p>{{ store.main_manager_screen.description }}</p>
+        </div>
+        <div class="flex-row gap-small">
+          <Button icon="fa fa-refresh" severity="secondary" rounded text @click="fetchFilteredData" :loading="store.loading" title="Actualizar lista" />
+          <div v-if="store.main_manager_screen.create_by_aggregate">
+            <Button 
+            :label="store.main_manager_screen.create_by_aggregate.button_string" 
+            @click="onRowClick($event, store.main_manager_screen)"/> 
+          </div>
+          <div v-else-if="store.main_manager_screen.cycle_count">
+            <Button 
+            :label="store.main_manager_screen.cycle_count.button_string" 
+            @click="cycleCountCreate($event, store.main_manager_screen)"/> 
+          </div>
+          <div v-else-if="store.main_manager_screen.create_new">
+            <Button 
+            :label="store.main_manager_screen.create_new.button_string" 
+            @click="onRowClick({data: {}}, store.main_manager_screen)"/> 
+          </div>
+        </div>
       </div>
     </div>
     <div class="table_wrapper">
@@ -297,5 +304,20 @@ export default {
 
 .title_section {
     margin-bottom: 2rem;
+}
+
+.flex-between {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.flex-row {
+    display: flex;
+    align-items: center;
+}
+
+.gap-small {
+    gap: 0.5rem;
 }
 </style>

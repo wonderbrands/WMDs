@@ -3,6 +3,15 @@
         <section class="modal_box">
             <div class="close_modal_button">
                 <Button 
+                    icon="fa fa-refresh" 
+                    @click="store.triggerRefresh()" 
+                    rounded 
+                    severity="secondary" 
+                    outlined
+                    class="close-btn-styled mr-2"
+                    title="Refrescar vista"
+                />
+                <Button 
                     icon="fa fa-times" 
                     @click="store.closeModal()" 
                     rounded 
@@ -14,21 +23,22 @@
             <div style="width: 100%; height: 100%;"
             v-if="store.form_context.data.create_by_aggregate">
                 <AggregateCreation 
+                    :key="store.refreshKey"
                     :creation="store.main_manager_screen"
                     :id="store.form_context.data.form_type"/>
             </div>
             <div style="width: 100%; height: 100%;"
             v-else-if="store.form_context.data.cycle_count || store.modal_context === 'cycle_count_management'">
-                <CycleCount/>
+                <CycleCount :key="store.refreshKey"/>
             </div>
             <div style="width: 100%; height: 100%;"
             v-else-if="store.modal_context === 'batch_pick'">
-                <BatchDetailView/>
+                <BatchDetailView :key="store.refreshKey"/>
             </div>
             <div  style="width: 100%; height: 100%;"
             v-else>
-                <IngresoComponent v-if="store.modal_context === 'ingreso'"/>
-                <GenericFormView v-else-if="['pick','pack','operator_definition'].includes(store.modal_context)"/>
+                <IngresoComponent v-if="store.modal_context === 'ingreso'" :key="store.refreshKey"/>
+                <GenericFormView v-else-if="['pick','pack','operator_definition'].includes(store.modal_context)" :key="store.refreshKey"/>
             </div>
            
         </section>

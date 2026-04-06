@@ -42,6 +42,24 @@
                 label="Trasladar a BIN" 
                 icon="fa fa-paper-plane"
             />
+            <Button v-if="so.length === 0 && !scan_bin && !lastUsedBin"
+                @click="goToScanBin"
+                class="p-button-warning p-button-sm" 
+                label="Bloquear un BIN" 
+                icon="fa fa-lock"
+            />
+            <Button v-if="lastUsedBin && so.length === 0"
+                @click="blockLastBin"
+                class="p-button-warning p-button-sm" 
+                :label="'Bloquear BIN ' + lastUsedBin" 
+                icon="fa fa-lock"
+            />
+            <Button v-if="lastUsedBin && so.length === 0"
+                @click="lastUsedBin = null"
+                class="p-button-text p-button-secondary p-button-sm" 
+                label="Limpiar BIN seleccionado" 
+                icon="fa fa-refresh"
+            />
             <Button 
                 @click="exitFlow"
                 class="p-button-text p-button-danger p-button-sm" 
@@ -110,7 +128,8 @@ export default {
             ready: false,
             scannerKey: 0,
             showConfirmation: false,
-            targetBin: null
+            targetBin: null,
+            lastUsedBin: null
         }
     },
     computed: {
@@ -168,10 +187,6 @@ export default {
         },
         async validateBin(data) {
             console.log("Action: validateBin data received:", data);
-            if (this.so.length === 0) {
-                console.log("Action: No SOs to move, returning");
-                return;
-            }
             
             try {
                 let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
@@ -182,9 +197,16 @@ export default {
                 });
 
                 if (response.valid) {
-                    this.targetBin = binName;
-                    this.showConfirmation = true;
-                    console.log("Action: Confirmation screen displayed for bin:", this.targetBin);
+                    if (this.so.length > 0) {
+                        this.targetBin = binName;
+                        this.showConfirmation = true;
+                        console.log("Action: Confirmation screen displayed for bin:", this.targetBin);
+                    } else {
+                        // Modo "solo bloquear": ponemos el BIN como lastUsedBin para habilitar el botón de bloqueo
+                        this.lastUsedBin = binName;
+                        this.scan_bin = false;
+                        this.$toast.add({ severity: 'info', summary: 'BIN seleccionado', detail: `El BIN ${binName} está listo para ser bloqueado.`, life: 3000 });
+                    }
                 } else {
                     this.$toast.add({ severity: 'error', summary: 'Error de BIN', detail: (response.error || 'BIN no válido.'), life: 3000 });
                 }
@@ -196,15 +218,17 @@ export default {
         async confirmMove() {
             console.log("Action: confirmMove triggered");
             try {
-                console.log("Action: Calling Odoo move_to_bin with bin:", this.targetBin);
+                const binName = this.targetBin;
+                console.log("Action: Calling Odoo move_to_bin with bin:", binName);
                 let response = await this.store.callOdoo("move_to_bin", "", {
-                    bin: this.targetBin,
+                    bin: binName,
                     operator: this.store.role.email,
                     orders: this.so.map(o => o.name)
                 });
 
                 if (response.ok) {
                     console.log("Action: move_to_bin successful");
+                    this.lastUsedBin = binName;
                     this.so = [];
                     this.scan_bin = false;
                     this.showConfirmation = false;
@@ -214,6 +238,23 @@ export default {
             } catch (e) {
                 console.log("Action: Error in confirmMove", e);
                 this.$toast.add({ severity: 'error', summary: 'Error de Servidor', detail: 'No se pudo realizar el movimiento en Odoo.', life: 3000 });
+            }
+        },
+        async blockLastBin() {
+            if (!this.lastUsedBin) return;
+            try {
+                let response = await this.store.callOdoo("block_bin", "", {
+                    bin: this.lastUsedBin
+                });
+                if (response.ok) {
+                    this.$toast.add({ severity: 'success', summary: 'BIN Bloqueado', detail: `El BIN ${this.lastUsedBin} ha sido bloqueado.`, life: 3000 });
+                    this.lastUsedBin = null;
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: (response.error || 'No se pudo bloquear el BIN.'), life: 3000 });
+                }
+            } catch (e) {
+                console.log("Action: Error in blockLastBin", e);
+                this.$toast.add({ severity: 'error', summary: 'Error', detail: 'No se pudo bloquear el BIN.', life: 3000 });
             }
         },
         cancelConfirmation() {

@@ -14,15 +14,7 @@ class BinCartStorage(models.Model):
     state = fields.Selection([
         ('available', 'Disponible'),
         ('blocked', 'Bloqueado')
-    ], string="Estado", compute="_compute_state", store=True)
-
-    @api.depends('ei', 'moves')
-    def _compute_state(self):
-        for record in self:
-            if record.ei or record.moves:
-                record.state = 'blocked'
-            else:
-                record.state = 'available'
+    ], string="Estado", default='available')
 
     qr_code_structure = fields.Char(
         string='QR Code',
@@ -74,13 +66,7 @@ class DockStorage(models.Model):
     state = fields.Selection([
         ('available', 'Disponible'),
         ('blocked', 'Bloqueado')
-    ], string="Estado", compute="_compute_state", store=True)
-
-    @api.depends('ei', 'moves')
-    def _compute_state(self):
-        for record in self:
-            # Docks are always available for more items
-            record.state = 'available'
+    ], string="Estado", default='available')
 
     qr_code_structure = fields.Char(
         string='QR Code',

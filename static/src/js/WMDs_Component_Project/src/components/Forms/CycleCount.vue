@@ -94,14 +94,14 @@
                                 <label class="filter-label">Referencia / Notas</label>
                                 <InputText v-model="newCount.ref" placeholder="Ej: Auditoría Pasillo A" class="input-ref" />
                             </div>
-                            <Button label="Añadir Ola" icon="fa fa-user-plus" class="p-button-outlined" @click="addOperatorField" />
+                            <Button v-if="assignedOperators.length === 0" label="Añadir Ola" icon="fa fa-user-plus" class="p-button-outlined" @click="addOperatorField" />
                         </div>
                     </div>
 
                     <div class="operators-grid">
                         <div v-for="(op, index) in assignedOperators" :key="op.id" class="operator-card card-background">
                             <div class="flex-between mb-small">
-                                <span class="wave-number">Ola #{{ index + 1 }}</span>
+                                <span class="wave-number">Ola Única</span>
                                 <Button icon="fa fa-times"  severity="danger" @click="removeOperatorField(index)" label="X" />
                             </div>
                             <label class="small-label">Responsable</label>
@@ -126,7 +126,7 @@
                         <div v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'">
                             <Button label="Ver Logs" icon="fa fa-list" severity="secondary" class="mr-2" @click="showLogsReport" />
                             <Button label="Comparar Conteos" icon="fa fa-bar-chart" severity="help" class="mr-2" @click="showComparisonReport" />
-                            <Button label="Añadir Ola" icon="fa fa-plus" class="p-button-outlined mr-2" @click="showOperatorDialog('add')" />
+                            <Button v-if="!hasActiveWave" label="Añadir Ola" icon="fa fa-plus" class="p-button-outlined mr-2" @click="showOperatorDialog('add')" />
                             <Button label="Finalizar Ciclo" icon="fa fa-check-square" severity="success" class="mr-2" @click="closeEntireCount" :loading="store.loading" />
                             <Button label="Cancelar Ciclo" icon="fa fa-ban" severity="danger" class="p-button-outlined" @click="cancelEntireCount" :loading="store.loading" />
                         </div>
@@ -498,6 +498,9 @@ export default {
         canBulkAdjust() {
             return this.comparisonSelection.length > 0;
         },
+        hasActiveWave() {
+            return this.waves.some(w => w.state !== 'done' && w.state !== 'cancelled');
+        },
         anyWaveOpen() {
             return this.comparisonWaves.some(w => w.state !== 'done' && w.state !== 'cancelled');
         },
@@ -559,8 +562,14 @@ export default {
             }
         },
         isAlreadySelected(data) { return this.selectedLocations.some(s => s.id === data.id); },
-        isSelectable(event) { return !this.isAlreadySelected(event.data); },
-        rowClass(data) { return this.isAlreadySelected(data) ? 'row-locked' : ''; },
+        isSelectable(event) { 
+            return !this.isAlreadySelected(event.data) && !event.data.has_reservation; 
+        },
+        rowClass(data) { 
+            if (this.isAlreadySelected(data)) return 'row-locked';
+            if (data.has_reservation) return 'row-reserved';
+            return '';
+        },
         addSelected() {
             const toAdd = this.tempSelection.filter(item => !this.isAlreadySelected(item));
             this.selectedLocations = [...this.selectedLocations, ...toAdd];
@@ -582,7 +591,11 @@ export default {
                 operators: this.assignedOperators.map(op => op.operator_id)
             };
             let res = await this.store.callOdoo("create_full_cycle_count", "", payload);
-            if (res.ok) this.store.closeModal(true);
+            if (res.ok) {
+                this.store.closeModal(true);
+            } else {
+                this.$toast.add({ severity: 'error', summary: 'Error al Generar', detail: (res.error || 'Error desconocido'), life: 5000 });
+            }
         },
         async finishWave(id) {
             if (!confirm("¿Marcar esta ola como finalizada?")) return;
@@ -669,6 +682,12 @@ export default {
             try {
                 let count = 0;
                 for (const row of this.comparisonSelection) {
+                    // Skip adjustment for dummy "Empty Location" rows
+                    if (!row.product_id || row.product_id === 0) {
+                        count++;
+                        continue;
+                    }
+
                     const key = this.rowKey(row);
                     const new_qty = this.proposedQuantities[key];
                     
@@ -712,6 +731,13 @@ export default {
                 this.$toast.add({ severity: 'error', summary: 'Acción Bloqueada', detail: 'No se pueden hacer ajustes si hay olas sin finalizar o cancelar.', life: 5000 });
                 return;
             }
+
+            // Skip adjustment for dummy "Empty Location" rows
+            if (!this.adjDialog.line.product_id || this.adjDialog.line.product_id === 0) {
+                this.adjDialog.visible = false;
+                return;
+            }
+
             const res = await this.store.callOdoo("adjust_cycle_count_stock", "", {
                 line: this.adjDialog.line,
                 new_qty: this.adjDialog.qty,
@@ -779,6 +805,8 @@ export default {
                 if (!isManager) {
                     this.$toast.add({ severity: 'success', summary: 'Ubicación Actualizada', detail: `La ubicación ahora está ${res.is_blocked ? 'bloqueada' : 'disponible'}.`, life: 2000 });
                 }
+            } else {
+                this.$toast.add({ severity: 'error', summary: 'Error al Cambiar Estado', detail: (res.error || 'No se pudo cambiar el estado de bloqueo.'), life: 5000 });
             }
         },
         async handleOperatorSave() {
@@ -826,6 +854,8 @@ export default {
 :deep(.p-datatable-row-selectable) { cursor: pointer; }
 :deep(.row-locked) { background-color: #e8f5e9 !important; color: #2e7d32 !important; font-style: italic; }
 :deep(.row-locked .p-checkbox) { display: none; }
+:deep(.row-reserved) { background-color: #f1f1f1 !important; color: #999 !important; font-style: italic; }
+:deep(.row-reserved .p-checkbox) { display: none; }
 .wizard-footer { display: flex; justify-content: flex-end; margin-top: 1rem; }
 .input-ref { width: 350px; }
 .operators-grid { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }

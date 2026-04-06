@@ -1,7 +1,18 @@
 <template>
     <PackerView v-if="store.role.permissions.includes('WMDs Operator - Packer')" />
 
-    <div class="task-container" v-else>
+    <div 
+        class="task-container" 
+        v-else 
+        @touchstart="handleTouchStart"
+        @touchmove="handleTouchMove"
+        @touchend="handleTouchEnd"
+        ref="scrollContainer"
+    >
+        <div v-if="pulling" class="pull-to-refresh-indicator" :style="{ height: pullDistance + 'px', opacity: pullDistance / 100 }">
+            <i class="fa fa-refresh" :class="{ 'fa-spin': refreshing }"></i>
+            <span>{{ refreshing ? 'Actualizando...' : 'Tire para actualizar' }}</span>
+        </div>
         <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
         
         <div class="cards-grid">
@@ -74,7 +85,13 @@ export default {
                 { id: "cycle_count_assigned", title: "Conteo cíclico", description: "Conteo de inventario por ubicación", fetch: true, label: "Asignados", permission: "WMDs Operator - Stock Counter" },
                 { id: "reabastecimiento", title: "Reabastecimiento", description: "Traslado de stock de niveles superiores a niveles inferiores para disponibilizar", fetch: true, label: "Abiertos", permission: "WMDs Operator - Replenishment" },
             ],
-            tasks: []
+            tasks: [],
+            // Pull to refresh state
+            startY: 0,
+            pullDistance: 0,
+            pulling: false,
+            refreshing: false,
+            maxPullDistance: 100
         };
     },
 
@@ -87,47 +104,74 @@ export default {
     },
 
     async mounted() {
-        const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-        this.tasks = this.taskDefinitions.map(t => ({
-            ...t,
-            assigned: [{ key: `${t.id}-root`, label: t.label, selectable: false, children: [] }]
-        }));
-
-        const fetchPromises = this.filteredTasks
-            .filter(t => t.fetch)
-            .map(async (task) => {
-                let data = null;
-                if(task.id==="cycle_count_assigned"){
-                    data = await this.store.callOdoo(task.id, "" , { 
-                            email: this.store.role.email,
-                            tz: clientTimeZone 
-                        });
-                } else {
-                    data = await this.store.callOdoo("pending_tasks", task.id, { 
-                        email: this.store.role.email,
-                        tz: clientTimeZone 
-                    });
-                }
-
-                if (Array.isArray(data)) {
-                    task.assigned[0].children = data.map((p, i) => ({
-                            key: p.key || `${task.id}-${i}`,
-                            label: p.label || p,
-                            data: p.data || p,
-                            pick: p.pick || p,
-                            leaf: true
-                    }));
-                }
- else {
-                    task.assigned[0].children = [];
-                }
-                
-            });
-        await Promise.all(fetchPromises);
+        await this.loadTasks();
     },
 
     methods: {
+        async loadTasks() {
+            const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+            this.tasks = this.taskDefinitions.map(t => ({
+                ...t,
+                assigned: [{ key: `${t.id}-root`, label: t.label, selectable: false, children: [] }]
+            }));
+
+            const fetchPromises = this.filteredTasks
+                .filter(t => t.fetch)
+                .map(async (task) => {
+                    let data = null;
+                    if(task.id==="cycle_count_assigned"){
+                        data = await this.store.callOdoo(task.id, "" , { 
+                                email: this.store.role.email,
+                                tz: clientTimeZone 
+                            });
+                    } else {
+                        data = await this.store.callOdoo("pending_tasks", task.id, { 
+                            email: this.store.role.email,
+                            tz: clientTimeZone 
+                        });
+                    }
+
+                    if (Array.isArray(data)) {
+                        task.assigned[0].children = data.map((p, i) => ({
+                                key: p.key || `${task.id}-${i}`,
+                                label: p.label || p,
+                                data: p.data || p,
+                                pick: p.pick || p,
+                                leaf: true
+                        }));
+                    } else {
+                        task.assigned[0].children = [];
+                    }
+                    
+                });
+            await Promise.all(fetchPromises);
+        },
+        handleTouchStart(e) {
+            if (this.$refs.scrollContainer.scrollTop === 0) {
+                this.startY = e.touches[0].pageY;
+                this.pulling = true;
+            }
+        },
+        handleTouchMove(e) {
+            if (!this.pulling || this.refreshing) return;
+            const currentY = e.touches[0].pageY;
+            const diff = currentY - this.startY;
+            if (diff > 0) {
+                this.pullDistance = Math.min(diff, this.maxPullDistance);
+                if (diff > 10) e.preventDefault(); // Prevent native scroll
+            }
+        },
+        async handleTouchEnd() {
+            if (!this.pulling) return;
+            if (this.pullDistance >= 60) {
+                this.refreshing = true;
+                await this.loadTasks();
+                this.refreshing = false;
+            }
+            this.pulling = false;
+            this.pullDistance = 0;
+        },
         toggleTree(taskId) {
             const rootKey = `${taskId}-root`;
             if (this.expandedKeys[rootKey]) {
@@ -172,6 +216,31 @@ export default {
     margin-bottom: 3em;
     display: flex; 
     flex-direction: column;
+    position: relative;
+    overscroll-behavior-y: contain;
+}
+
+.pull-to-refresh-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3B82F6;
+    z-index: 10;
+    transition: height 0.1s ease;
+    font-size: 0.8rem;
+    font-weight: bold;
+    gap: 5px;
+}
+
+.pull-to-refresh-indicator i {
+    font-size: 1.2rem;
 }
 
 .welcome-header { 

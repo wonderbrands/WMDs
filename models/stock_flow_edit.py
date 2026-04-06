@@ -15,8 +15,33 @@ class WMDSStockStatus(models.Model):
 class StockLocationWMDS(models.Model):
     _inherit = 'stock.location'
 
-    block_reason = fields.Many2one('block.reason', string='Motivo de Bloqueo')
+    block_reason = fields.Char(string='Motivo de Bloqueo', db_column='block_reason_text')
     original_parent_id = fields.Many2one('stock.location', string='Ubicación padre original')
+
+    def action_open_block_wizard(self):
+        self.ensure_one()
+        return {
+            'name': 'Bloquear Ubicación',
+            'type': 'ir.actions.act_window',
+            'res_model': 'stock.location.block.wizard',
+            'view_mode': 'form',
+            'target': 'new',
+            'context': {
+                'default_location_id': self.id,
+            }
+        }
+
+    def action_unblock(self):
+        self.ensure_one()
+        vals = {
+            'block_reason': False,
+        }
+        if self.original_parent_id:
+            vals['location_id'] = self.original_parent_id.id
+            vals['original_parent_id'] = False
+        
+        self.sudo().write(vals)
+        return True
 
 class StockWMDS(models.Model):
     _inherit = 'stock.picking'

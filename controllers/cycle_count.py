@@ -115,9 +115,24 @@ class CycleCount(http.Controller):
             active_location_ids = active_counts.mapped('selected_location_ids.location_id.id')
             
             locations = all_locs.filtered(lambda u: u.id not in active_location_ids and re.fullmatch(final_regex, u.complete_name, re.IGNORECASE))
+            
+            # Identify locations with active reservations
+            reservations = request.env['stock.move.line'].sudo().search([
+                ('location_id', 'in', locations.ids),
+                ('state', 'not in', ['done', 'cancel']),
+                ('quantity', '>', 0)
+            ])
+            reserved_location_ids = set(reservations.mapped('location_id.id'))
+
             return {
                 'ok': True,
-                'locations': [{'id': l.id, 'complete_name': l.complete_name} for l in locations]
+                'locations': [
+                    {
+                        'id': l.id, 
+                        'complete_name': l.complete_name,
+                        'has_reservation': l.id in reserved_location_ids
+                    } for l in locations
+                ]
             }
         except Exception as e:
             return {'ok': False, 'error': str(e)}
@@ -132,24 +147,20 @@ class CycleCount(http.Controller):
             if not location_ids or not operators:
                 return {'ok': False, 'error': 'Faltan ubicaciones u operadores.'}
 
-            blocked_parent = request.env.ref('wmds.location_blocked').sudo()
-            block_reason_cyclic = request.env.ref('wmds.block_reason_cyclic').sudo()
-
             locations = request.env['stock.location'].sudo().browse(location_ids)
             for loc in locations:
-                # Save original parent and block the location
-                if not loc.original_parent_id:
-                    loc.write({
-                        'original_parent_id': loc.location_id.id,
-                        'location_id': blocked_parent.id,
-                        'block_reason': block_reason_cyclic.id
-                    })
-                else:
-                    # Already has an original parent (maybe from another block), just change parent and reason
-                    loc.write({
-                        'location_id': blocked_parent.id,
-                        'block_reason': block_reason_cyclic.id
-                    })
+                # Check for active reservations
+                reservations = request.env['stock.move.line'].sudo().search([
+                    ('location_id', '=', loc.id),
+                    ('state', 'not in', ['done', 'cancel']),
+                    ('quantity', '>', 0)
+                ], limit=1)
+
+                if reservations:
+                    return {
+                        'ok': False, 
+                        'error': f"No se puede bloquear la ubicación {loc.complete_name}, tiene una reserva en el movimiento {reservations.picking_id.name or reservations.move_id.reference}. Termine el traslado o anule la reserva."
+                    }
 
             # 2. Crear el maestro
             count_obj = request.env['scheduled.cycle.count'].sudo().create({
@@ -158,6 +169,25 @@ class CycleCount(http.Controller):
                     'location_id': lid,
                 }) for lid in location_ids]
             })
+
+            blocked_parent = request.env.ref('wmds.location_blocked').sudo()
+            block_reason_text = f"Conteo Cíclico: {count_obj.name}"
+            if user_notes:
+                block_reason_text += f" ({user_notes})"
+
+            for loc in locations:
+                if not loc.original_parent_id:
+                    loc.write({
+                        'original_parent_id': loc.location_id.id,
+                        'location_id': blocked_parent.id,
+                        'block_reason': block_reason_text
+                    })
+                else:
+                    # Already has an original parent (maybe from another block), just change parent and reason
+                    loc.write({
+                        'location_id': blocked_parent.id,
+                        'block_reason': block_reason_text
+                    })
 
             # 3. Crear las olas
             for op_id in operators:
@@ -246,20 +276,18 @@ class CycleCount(http.Controller):
                 'date': fields.Datetime.now()
             })
             
-            block_reason_none = request.env.ref('wmds.block_reason_none').sudo()
-
             # Restore the location parents
             for sl in count.selected_location_ids:
                 if sl.location_id:
                     if sl.location_id.original_parent_id:
                         sl.location_id.write({
                             'location_id': sl.location_id.original_parent_id.id,
-                            'block_reason': block_reason_none.id,
+                            'block_reason': False,
                             'original_parent_id': False
                         })
                     else:
                         sl.location_id.write({
-                            'block_reason': block_reason_none.id
+                            'block_reason': False
                         })
                 
             return {'ok': True}
@@ -283,20 +311,18 @@ class CycleCount(http.Controller):
             # Cancelar olas no terminadas
             count.wave_ids.filtered(lambda w: w.state not in ['done', 'cancelled']).write({'state': 'cancelled'})
             
-            block_reason_none = request.env.ref('wmds.block_reason_none').sudo()
-
             # Restore the location parents
             for sl in count.selected_location_ids:
                 if sl.location_id:
                     if sl.location_id.original_parent_id:
                         sl.location_id.write({
                             'location_id': sl.location_id.original_parent_id.id,
-                            'block_reason': block_reason_none.id,
+                            'block_reason': False,
                             'original_parent_id': False
                         })
                     else:
                         sl.location_id.write({
-                            'block_reason': block_reason_none.id
+                            'block_reason': False
                         })
                 
             return {'ok': True}
@@ -705,6 +731,21 @@ class CycleCount(http.Controller):
             if not sl:
                 return {'ok': False, 'error': 'Ubicación no encontrada en este ciclo.'}
             
+            # Check for active reservations if we are blocking
+            if not sl.is_blocked:
+                loc = sl.location_id
+                reservations = request.env['stock.move.line'].sudo().search([
+                    ('location_id', '=', loc.id),
+                    ('state', 'not in', ['done', 'cancel']),
+                    ('quantity', '>', 0)
+                ], limit=1)
+                
+                if reservations:
+                    return {
+                        'ok': False, 
+                        'error': f"No se puede bloquear la ubicación {loc.complete_name}, tiene una reserva en el movimiento {reservations.picking_id.name or reservations.move_id.reference}. Termine el traslado o anule la reserva."
+                    }
+
             sl.is_blocked = not sl.is_blocked
             
             # Registrar en log

@@ -16,6 +16,7 @@ export const useGeneralStore = defineStore('general_store', {
       form_context: null,
       last_scanned_element: null,
       mandatory_uncompleted: new MandatoryUncompleted(),
+      refreshKey: 0,
       available_main_manager_screens: {
         home:{
             title: "Inicio",
@@ -307,6 +308,50 @@ export const useGeneralStore = defineStore('general_store', {
         const date = new Date(dateStr);
         return isNaN(date.getTime()) ? utcDate : date.toLocaleString();
     },
+    triggerRefresh() {
+        this.refreshKey++;
+    },
+    saveStateToLocalStorage() {
+        if (!this.role.is_identified) return;
+        
+        const stateToSave = {
+            current_role: this.current_role,
+            current_screen: this.current_screen,
+            main_manager_screen_value: this.main_manager_screen?.value,
+            modal_open: this.modal_open,
+            modal_context: this.modal_context,
+            form_context: this.form_context,
+            // role is already handled by sessionStorage in App.vue, but we might want email for validation
+            user_email: this.role.email
+        };
+        localStorage.setItem("wmds_app_state", JSON.stringify(stateToSave));
+    },
+    loadStateFromLocalStorage() {
+        const saved = localStorage.getItem("wmds_app_state");
+        if (!saved) return null;
+        try {
+            const parsed = JSON.parse(saved);
+            if (parsed.user_email !== this.role.email) return null;
+            return parsed;
+        } catch (e) {
+            console.error("Error loading state:", e);
+            return null;
+        }
+    },
+    applySavedState(state) {
+        if (!state) return;
+        this.current_role = state.current_role;
+        this.current_screen = state.current_screen;
+        if (state.main_manager_screen_value) {
+            this.setMainManagerScreen(state.main_manager_screen_value);
+        }
+        this.modal_open = state.modal_open;
+        this.modal_context = state.modal_context;
+        this.form_context = state.form_context;
+    },
+    clearStateFromLocalStorage() {
+        localStorage.removeItem("wmds_app_state");
+    },
     async callOdoo(context, term, params) {
         this.loading = true;
         try {
@@ -344,6 +389,7 @@ export const useGeneralStore = defineStore('general_store', {
         this.loading = true
         this.current_screen = newScreen
         this.loading = false
+        this.saveStateToLocalStorage()
     },
     currentScreenLoaded() {
         this.loading = false
@@ -352,10 +398,12 @@ export const useGeneralStore = defineStore('general_store', {
         this.modal_open = true
         this.modal_context = context
         this.form_context = form_context
+        this.saveStateToLocalStorage()
     },
     closeModal() {
         this.modal_open = false
         this.modal_context = null
+        this.saveStateToLocalStorage()
     },
     setMainManagerScreen(newScreen) {
         if(!Object.keys(this.available_main_manager_screens).includes(newScreen) ||
@@ -372,7 +420,7 @@ export const useGeneralStore = defineStore('general_store', {
         }else{
             this.main_manager_screen = this.available_main_manager_screens[newScreen]
         }
-        
+        this.saveStateToLocalStorage()
     },
     executeActionByContext(context, data, extra) {
         const actionsMap = {

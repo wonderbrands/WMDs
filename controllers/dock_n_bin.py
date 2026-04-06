@@ -281,6 +281,45 @@ class DockNBin(http.Controller):
             return {"error": str(e), "valid": False}
 
 
+    @http.route('/wmds/v2/engine/post/block_bin', type='json', auth='user', methods=['POST'], csrf=True)
+    def block_bin(self, **kw):
+        try:
+            bin_name = kw.get("bin")
+            if not bin_name:
+                return {'error': 'BIN name is required', 'ok': False}
+            
+            bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
+            if not bin_storage:
+                return {'error': 'Bin not found', 'ok': False}
+
+            # Check for stock
+            ei_tags_count = request.env["sale.order.ei"].sudo().search_count([
+                ('bin_id', '=', bin_storage.id),
+                ('on_bin', '=', True)
+            ])
+            
+            moves_count = request.env["stock.move"].sudo().search_count([
+                ('bin_id', '=', bin_storage.id),
+                ('on_bin', '=', True)
+            ])
+
+            has_stock = (ei_tags_count + moves_count) > 0
+
+            # If it has stock, anyone can block it.
+            # If not, only manager can block it (to reserve it, for example)
+            is_manager = request.env.user.has_group('wmds.group_wmds_manager')
+
+            if has_stock or is_manager:
+                bin_storage.state = 'blocked'
+                return {'ok': True}
+            else:
+                return {
+                    'error': 'El BIN está vacío y no tienes permisos de Manager para bloquearlo.', 
+                    'ok': False
+                }
+        except Exception as e:
+            return {'error': str(e), 'ok': False}
+
     @http.route('/wmds/v2/engine/post/validate_dock', type='json', auth='user', methods=['POST'], csrf=True)
     def validate_dock(self, **kw):
         try:
@@ -419,6 +458,8 @@ class DockNBin(http.Controller):
                     "log": f"Traslado {picking.name} movido a DOCK {dock_storage.name} por {operator_name}",
                     "user": operator_orm.id if operator_orm else False,
                 })
+
+            bin_storage.state = 'available'
 
             return {"ok": True, "moved_packages": len(ei_tags) + len(moves)}
 

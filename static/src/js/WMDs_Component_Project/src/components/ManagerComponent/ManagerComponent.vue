@@ -3,7 +3,7 @@
     <div class="manager_screen">
         <SidebarManagerComponent v-if="show_sidebar"/>
         <main class="main_manager_screen_container">
-            <MainManagerScreen v-if="store.main_manager_screen"/>
+            <MainManagerScreen v-if="store.main_manager_screen" :key="store.refreshKey"/>
         </main>
     </div>
 </template>

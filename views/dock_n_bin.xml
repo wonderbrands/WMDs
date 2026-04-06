@@ -86,7 +86,7 @@
                         <h1>
                             <field name="name" placeholder="Nombre de BIN"/>
                         </h1>
-                        <field name="state" widget="statusbar"/>
+                        <field name="state" widget="statusbar" options="{'clickable': '1'}"/>
                     </div>
                     <group>
                         <group>
@@ -141,7 +141,7 @@
                         <h1>
                             <field name="name" placeholder="Nombre de DOCK"/>
                         </h1>
-                        <field name="state" widget="statusbar"/>
+                        <field name="state" widget="statusbar" options="{'clickable': '1'}"/>
                     </div>
                     <group>
                         <group>
