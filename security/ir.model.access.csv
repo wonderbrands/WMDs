@@ -12,3 +12,6 @@ access_log_line_manager,log.line.manager,model_log_line,group_wmds_manager,1,0,0
 
 access_block_reason_manager,block.reason.manager,model_block_reason,group_wmds_manager,1,1,1,1
 access_block_reason_user,block.reason.user,model_block_reason,base.group_user,1,0,0,0
+
+access_wmds_dispatch_session_user,wmds.dispatch.session.user,model_wmds_dispatch_session,base.group_user,1,1,1,0
+access_wmds_dispatch_session_line_user,wmds.dispatch.session.line.user,model_wmds_dispatch_session_line,base.group_user,1,1,1,0

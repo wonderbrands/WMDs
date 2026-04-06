@@ -387,6 +387,15 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_user_role_permissions: {url: '/wmds/v2/engine/get/user_role_permissions', method: 'POST'},
             batch_type: {url: '/wmds/v2/engine/get/batch_types', method: 'POST'},
             validate_dfull_pick: {url: '/wmds/v2/engine/get/validate_dfull_pick', method: 'POST'},
+
+            // SERGIO DISPATCH
+            get_dispatch_session: {url: '/wmds/v2/engine/post/get_dispatch_session', method: 'POST'},
+            save_dispatch_session_line: {url: '/wmds/v2/engine/post/save_dispatch_session_line', method: 'POST'},
+            remove_dispatch_session_line: {url: '/wmds/v2/engine/post/remove_dispatch_session_line', method: 'POST'},
+            clear_dispatch_session: {url: '/wmds/v2/engine/post/clear_dispatch_session', method: 'POST'},
+            complete_dispatch_session: {url: '/wmds/v2/engine/post/complete_dispatch_session', method: 'POST'},
+            cancel_dispatch_session: {url: '/wmds/v2/engine/post/cancel_dispatch_session', method: 'POST'},
+            get_active_dispatch_sessions: {url: '/wmds/v2/engine/post/get_active_dispatch_sessions', method: 'POST'},
         };
     }
 
