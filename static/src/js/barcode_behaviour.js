@@ -98,7 +98,17 @@ patch(BarcodeModel.prototype, {
                     await this.action.doAction(guiaAction, { onClose: () => {} });
                 }
             } catch (error) {
+                const msg = error?.data?.message || error?.message || '';
+                console.log(error)
+                console.log(msg)
+                if (msg.includes('NO_GUIAS')) {
+                    return this.notification(
+                        _t("No se encontraron guías adjuntas para esta orden. No es posible imprimir ni validar."),
+                        { type: "danger", title: _t("Guías Faltantes") }
+                    );
+                }
                 console.warn("Error imprimiendo guía de envío:", error);
+                return;
             }
 
             try {

@@ -1,4 +1,5 @@
 from odoo import models, fields, api
+from odoo.exceptions import UserError
 
 
 class StockPickingBarcodePrint(models.Model):
@@ -32,7 +33,7 @@ class StockPickingBarcodePrint(models.Model):
             ('so_id', '=', self.sale_id.id)
         ])
         if not has_attachments:
-            return False
+            raise UserError("NO_GUIAS")
 
         report = self.env.ref('wb_printer_IoT.action_report_print_attachment_4x8')
         return report.report_action(self.sale_id)
