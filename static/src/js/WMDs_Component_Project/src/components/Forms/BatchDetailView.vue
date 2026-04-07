@@ -4,6 +4,24 @@
             <h1 class="text-2xl font-bold">Plan de Pickeo: {{ batch_data.name }}</h1>
         </div>
 
+        <div class="operator-assignment mb-4" v-if="batch_data.pick_type === 'sale' && batch_data.state === 'done'">
+            <div class="operator-field">
+                <label class="block font-medium mb-2">Mesa de empaque</label>
+                <div class="flex gap-2">
+                    <Select v-model="selected_packer" 
+                        :options="operators" 
+                        optionLabel="name" 
+                        dataKey="id"
+                        placeholder="Seleccionar mesa de empaque" 
+                        class="w-full"
+                        filter
+                        @filter="onFilterOperators"
+                    />
+                    <Button label="Asignar Mesa" icon="fa fa-box" severity="warning" @click="assignPackerToAll" :disabled="!selected_packer || (batch_data.packer && selected_packer.id === batch_data.packer.id)" />
+                </div>
+            </div>
+        </div>
+
         <div class="operator-assignment mb-4">
             <div class="operator-field">
                 <label class="block font-medium mb-2">Operador Asignado</label>
@@ -17,7 +35,7 @@
                         filter
                         @filter="onFilterOperators"
                     />
-                    <Button label="Reasignar" icon="fa fa-user" severity="info" @click="reassignOperator" :disabled="!selected_operator || selected_operator.id === batch_data.operator?.id" />
+                    <Button label="Reasignar" icon="fa fa-user" severity="info" @click="reassignOperator" :disabled="!selected_operator || selected_operator.id === batch_data.operator?.id || (batch_data.state !== 'draft' && batch_data.state !== 'in_progress')" />
                 </div>
             </div>
         </div>
@@ -91,6 +109,7 @@ export default {
             batch_data: null,
             operators: [],
             selected_operator: null,
+            selected_packer: null,
             debounceTimeout: null,
             products: {}
         }
@@ -106,6 +125,13 @@ export default {
                     // Ensure assigned operator is in the list
                     if (!this.operators.some(o => o.id === result.operator.id)) {
                         this.operators.push(result.operator);
+                    }
+                }
+                if (result.packer) {
+                    this.selected_packer = result.packer;
+                    // Ensure assigned packer is in the list
+                    if (!this.operators.some(o => o.id === result.packer.id)) {
+                        this.operators.push(result.packer);
                     }
                 }
                 
@@ -140,6 +166,22 @@ export default {
             
             const result = await this.store.callOdoo("assign_pick", "", payload);
             if (result.saved) {
+                await this.loadBatchData();
+            }
+        },
+        async assignPackerToAll() {
+            if (!this.selected_packer) return;
+            
+            const payload = {
+                id: this.batch_data.id,
+                is_batch: true,
+                operation_type: "Pack",
+                operator: { id: this.selected_packer.id }
+            };
+            
+            const result = await this.store.callOdoo("assign_pick", "", payload);
+            if (!result.error) {
+                this.store.toast.add({ severity: 'success', summary: 'Asignado', detail: 'Mesa de empaque asignada exitosamente a todos los pedidos.', life: 3000 });
                 await this.loadBatchData();
             }
         }

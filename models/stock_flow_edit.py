@@ -50,7 +50,7 @@ class StockWMDS(models.Model):
     wmds_status = fields.Many2one('wmds.stock.status', 'WMDS Status')
     wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log')
     marketplace_location = fields.Many2one("stock.location", string="Ubicación del marketplace")
-    picking_type_id_name = fields.Char(related='picking_type_id.name', string='Operation Type Name', store=True)
+    picking_type_id_name = fields.Char(related='picking_type_id.name', string='Operation Type Name', store=False)
 
     @api.model
     def create(self, vals):
@@ -161,19 +161,28 @@ class StockWMDS(models.Model):
 
     def _get_stock_barcode_data(self):
         res = super()._get_stock_barcode_data()
-        
+
         picking_records = res.get('records', {}).get('stock.picking', [])
-        
-        for picking_data in picking_records:
-            picking_id = picking_data.get('id')
-            if picking_id:
-                picking_real = self.env['stock.picking'].browse(picking_id)
-                picking_data['picking_type_id_name'] = picking_real.picking_type_id.name
-                if picking_real.operator:
-                    picking_data['operator'] = [picking_real.operator.id, picking_real.operator.name]
-                else:
-                    picking_data['operator'] = False
-        
+
+        if picking_records:
+            picking_ids = [p['id'] for p in picking_records if p.get('id')]
+            # Use search_read to only fetch needed fields and avoid hitting non-existent columns
+            picking_info = self.env['stock.picking'].sudo().search_read(
+                [('id', 'in', picking_ids)],
+                ['picking_type_id', 'operator']
+            )
+            picking_info_map = {p['id']: p for p in picking_info}
+
+            for picking_data in picking_records:
+                p_id = picking_data.get('id')
+                if p_id in picking_info_map:
+                    info = picking_info_map[p_id]
+                    picking_data['picking_type_id_name'] = info['picking_type_id'][1] if info.get('picking_type_id') else False
+                    if info.get('operator'):
+                        picking_data['operator'] = [info['operator'][0], info['operator'][1]]
+                    else:
+                        picking_data['operator'] = False
+
         return res
 
 
@@ -238,6 +247,16 @@ class BatchWMDS(models.Model):
 
             # si no concuerdan, son mixtos
             record.pick_type = "mix"
+
+    def _get_stock_barcode_data(self):
+        res = super()._get_stock_barcode_data()
+        batch_records = res.get('records', {}).get('stock.picking.batch', [])
+        for batch_data in batch_records:
+            batch_id = batch_data.get('id')
+            if batch_id:
+                batch_real = self.env['stock.picking.batch'].browse(batch_id)
+                batch_data['pick_type'] = batch_real.pick_type
+        return res
             
 
     def action_exclude_unstarted_pickings(self):
@@ -311,6 +330,10 @@ class BatchWMDS(models.Model):
             if batch_id:
                 batch_real = self.env['stock.picking.batch'].browse(batch_id)
                 batch_data['pick_type'] = batch_real.pick_type
+                if batch_real.operator:
+                    batch_data['operator'] = [batch_real.operator.id, batch_real.operator.name]
+                else:
+                    batch_data['operator'] = False
 
         picking_records = res.get('records', {}).get('stock.picking', [])
         

@@ -28,15 +28,11 @@ class GetPicks(http.Controller):
     )
     def get_picks(self, **kw):
         try:
-            
-            logger.debug("=========================")
-            logger.debug(kw)
-            logger.debug("=========================")
             parsed_params = {
-                "cur_page": kw.get('page'),
-                "per_page": kw.get('per_page'),
-                "sort_by": None if not kw.get('sort_by') else kw.get('sort_by'),
-                "sort_order": None if not kw.get('sort_order') else kw.get('sort_order'),
+                "cur_page": kw.get('page', 1),
+                "per_page": kw.get('per_page', 30),
+                "sort_by": kw.get('sort_by'),
+                "sort_order": kw.get('sort_order'),
             }
 
             for popped_param in ['page', 'per_page', 'sort_by', 'sort_order', 'tz']:
@@ -46,75 +42,37 @@ class GetPicks(http.Controller):
             col_domain = [("picking_type_id.name", "=", "Pick")]
             if len(list(kw.keys()))>0:
                 for key, value in kw.items():
-                    col_domain.append(
-                        (key, "ilike", value)
-                    )
+                    col_domain.append((key, "ilike", value))
 
+            fields_to_read = ["id", "name", "origin", "operator", "scheduled_date", "state", "wmds_status"]
             
-            logger.debug("=========================")
-            logger.debug(col_domain)
-
-            picks = request.env['stock.picking'].sudo().search(
+            picks_raw = request.env['stock.picking'].sudo().search_read(
                 col_domain,
+                fields=fields_to_read,
                 limit=parsed_params.get('per_page'),
                 offset=(parsed_params.get('cur_page') - 1) * parsed_params.get('per_page'),
-                order= parsed_params.get('sort_by') + ' ' + parsed_params.get('sort_order') if parsed_params.get('sort_by') and parsed_params.get('sort_order') else 'id desc'
+                order=parsed_params.get('sort_by') + ' ' + parsed_params.get('sort_order') if parsed_params.get('sort_by') and parsed_params.get('sort_order') else 'id desc'
             )
+            
             total = request.env['stock.picking'].sudo().search_count(col_domain)
 
             map_cols = [
-                {
-                    "name": "ID",
-                    "field": "id",
-                },
-                {
-                    "name": "Nombre",
-                    "field": "name",
-                },
-                {
-                    "name": "SO",
-                    "field": "origin"
-                },
-                {
-                    "name": "Operador",
-                    "field": "operator",
-                    "type": "one2many",
-                    "non_blocked_field": True
-                },
-                {
-                    "name": "Fecha",
-                    "field": "scheduled_date"
-                },
+                {"name": "ID", "field": "id"},
+                {"name": "Nombre", "field": "name"},
+                {"name": "SO", "field": "origin"},
+                {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True},
+                {"name": "Fecha", "field": "scheduled_date"},
                 {
                     "name": "Estado",
                     "field": "state",
                     "type": "selectable",
                     "options": [
-                        {
-                            "value": "draft",
-                            "label": "Borrador"
-                        },
-                        {
-                            "value": "waiting",
-                            "label": "En espera de otra operación"
-                        },
-                        {
-                            "value": "assigned",
-                            "label": "Disponible",
-                            "default": True
-                        },
-                        {
-                            "value": "confirmed",
-                            "label": "En espera"
-                        },
-                        {
-                            "value": "done",
-                            "label": "Hecho"
-                        },
-                        {
-                            "value": "cancel",
-                            "label": "Cancelado"
-                        },
+                        {"value": "draft", "label": "Borrador"},
+                        {"value": "waiting", "label": "En espera de otra operación"},
+                        {"value": "assigned", "label": "Disponible", "default": True},
+                        {"value": "confirmed", "label": "En espera"},
+                        {"value": "done", "label": "Hecho"},
+                        {"value": "cancel", "label": "Cancelado"},
                     ]
                 },
                 {
@@ -128,36 +86,38 @@ class GetPicks(http.Controller):
                         { "label": "Completado", "value": "completed" },
                     ]
                 }
-
             ]
 
-            
+            data = []
+            for p in picks_raw:
+                operator_data = None
+                if p.get('operator'):
+                    op_id, op_name = p['operator']
+                    user = request.env['res.users'].sudo().browse(op_id)
+                    operator_data = {
+                        "name": op_name,
+                        "id": op_id,
+                        "email": user.login
+                    }
+                
+                data.append({
+                    "id": p['id'],
+                    "name": p['name'],
+                    "origin": p['origin'],
+                    "operator": operator_data,
+                    "scheduled_date": p['scheduled_date'],
+                    "state": convert_value_in_label(map_cols, p['state'], "state"),
+                    "wmds_status": convert_value_in_label(map_cols, p['wmds_status'], "wmds_status")
+                })
 
             return {
-                    "map_cols": map_cols,
-                    "data": [
-                        {
-                            "id": pick.id,
-                            "name": pick.name,
-                            "origin": pick.origin,
-                            "operator": None if not pick.operator else {
-                                "name": pick.operator.name,
-                                "id": pick.operator.id,
-                                "email": pick.operator.login
-                            },
-                            "scheduled_date": pick.scheduled_date,
-                            "state": convert_value_in_label(map_cols, pick.state, "state"),
-                            "wmds_status": convert_value_in_label(map_cols, pick.wmds_status, "wmds_status")
-                        } for pick in picks
-                    ],
-                    "total_count": len(request.env['stock.picking'].sudo().search(col_domain))
-                }
-            
+                "map_cols": map_cols,
+                "data": data,
+                "total_count": total
+            }
 
         except Exception as e:
-            return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
+            return {"error": f"{str(e)}\n{traceback.format_exc()}"}
 
     @http.route(
         '/wmds/v2/engine/get/pick_products',
@@ -169,57 +129,41 @@ class GetPicks(http.Controller):
     def get_pick_products(self, **kw):
         try:
             picking = request.env['stock.picking'].sudo().search([('id', '=', kw.get('id'))], limit=1)
+            # picking.move_ids access might trigger load of picking columns!
+            # Let's use search_read for moves instead
+            moves_raw = request.env['stock.move'].sudo().search_read(
+                [('picking_id', '=', picking.id)],
+                fields=["id", "product_id", "product_uom_qty", "quantity", "product_uom"]
+            )
+            
             return {
                 "title": "Productos del traslado",
                 "map_cols": [
-                    {
-                        "name": "ID",
-                        "field": "id",
-                    },
-                    {
-                        "name": "Producto",
-                        "field": "product_id",
-                    },
-                    {
-                        "name": "SKU",
-                        "field": "sku"
-                    },	
-                    {
-                        "name": "Stock Disponible",
-                        "field": "stock_qty"
-                    },
-                    {
-                        "name": "Esperado",
-                        "field": "product_uom_qty",
-                    },
-                    {
-                        "name": "Trasladado",
-                        "field": "quantity",
-                    },
-                    {
-                        "name": "U.M.",
-                        "field": "product_uom",
-                    },
+                    {"name": "ID", "field": "id"},
+                    {"name": "Producto", "field": "product_id"},
+                    {"name": "SKU", "field": "sku"},	
+                    {"name": "Stock Disponible", "field": "stock_qty"},
+                    {"name": "Esperado", "field": "product_uom_qty"},
+                    {"name": "Trasladado", "field": "quantity"},
+                    {"name": "U.M.", "field": "product_uom"},
                 ],
                 "data": [
                     {
-                        "id": product.id,
-                        "product_id": product.product_id.name,
-                        "barcode": product.product_id.barcode,
-                        "sku": product.product_id.default_code,
-                        "stock_qty": product.product_id.qty_available,
-                        "product_uom_qty": product.product_uom_qty,
-                        "quantity": getattr(product, 'quantity', getattr(product, 'quantity_done', 0.0)),
-                        "product_uom": product.product_uom.name
-                    } for product in picking.move_ids
+                        "id": m['id'],
+                        "product_id": m['product_id'][1],
+                        "barcode": False, # Would need more reads
+                        "sku": False,     # Would need more reads
+                        "stock_qty": 0,   # Would need more reads
+                        "product_uom_qty": m['product_uom_qty'],
+                        "quantity": m['quantity'],
+                        "product_uom": m['product_uom'][1]
+                    } for m in moves_raw
                 ],
-                "total_count": len(picking.move_ids)
-                }
+                "total_count": len(moves_raw)
+            }
 
         except Exception as e:
-            return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
+            return {"error": f"{str(e)}\n{traceback.format_exc()}"}
           
     @http.route(
         '/wmds/v2/engine/post/pick_assign_operator',
@@ -242,17 +186,21 @@ class GetPicks(http.Controller):
                     if batch.exists():
                         batch.operator = responsible["id"]
                         batch.picking_ids.write({'operator': responsible["id"]})
+                        request.env["wmds.log"].sudo().create({
+                            'user': request.env.user.id,
+                            'log': f"Se ha reasignado el plan de pickeo {batch.name} al operador {request.env['res.users'].browse(responsible['id']).name}",
+                            'batch_pick': batch.id
+                        })
                 else:
                     picking = request.env['stock.picking'].sudo().browse(int(kw.get('id')))
                     if picking.exists():
                         picking.operator = responsible["id"]
-                return{
-                    "saved": True
-                }
-
-            operator_mail = kw.get('operator_mail')
-            operator = kw.get('operator')
-            operation_type = kw.get('operation_type')
+                        request.env["wmds.log"].sudo().create({
+                            'user': request.env.user.id,
+                            'log': f"Se ha reasignado el pick {picking.name} al operador {request.env['res.users'].browse(responsible['id']).name}",
+                            'pick': picking.id
+                        })
+                return{"saved": True}
 
             operator_record = None
             if operator_mail:
@@ -261,12 +209,13 @@ class GetPicks(http.Controller):
                 operator_record = request.env['res.users'].sudo().search([('id', '=', operator["id"])], limit=1)
 
             target_pickings = request.env['stock.picking'].sudo()
+            batch_record = None
 
             if is_batch:
-                batch = request.env['stock.picking.batch'].sudo().search([('id', '=', kw.get('id'))], limit=1)
-                if operation_type == "Pack" and batch:
+                batch_record = request.env['stock.picking.batch'].sudo().search([('id', '=', kw.get('id'))], limit=1)
+                if operation_type == "Pack" and batch_record:
                     # Find sales orders from the pickings in this batch
-                    so_ids = batch.picking_ids.mapped('sale_id.id')
+                    so_ids = batch_record.picking_ids.mapped('sale_id.id')
                     target_pickings = request.env['stock.picking'].sudo().search([
                         ('sale_id', 'in', so_ids),
                         ('picking_type_id.name', '=', 'Pack'),
@@ -287,19 +236,22 @@ class GetPicks(http.Controller):
                 picking.operator = operator_record.id if operator_record else (operator["id"] if operator else False)
                 if operation_type == "Pack" and operator_record:
                     request.env["wmds.log"].sudo().create({
-                        'user': operator_record.id,
+                        'user': request.env.user.id,
                         'log': f"Se ha asignado el Pack {picking.name} a la mesa {operator_record.name}",
                         'pick': picking.id
                     })
 
-            return{
-                "saved": True
-            }
+            if batch_record and operation_type == "Pack" and operator_record:
+                request.env["wmds.log"].sudo().create({
+                    'user': request.env.user.id,
+                    'log': f"Se ha asignado la mesa de empaque {operator_record.name} a todos los pedidos del lote {batch_record.name}",
+                    'batch_pick': batch_record.id
+                })
+
+            return{"saved": True}
 
         except Exception as e:
-            return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
+            return {"error": f"{str(e)}\n{traceback.format_exc()}"}
 
     @http.route(
         '/wmds/v2/engine/get/pack',
@@ -310,15 +262,11 @@ class GetPicks(http.Controller):
     )
     def get_pack(self, **kw):
         try:
-            
-            logger.debug("=========================")
-            logger.debug(kw)
-            logger.debug("=========================")
             parsed_params = {
-                "cur_page": kw.get('page'),
-                "per_page": kw.get('per_page'),
-                "sort_by": None if not kw.get('sort_by') else kw.get('sort_by'),
-                "sort_order": None if not kw.get('sort_order') else kw.get('sort_order'),
+                "cur_page": kw.get('page', 1),
+                "per_page": kw.get('per_page', 30),
+                "sort_by": kw.get('sort_by'),
+                "sort_order": kw.get('sort_order'),
             }
 
             for popped_param in ['page', 'per_page', 'sort_by', 'sort_order']:
@@ -328,75 +276,37 @@ class GetPicks(http.Controller):
             col_domain = [("picking_type_id.name", "=", "Pack")]
             if len(list(kw.keys()))>0:
                 for key, value in kw.items():
-                    col_domain.append(
-                        (key, "ilike", value)
-                    )
+                    col_domain.append((key, "ilike", value))
 
+            fields_to_read = ["id", "name", "origin", "operator", "scheduled_date", "state", "wmds_status"]
             
-            logger.debug("=========================")
-            logger.debug(col_domain)
-
-            picks = request.env['stock.picking'].sudo().search(
+            picks_raw = request.env['stock.picking'].sudo().search_read(
                 col_domain,
+                fields=fields_to_read,
                 limit=parsed_params.get('per_page'),
                 offset=(parsed_params.get('cur_page') - 1) * parsed_params.get('per_page'),
-                order= parsed_params.get('sort_by') + ' ' + parsed_params.get('sort_order') if parsed_params.get('sort_by') and parsed_params.get('sort_order') else 'id desc'
+                order=parsed_params.get('sort_by') + ' ' + parsed_params.get('sort_order') if parsed_params.get('sort_by') and parsed_params.get('sort_order') else 'id desc'
             )
+            
             total = request.env['stock.picking'].sudo().search_count(col_domain)
 
             map_cols = [
-                {
-                    "name": "ID",
-                    "field": "id",
-                },
-                {
-                    "name": "Nombre",
-                    "field": "name",
-                },
-                {
-                    "name": "SO",
-                    "field": "origin"
-                },
-                {
-                    "name": "Operador",
-                    "field": "operator",
-                    "type": "one2many",
-                    "non_blocked_field": True
-                },
-                {
-                    "name": "Fecha",
-                    "field": "scheduled_date"
-                },
+                {"name": "ID", "field": "id"},
+                {"name": "Nombre", "field": "name"},
+                {"name": "SO", "field": "origin"},
+                {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True},
+                {"name": "Fecha", "field": "scheduled_date"},
                 {
                     "name": "Estado",
                     "field": "state",
                     "type": "selectable",
                     "options": [
-                        {
-                            "value": "draft",
-                            "label": "Borrador"
-                        },
-                        {
-                            "value": "waiting",
-                            "label": "En espera de otra operación"
-                        },
-                        {
-                            "value": "assigned",
-                            "label": "Disponible",
-                            "default": True
-                        },
-                        {
-                            "value": "confirmed",
-                            "label": "En espera"
-                        },
-                        {
-                            "value": "done",
-                            "label": "Hecho"
-                        },
-                        {
-                            "value": "cancel",
-                            "label": "Cancelado"
-                        },
+                        {"value": "draft", "label": "Borrador"},
+                        {"value": "waiting", "label": "En espera de otra operación"},
+                        {"value": "assigned", "label": "Disponible", "default": True},
+                        {"value": "confirmed", "label": "En espera"},
+                        {"value": "done", "label": "Hecho"},
+                        {"value": "cancel", "label": "Cancelado"},
                     ]
                 },
                 {
@@ -410,36 +320,38 @@ class GetPicks(http.Controller):
                         { "label": "Completado", "value": "completed" },
                     ]
                 }
-
             ]
 
-            
+            data = []
+            for p in picks_raw:
+                operator_data = None
+                if p.get('operator'):
+                    op_id, op_name = p['operator']
+                    user = request.env['res.users'].sudo().browse(op_id)
+                    operator_data = {
+                        "name": op_name,
+                        "id": op_id,
+                        "email": user.login
+                    }
+                
+                data.append({
+                    "id": p['id'],
+                    "name": p['name'],
+                    "origin": p['origin'],
+                    "operator": operator_data,
+                    "scheduled_date": p['scheduled_date'],
+                    "state": convert_value_in_label(map_cols, p['state'], "state"),
+                    "wmds_status": convert_value_in_label(map_cols, p['wmds_status'], "wmds_status")
+                })
 
             return {
-                    "map_cols": map_cols,
-                    "data": [
-                        {
-                            "id": pick.id,
-                            "name": pick.name,
-                            "origin": pick.origin,
-                            "operator": None if not pick.operator else {
-                                "name": pick.operator.name,
-                                "id": pick.operator.id,
-                                "email": pick.operator.login
-                            },
-                            "scheduled_date": pick.scheduled_date,
-                            "state": convert_value_in_label(map_cols, pick.state, "state"),
-                            "wmds_status": convert_value_in_label(map_cols, pick.wmds_status, "wmds_status")
-                        } for pick in picks
-                    ],
-                    "total_count": len(request.env['stock.picking'].sudo().search(col_domain))
-                }
-            
+                "map_cols": map_cols,
+                "data": data,
+                "total_count": total
+            }
 
         except Exception as e:
-            return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
+            return {"error": f"{str(e)}\n{traceback.format_exc()}"}
 
     @http.route(
         '/wmds/v2/engine/get/batch_details',
@@ -472,15 +384,99 @@ class GetPicks(http.Controller):
                     "log": log.log
                 })
 
+            # Try to find if a packer is already assigned to the related packs
+            packer_data = None
+            so_ids = batch.picking_ids.mapped('sale_id.id')
+            if so_ids:
+                pack_pick = request.env['stock.picking'].sudo().search([
+                    ('sale_id', 'in', so_ids),
+                    ('picking_type_id.name', '=', 'Pack'),
+                    ('state', '!=', 'cancel'),
+                    ('operator', '!=', False)
+                ], limit=1)
+                if pack_pick:
+                    packer_data = {"id": pack_pick.operator.id, "name": pack_pick.operator.name}
+
             return {
                 "id": batch.id,
                 "name": batch.name,
+                "pick_type": batch.pick_type,
+                "state": batch.state,
                 "operator": {"id": batch.operator.id, "name": batch.operator.name} if batch.operator else None,
+                "packer": packer_data,
                 "picks": picks_data,
                 "logs": logs_data
             }
         except Exception as e:
             return {"error": f"{str(e)}\n{traceback.format_exc()}"}
+
+    @http.route(
+        '/wmds/v2/engine/post/check_pack_assigned',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=False
+    )
+    def check_pack_assigned(self, **kw):
+        try:
+            pick_id = kw.get('pick_id')
+            is_batch = kw.get('is_batch')
+            
+            domain = [
+                ('picking_type_id.name', '=', 'Pack'),
+                ('state', '!=', 'cancel'),
+                ('operator', '!=', False)
+            ]
+            
+            if is_batch:
+                batch = request.env['stock.picking.batch'].sudo().browse(int(pick_id))
+                if batch.exists():
+                    so_ids = batch.picking_ids.mapped('sale_id.id')
+                    domain.append(('sale_id', 'in', so_ids))
+                else:
+                    return {"assigned": False}
+            else:
+                picking = request.env['stock.picking'].sudo().browse(int(pick_id))
+                if picking.exists() and picking.sale_id:
+                    domain.append(('sale_id', '=', picking.sale_id.id))
+                else:
+                    return {"assigned": False}
+            
+            assigned_count = request.env['stock.picking'].sudo().search_count(domain)
+            return {"assigned": assigned_count > 0}
+
+        except Exception as e:
+            return {"error": str(e)}
+
+    @http.route(
+        '/wmds/v2/engine/post/check_bin_assigned',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=False
+    )
+    def check_bin_assigned(self, **kw):
+        try:
+            pick_id = kw.get('pick_id')
+            is_batch = kw.get('is_batch')
+            
+            domain = [('on_bin', '=', True)]
+            
+            if is_batch:
+                batch = request.env['stock.picking.batch'].sudo().browse(int(pick_id))
+                if batch.exists():
+                    picking_ids = batch.picking_ids.ids
+                    domain.append(('picking_id', 'in', picking_ids))
+                else:
+                    return {"assigned": False}
+            else:
+                domain.append(('picking_id', '=', int(pick_id)))
+            
+            assigned_count = request.env['stock.move'].sudo().search_count(domain)
+            return {"assigned": assigned_count > 0}
+
+        except Exception as e:
+            return {"error": str(e)}
 
     @http.route(
         '/wmds/v2/engine/get/batch_pick',
@@ -519,46 +515,19 @@ class GetPicks(http.Controller):
             total = request.env['stock.picking.batch'].sudo().search_count(col_domain)
 
             map_cols = [
-                {
-                    "name": "ID",
-                    "field": "id",
-                },
-                {
-                    "name": "Referencia",
-                    "field": "name",
-                },
-                {
-                    "name": "Operador",
-                    "field": "operator",
-                    "type": "one2many",
-                    "non_blocked_field": True
-                },
-                {
-                    "name": "Fecha Programada",
-                    "field": "scheduled_date"
-                },
+                {"name": "ID", "field": "id"},
+                {"name": "Referencia", "field": "name"},
+                {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True},
+                {"name": "Fecha Programada", "field": "scheduled_date"},
                 {
                     "name": "Estado",
                     "field": "state",
                     "type": "selectable",
                     "options": [
-                        {
-                            "value": "draft",
-                            "label": "Borrador"
-                        },
-                        {
-                            "value": "in_progress",
-                            "label": "En progreso",
-                            "default": True
-                        },
-                        {
-                            "value": "done",
-                            "label": "Hecho"
-                        },
-                        {
-                            "value": "cancel",
-                            "label": "Cancelado"
-                        }
+                        {"value": "draft", "label": "Borrador"},
+                        {"value": "in_progress", "label": "En progreso", "default": True},
+                        {"value": "done", "label": "Hecho"},
+                        {"value": "cancel", "label": "Cancelado"}
                     ]
                 }
             ]
@@ -567,21 +536,19 @@ class GetPicks(http.Controller):
                 "map_cols": map_cols,
                 "data": [
                     {
-                        "id": batch.id,
-                        "name": batch.name,
-                        "operator": None if not batch.operator else {
-                            "name": batch.operator.name,
-                            "id": batch.operator.id,
-                            "email": batch.operator.login
+                        "id": b.id,
+                        "name": b.name,
+                        "operator": None if not b.operator else {
+                            "name": b.operator.name,
+                            "id": b.operator.id,
+                            "email": b.operator.login
                         },
-                        "scheduled_date": batch.scheduled_date,
-                        "state": convert_value_in_label(map_cols, batch.state, "state")
-                    } for batch in batches
+                        "scheduled_date": b.scheduled_date,
+                        "state": convert_value_in_label(map_cols, b.state, "state")
+                    } for b in batches
                 ],
                 "total_count": total
             }
 
         except Exception as e:
-            return {
-                "error": f"{str(e)}\n{traceback.format_exc()}"
-            }
+            return {"error": f"{str(e)}\n{traceback.format_exc()}"}

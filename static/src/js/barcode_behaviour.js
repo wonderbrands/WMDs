@@ -8,6 +8,29 @@ import { _t } from "@web/core/l10n/translation";
 
 patch(BarcodeModel.prototype, {
 
+    get display_operator() {
+        if (this.record && Array.isArray(this.record.operator) && this.record.operator.length > 1) {
+            return this.record.operator[1];
+        }
+        
+        // Fallback a sessionStorage
+        const session_wmds = window.sessionStorage.getItem("wmds_logged_user");
+        if (session_wmds) {
+            try {
+                const json_session = JSON.parse(session_wmds);
+                if (json_session && json_session.user) {
+                    return json_session.user;
+                }
+            } catch (e) {}
+        }
+
+        if (this.record && Array.isArray(this.record.partner_id) && this.record.partner_id.length > 1) {
+            return this.record.partner_id[1];
+        }
+
+        return "Sin operador";
+    },
+
     _getQtyDone(line) {
         return line.qty_done || 0;
     },
@@ -247,14 +270,16 @@ patch(BarcodeModel.prototype, {
             localStorage.setItem("mandatory_uncompleted",
                 JSON.stringify({
                     screen: null,
-                    component: "QRScannerComponent",
+                    component: "BarcodeScannerComponent",
                     component_props: {
-                        context: "assign_bin_for_ful",
-                        instructions: "Escanea el Bin para almacenar el pedido",
+                        context: "assign_pack_for_operator",
+                        instructions: "Escanea la linea de empaque para asignar el Pack",
                         can_close: false,
-                        before_mount: "check_bin_assigned",
+                        before_mount: "check_pack_assigned",
                         extra_data: {
                             pick_id: record.id,
+                            is_batch: isBatch,
+                            operation_type: "Pack"
                         }
                     },
                     user: user

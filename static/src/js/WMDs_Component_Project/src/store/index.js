@@ -202,15 +202,15 @@ export const useGeneralStore = defineStore('general_store', {
             ]
         },
         pack: {
-            title: "Packs",
-            description: "Pack",
+            title: "Mesa de empaque",
+            description: "Mesa de empaque",
             value: "pack",
-            form_title: "Asignación de Pack:",
+            form_title: "Mesa de empaque:",
             map_columns:[
                 {name: "id", label: "ID"},
                 {name: "origin", label: "Pedido"},
                 {name: "name", label: "Nombre"},
-                {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
+                {name: "operator", label: "Mesa de empaque", non_blocked_field: true, source: "operadores"},
                 {name: "scheduled_date", label: "Fecha"},
                 {name: "state", label: "Estado"},
                 {name: "wmds_status", label: "Estado WMDS"}
@@ -609,7 +609,7 @@ export const useGeneralStore = defineStore('general_store', {
                     });
                 }
             },
-            'check_pack_assigned': async (extra) => {
+            'check_pack_assigned': async (data, extra) => {
                 const response = await this.callOdoo("check_pack_assigned", "", {
                     pick_id: extra.pick_id,
                     is_batch: extra.is_batch
@@ -618,7 +618,7 @@ export const useGeneralStore = defineStore('general_store', {
                     this.mandatory_uncompleted.doneMandatory();
                 }
             },
-            'check_bin_assigned': async (extra) => {
+            'check_bin_assigned': async (data, extra) => {
                 const response = await this.callOdoo("check_bin_assigned", "", {
                     pick_id: extra.pick_id
                 });

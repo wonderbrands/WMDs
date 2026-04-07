@@ -328,6 +328,12 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                     { id: 'sale', name: 'Pedido' },
                     { id: 'full', name: 'Full' }
                 ]
+            
+            case "check_pack_assigned":
+                return { assigned: true }
+            
+            case "check_bin_assigned":
+                return { assigned: true }
 
             default:
                 break;
@@ -392,6 +398,8 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_user_role_permissions: {url: '/wmds/v2/engine/get/user_role_permissions', method: 'POST'},
             batch_type: {url: '/wmds/v2/engine/get/batch_types', method: 'POST'},
             validate_dfull_pick: {url: '/wmds/v2/engine/get/validate_dfull_pick', method: 'POST'},
+            check_pack_assigned: {url: '/wmds/v2/engine/post/check_pack_assigned', method: 'POST'},
+            check_bin_assigned: {url: '/wmds/v2/engine/post/check_bin_assigned', method: 'POST'},
 
             // SERGIO DISPATCH
             get_dispatch_session: {url: '/wmds/v2/engine/post/get_dispatch_session', method: 'POST'},
