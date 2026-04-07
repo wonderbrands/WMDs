@@ -295,6 +295,7 @@ export default {
                     this.so = response.lines.map(line => ({
                         name: line.ei_name,
                         so_name: line.so_name,
+                        so_state: line.so_state,
                         total: line.total_ei,
                         current: line.sequence_number,
                         dispatched_count: line.dispatched_count,
@@ -493,6 +494,7 @@ export default {
                         const newItem = {
                             name: response.name,
                             so_name: response.so,
+                            so_state: response.so_state,
                             total: response.total,
                             current: response.current,
                             dispatched_count: response.dispatched_count || 0,
@@ -538,6 +540,21 @@ export default {
             console.log("Action: dispatchToCarrier triggered");
             if (this.so.length === 0) {
                 console.log("Action: No guides to dispatch, returning");
+                return;
+            }
+
+            // Check for cancelled orders before sending to backend
+            const cancelledOrders = this.so.filter(o => o.so_state === 'cancel');
+            if (cancelledOrders.length > 0) {
+                const names = [...new Set(cancelledOrders.map(o => o.so_name))].join(", ");
+                if (this.$toast) {
+                    this.$toast.add({ 
+                        severity: 'error', 
+                        summary: 'Pedido(s) Cancelado(s)', 
+                        detail: `No se puede despachar porque los pedidos ${names} están cancelados. Por favor remuévalos de la lista.`, 
+                        life: 6000 
+                    });
+                }
                 return;
             }
             

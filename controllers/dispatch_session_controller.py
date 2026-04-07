@@ -35,15 +35,22 @@ class DispatchSessionController(http.Controller):
 
             lines = []
             for line in session.line_ids:
+                # Find the current state of the SO linked to this line
+                so_state = 'draft'
+                ei_tag = request.env["sale.order.ei"].sudo().search([('display_name_custom', '=', line.ei_name)], limit=1)
+                if ei_tag:
+                    so_state = ei_tag.so_id.state
+
                 lines.append({
                     "line_id": line.id,
                     "ei_name": line.ei_name,
                     "so_name": line.so_name,
+                    "so_state": so_state,
                     "product_name": line.product_name or "",
                     "carrier_name": line.carrier_name or "",
                     "scan_datetime": fields.Datetime.to_string(line.scan_datetime) if line.scan_datetime else "",
-                    "sequence_number": line.sequence_number,
                     "total_ei": line.total_ei,
+                    "sequence_number": line.sequence_number,
                     "dispatched_count": line.dispatched_count,
                 })
 

@@ -104,6 +104,7 @@ class DockNBin(http.Controller):
             operator_login = kw.get("operator")
             orders = kw.get("orders")
             batch_id = kw.get("batch_id")
+            pick_id = kw.get("pick_id")
 
             if not bin_name or not operator_login:
                 _logger.error("Faltan datos en move_to_bin")
@@ -121,13 +122,19 @@ class DockNBin(http.Controller):
 
             operator_name = operator_orm.name if operator_orm else "Desconocido"
 
-            if batch_id:
-                # Caso Full: Procesar por Batch ID
-                batch = request.env['stock.picking.batch'].sudo().browse(batch_id)
-                if not batch.exists():
-                    return {'error': 'Batch not found'}
-                
-                pickings = batch.picking_ids
+            if batch_id or pick_id:
+                # Caso Full o Picking específico: Procesar por ID
+                if batch_id:
+                    batch = request.env['stock.picking.batch'].sudo().browse(batch_id)
+                    pickings = batch.picking_ids
+                    log_target = {"batch_pick": batch.id}
+                    log_label = f"Lote {batch.name}"
+                else:
+                    picking = request.env['stock.picking'].sudo().browse(pick_id)
+                    pickings = picking
+                    log_target = {"pick": picking.id}
+                    log_label = f"Traslado {picking.name}"
+
                 moves = pickings.mapped('move_ids').filtered(lambda m: m.state == 'done' and not m.dispatched)
                 
                 for move in moves:
@@ -148,12 +155,13 @@ class DockNBin(http.Controller):
                         "bin_log_id": bin_log.id
                     })
 
-                # Log General para el Batch (se duplica a los picks)
-                request.env["wmds.log"].sudo().create({
-                    "batch_pick": batch.id,
-                    "log": f"Lote movido a BIN {bin_storage.name} por {operator_name}",
+                # Log General
+                log_vals = {
+                    "log": f"{log_label} movido a BIN {bin_storage.name} por {operator_name}",
                     "user": operator_orm.id if operator_orm else False,
-                })
+                }
+                log_vals.update(log_target)
+                request.env["wmds.log"].sudo().create(log_vals)
 
                 return {"ok": True, "count": len(moves)}
 

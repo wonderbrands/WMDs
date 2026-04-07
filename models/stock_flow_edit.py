@@ -219,7 +219,8 @@ class BatchWMDS(models.Model):
     pick_type = fields.Selection(selection = [
         ('sale', 'Pedido'), 
         ('full', 'Full'),
-        ('mix', "Mixto")
+        ('mix', "Mixto"),
+        ('wholesale', 'Mayoreo')
     ],
         compute='_establish_pick_type',
         store=True)
@@ -233,9 +234,16 @@ class BatchWMDS(models.Model):
                 record.pick_type = "mix"
                 continue
 
-            # si todos los traslados son de tipo pick, el batch es de tipo sale
+            # si todos los traslados son de tipo pick, el batch es de tipo sale o mayoreo
             total_picks = len(record.picking_ids.filtered(lambda pick: pick.picking_type_id.name == "Pick"))
             if total_picks == total_operations:
+                #si todas las ventas son de tipo mayoreo, es de tipo wholesale
+                so_strings = record.picking_ids.mapped(lambda pick: pick.origin)
+                so_s = [self.env['sale.order'].search([('name', '=', so)]) for so in so_strings]
+                so_wholesales = len(so_s.filtered(lambda so: so.data_is_wholesale_sale))
+                if so_wholesales == total_operations:
+                    record.pick_type = "wholesale"
+                    continue
                 record.pick_type = "sale"
                 continue
 

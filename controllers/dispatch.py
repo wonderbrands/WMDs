@@ -103,6 +103,15 @@ class Dispatch(http.Controller):
             ei_tags = request.env["sale.order.ei"].sudo().search([
                 ('display_name_custom', 'in', packs_ids)
             ])
+
+            # Pre-check for cancelled orders
+            cancelled_sos = ei_tags.mapped('so_id').filtered(lambda s: s.state == 'cancel')
+            if cancelled_sos:
+                so_names = ", ".join(cancelled_sos.mapped('name'))
+                return {
+                    "status": "error", 
+                    "message": f"No se puede despachar: Los pedidos {so_names} están cancelados."
+                }
             
             ei_tags.write({
                 'dispatched': True,

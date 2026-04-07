@@ -15,7 +15,7 @@ export const useGeneralStore = defineStore('general_store', {
       modal_context: null,
       form_context: null,
       last_scanned_element: null,
-      mandatory_uncompleted: new MandatoryUncompleted(),
+      mandatory_uncompleted: reactive(new MandatoryUncompleted()),
       refreshKey: 0,
       available_main_manager_screens: {
         home:{
@@ -23,7 +23,7 @@ export const useGeneralStore = defineStore('general_store', {
             description: "Pantalla principal",
             value: "home"
         },
-        ingresos: {
+        /*ingresos: {
             title: "Recepciones",
             description: "Validación de los productos ingresados a almacén.",
             value: "ingreso",
@@ -103,7 +103,7 @@ export const useGeneralStore = defineStore('general_store', {
                     }
                 ]
             }
-        },
+        },*/
         pick: {
             title: "Picks",
             children: [
@@ -263,10 +263,10 @@ export const useGeneralStore = defineStore('general_store', {
                 { name: "state", label: "Estado" }
             ],
         },
-        devolucion: {
+        /*devolucion: {
             title: "Devoluciones",
             description: ""
-        },
+        },*/
         operators: {
             title: "Operadores",
             description: "Gestión de operadores",
@@ -559,11 +559,18 @@ export const useGeneralStore = defineStore('general_store', {
     
                     if (response.valid) {
                         try {
-                            let moveResponse = await this.callOdoo("move_to_bin", "", {
+                            const moveParams = {
                                 bin: binName,
-                                operator: this.role.email,
-                                batch_id: extra.pick_id
-                            });
+                                operator: this.role.email
+                            };
+                            if (extra.is_batch) {
+                                moveParams.batch_id = extra.pick_id;
+                            } else {
+                                // For single pickings, we might need a different param or handle it in move_to_bin
+                                moveParams.pick_id = extra.pick_id;
+                            }
+
+                            let moveResponse = await this.callOdoo("move_to_bin", "", moveParams);
             
                             if (moveResponse.ok) {
                                 this.mandatory_uncompleted.doneMandatory();

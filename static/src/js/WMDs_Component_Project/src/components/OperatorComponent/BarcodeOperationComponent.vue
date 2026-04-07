@@ -177,6 +177,9 @@ export default {
     },
     computed: {
         operationTypeTitle() {
+            if (this.operationData.is_pful) return 'Resurtido Full (Pick)';
+            if (this.operationData.is_dful) return 'Resurtido Full (Despacho)';
+            
             if (this.res_model === 'stock.picking.batch') {
                 const subType = this.operationData.pick_type === 'sale' ? ' - Pedidos' : (this.operationData.pick_type === 'full' ? ' - Full' : '');
                 return 'Plan de Pickeo' + subType;
@@ -237,6 +240,17 @@ export default {
                 if (res.status === 'ok') {
                     this.operationData = res;
                     
+                    // PFUL/DFUL specific logic
+                    if (res.is_dful) {
+                        this.localConfig.scan_source = false;
+                        this.localConfig.scan_dest = false;
+                        this.localConfig.backorder = true;
+                    }
+                    if (res.is_pful) {
+                        this.localConfig.scan_dest = false; // Post-validation BIN scan handles this
+                        this.localConfig.backorder = true;
+                    }
+
                     // Lógica sub picking type
                     if (this.res_model === 'stock.picking.batch') {
                         if (res.pick_type === 'sale') {
@@ -424,6 +438,7 @@ export default {
                     const confirmedResModel = res.res_model;
                     const confirmedPickType = res.pick_type;
                     const isBatch = confirmedResModel === 'stock.picking.batch';
+                    const isPFUL = res.is_pful;
 
                     if (isBatch && confirmedPickType === "sale") {
                         this.store.mandatory_uncompleted.screen = null;
@@ -442,7 +457,7 @@ export default {
                         this.store.mandatory_uncompleted.user = this.store.role.email;
                         this.store.mandatory_uncompleted.loadToStorage();
                         // Component will switch automatically via App.vue
-                    } else if (isBatch && confirmedPickType === "full") {
+                    } else if (isPFUL || (isBatch && (confirmedPickType === "full" || confirmedPickType === "wholesale"))) {
                         this.store.mandatory_uncompleted.screen = null;
                         this.store.mandatory_uncompleted.component = "BarcodeScannerComponent";
                         this.store.mandatory_uncompleted.component_props = {
@@ -452,7 +467,7 @@ export default {
                             before_mount: "check_bin_assigned",
                             extra_data: {
                                 pick_id: this.res_id,
-                                is_batch: true,
+                                is_batch: isBatch,
                                 operation_type: "Bin"
                             }
                         };
@@ -723,4 +738,5 @@ export default {
 :deep(.p-datatable .p-datatable-tbody > tr > td) {
     padding: 0.5rem;
 }
+
 </style>

@@ -81,7 +81,7 @@ export default {
                 { id: "bin", title:"BIN", description:"Ingresar a BIN", fetch: false, label: "Registrar", view: "BinComponent", permission: "WMDs Operator - BIN" },
                 { id: "dock", title:"DOCK", description:"Trasladar a DOCK", fetch: false, label: "Registrar", view: "DockComponent", permission: "WMDs Operator - DOCK" },
                 { id: "dispatch", title:"Despacho", description:"Entrega paquetera", fetch: false, label: "Registrar", view: "DispatchComponent", permission: "WMDs Operator - Dispatch" },
-                { id: "dispatch_ful", title:"Despacho fulfilment", description:"Entrega a paquetería de ordenes ful", fetch: false, label: "Registrar", view: "DispatchComponentFul", permission: "WMDs Operator - Dispatch" },
+                { id: "dispatch_ful", title:"Despacho fulfilment", description:"Entrega a paquetería de ordenes ful", fetch: true, label: "Asignados", permission: "WMDs Operator - Dispatch", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: false, any_source: true, any_dest: true },
                 { id: "cycle_count_assigned", title: "Conteo cíclico", description: "Conteo de inventario por ubicación", fetch: true, label: "Asignados", permission: "WMDs Operator - Stock Counter" },
                 { id: "reabastecimiento", title: "Reabastecimiento", description: "Traslado de stock de niveles superiores a niveles inferiores para disponibilizar", fetch: true, label: "Abiertos", permission: "WMDs Operator - Replenishment", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true },
             ],
@@ -197,6 +197,8 @@ export default {
             if (task_id === "cycle_count_assigned") {
                 this.store.mandatory_uncompleted.component_props = { cc_id: record_id };
                 this.store.mandatory_uncompleted.component = "CycleCountOperator";
+                this.store.mandatory_uncompleted.user = this.store.role.email;
+                this.store.mandatory_uncompleted.loadToStorage();
             } else if (taskDef && taskDef.res_model) {
                 this.store.mandatory_uncompleted.component = "BarcodeOperationComponent";
                 this.store.mandatory_uncompleted.component_props = {

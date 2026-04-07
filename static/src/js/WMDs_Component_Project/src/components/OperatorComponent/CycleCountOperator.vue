@@ -227,16 +227,13 @@ export default {
         this.waveName = "Cargando...";
         await this.loadWaveInfo();
         
-        localStorage.removeItem("mandatory_uncompleted");
         this.ready = true;
     },
     methods: {
         async loadWaveInfo() {
-            // Podríamos llamar a un endpoint para obtener detalles de la ola
-            // Por simplicidad, si no tenemos el nombre lo dejamos así o lo buscamos
             let res = await this.store.callOdoo("get_cycle_count_details_minimal", "", { wave_id: this.waveId });
             if (res && res.ok) {
-                this.waveName = res.name;
+                this.waveName = res.name ? res.name.split(' ')[0] : 'Cargando...';
                 this.locations_list = res.locations || [];
             }
         },

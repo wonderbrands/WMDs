@@ -36,6 +36,7 @@ import DockComponent  from "./components/OperatorComponent/DockComponent.vue"
 import DispatchComponent  from "./components/OperatorComponent/DispatchComponent.vue"
 import DispatchComponentFul  from "./components/OperatorComponent/DispatchComponentFul.vue"
 import BarcodeOperationComponent from "./components/OperatorComponent/BarcodeOperationComponent.vue"
+import CycleCountOperator from "./components/OperatorComponent/CycleCountOperator.vue"
 
 import { useGeneralStore } from "./store/index"
 
@@ -54,7 +55,8 @@ export default {
     DockComponent,
     DispatchComponent,
     DispatchComponentFul,
-    BarcodeOperationComponent
+    BarcodeOperationComponent,
+    CycleCountOperator
   },
   data() {
     return {

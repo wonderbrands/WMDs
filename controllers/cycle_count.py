@@ -621,7 +621,7 @@ class CycleCount(http.Controller):
 
                 return {
                     'ok': True, 
-                    'name': wave.name,
+                    'name': wave.name.split(' ')[0] if wave.name else '',
                     'locations': locations_data
                 }
             return {'ok': False, 'error': 'Ola no encontrada.'}
@@ -857,9 +857,7 @@ class CycleCount(http.Controller):
 
         result = []
         for wave in waves:
-            # Incluir hora en el label para que el operador la vea en el arbol de tareas
-            create_time = wave.create_date.strftime('%H:%M') if wave.create_date else ''
-            label = f"{wave.name} ({create_time})" if create_time else wave.name
+            label = wave.name.split(' ')[0] if wave.name else ''
             
             result.append({
                     "key": wave.id,
