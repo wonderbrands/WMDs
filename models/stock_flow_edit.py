@@ -238,12 +238,12 @@ class BatchWMDS(models.Model):
             total_picks = len(record.picking_ids.filtered(lambda pick: pick.picking_type_id.name == "Pick"))
             if total_picks == total_operations:
                 #si todas las ventas son de tipo mayoreo, es de tipo wholesale
-                so_strings = record.picking_ids.mapped(lambda pick: pick.origin)
-                so_s = [self.env['sale.order'].search([('name', '=', so)]) for so in so_strings]
-                so_wholesales = len(so_s.filtered(lambda so: so.data_is_wholesale_sale))
-                if so_wholesales == total_operations:
-                    record.pick_type = "wholesale"
-                    continue
+                #so_strings = record.picking_ids.mapped(lambda pick: pick.origin)
+                #so_s = [self.env['sale.order'].search([('name', '=', so)]) for so in so_strings]
+                #so_wholesales = len(so_s.filtered(lambda so: so.data_is_wholesale_sale))
+                #if so_wholesales == total_operations:
+                #    record.pick_type = "wholesale"
+                #    continue
                 record.pick_type = "sale"
                 continue
 
