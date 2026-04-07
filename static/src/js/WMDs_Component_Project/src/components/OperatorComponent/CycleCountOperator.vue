@@ -514,7 +514,7 @@ export default {
 .cycle-count-operator-container {
     display: flex;
     flex-direction: column;
-    min-height: 80vh;
+    min-height: 100%;
     padding: 10px;
     box-sizing: border-box;
     background: #f4f7f6;

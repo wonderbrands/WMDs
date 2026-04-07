@@ -335,6 +335,65 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
             case "check_bin_assigned":
                 return { assigned: true }
 
+            case "get_operation_data":
+                return {
+                    status: "ok",
+                    id: 1,
+                    name: "WH/OUT/0001",
+                    res_model: "stock.picking",
+                    use_backorder: true,
+                    lines: [
+                        {
+                            id: 101,
+                            product_id: 1,
+                            product_name: "Producto de prueba 1",
+                            sku: "PROD001",
+                            barcode: "123456",
+                            image_url: "https://via.placeholder.com/128",
+                            qty_demand: 10,
+                            qty_reserved: 10,
+                            qty_done: 0,
+                            picked: 2,
+                            location_id: 1,
+                            location_name: "WH/Stock/A-01",
+                            location_dest_id: 2,
+                            location_dest_name: "WH/Output",
+                            picking_id: 1,
+                            picking_name: "WH/OUT/0001"
+                        },
+                        {
+                            id: 102,
+                            product_id: 2,
+                            product_name: "Producto de prueba 2",
+                            sku: "PROD002",
+                            barcode: "789012",
+                            image_url: "https://via.placeholder.com/128",
+                            qty_demand: 5,
+                            qty_reserved: 5,
+                            qty_done: 0,
+                            picked: 0,
+                            location_id: 1,
+                            location_name: "WH/Stock/A-01",
+                            location_dest_id: 2,
+                            location_dest_name: "WH/Output",
+                            picking_id: 1,
+                            picking_name: "WH/OUT/0001"
+                        }
+                    ]
+                }
+            
+            case "process_scan":
+                return { status: "ok", line_id: params.line_id, new_picked: 5 }
+            
+            case "validate_operation":
+                return { status: "ok", message: "Validado" }
+
+            case "log_task_start":
+                return { status: "ok" }
+            
+            case "process_dest_location_scan":
+                return { status: "ok", new_location_name: "Ubicación Hija" }
+
             default:
                 break;
         }
@@ -400,6 +459,13 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             validate_dfull_pick: {url: '/wmds/v2/engine/get/validate_dfull_pick', method: 'POST'},
             check_pack_assigned: {url: '/wmds/v2/engine/post/check_pack_assigned', method: 'POST'},
             check_bin_assigned: {url: '/wmds/v2/engine/post/check_bin_assigned', method: 'POST'},
+
+            // BARCODE V2
+            get_operation_data: {url: '/wmds/v2/barcode/get_operation_data', method: 'POST'},
+            process_scan: {url: '/wmds/v2/barcode/process_scan', method: 'POST'},
+            process_dest_location_scan: {url: '/wmds/v2/barcode/process_dest_location_scan', method: 'POST'},
+            validate_operation: {url: '/wmds/v2/barcode/validate_operation', method: 'POST'},
+            log_task_start: {url: '/wmds/v2/barcode/log_task_start', method: 'POST'},
 
             // SERGIO DISPATCH
             get_dispatch_session: {url: '/wmds/v2/engine/post/get_dispatch_session', method: 'POST'},

@@ -74,16 +74,16 @@ export default {
             current_task: {},
             expandedKeys: {},
             taskDefinitions: [
-                { id: "ingresos", title: "Recepciones", description: "Validación de ingresos.", fetch: true, label: "Abiertas", permission: "WMDs Operator - Reception" },
-                { id: "acomodo", title: "Rackeo", description: "Acomodo de productos.", fetch: true, label: "Abiertos", permission: "WMDs Operator - Forklift operator" },
-                { id: "traslados", title: "Traslados", description: "Traslado interno.", fetch: false, label: "Asignados", permission: "WMDs Operator - Forklift operator" },
-                { id: "batch_pick", title: "Plan de pickeo", description: "Preparación empaque.", fetch: true, label: "Asignados", permission: "WMDs Operator - Picker" },
+                { id: "ingresos", title: "Recepciones", description: "Validación de ingresos.", fetch: true, label: "Abiertas", permission: "WMDs Operator - Reception", buttons_to_add: false, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: false, any_source: true, any_dest: true },
+                { id: "acomodo", title: "Rackeo", description: "Acomodo de productos.", fetch: true, label: "Abiertos", permission: "WMDs Operator - Forklift operator", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: true, any_source: true, any_dest: true },
+                { id: "traslados", title: "Traslados", description: "Traslado interno.", fetch: false, label: "Asignados", permission: "WMDs Operator - Forklift operator", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: true, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true },
+                { id: "batch_pick", title: "Plan de pickeo", description: "Plan de pickeo", fetch: true, label: "Asignados", permission: "WMDs Operator - Picker", buttons_to_add: true, buttons_to_subtract: true, backorder: false, extra_products: false, res_model: 'stock.picking.batch', post_validate: 'post_batch_validate', scan_source: true, scan_dest: false, any_source: false, any_dest: false },
                 { id: "bin", title:"BIN", description:"Ingresar a BIN", fetch: false, label: "Registrar", view: "BinComponent", permission: "WMDs Operator - BIN" },
                 { id: "dock", title:"DOCK", description:"Trasladar a DOCK", fetch: false, label: "Registrar", view: "DockComponent", permission: "WMDs Operator - DOCK" },
                 { id: "dispatch", title:"Despacho", description:"Entrega paquetera", fetch: false, label: "Registrar", view: "DispatchComponent", permission: "WMDs Operator - Dispatch" },
                 { id: "dispatch_ful", title:"Despacho fulfilment", description:"Entrega a paquetería de ordenes ful", fetch: false, label: "Registrar", view: "DispatchComponentFul", permission: "WMDs Operator - Dispatch" },
                 { id: "cycle_count_assigned", title: "Conteo cíclico", description: "Conteo de inventario por ubicación", fetch: true, label: "Asignados", permission: "WMDs Operator - Stock Counter" },
-                { id: "reabastecimiento", title: "Reabastecimiento", description: "Traslado de stock de niveles superiores a niveles inferiores para disponibilizar", fetch: true, label: "Abiertos", permission: "WMDs Operator - Replenishment" },
+                { id: "reabastecimiento", title: "Reabastecimiento", description: "Traslado de stock de niveles superiores a niveles inferiores para disponibilizar", fetch: true, label: "Abiertos", permission: "WMDs Operator - Replenishment", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true },
             ],
             tasks: [],
             // Pull to refresh state
@@ -184,23 +184,49 @@ export default {
             return task.assigned?.[0]?.children?.length > 0;
         },
         async openTask(pick, task_id, record_id=null) {
-            if (task_id==="cycle_count_assigned"){
-                switch (task_id) {
-                    case "cycle_count_assigned":
-                    this.store.mandatory_uncompleted.component_props = {cc_id:record_id}
-                    this.store.mandatory_uncompleted.component = CycleCountOperator;
-                        break;
-                
-                    default:
-                        break;
-                }
-            } else{
+            const taskDef = this.taskDefinitions.find(t => t.id === task_id);
+            
+            // Log task start
+            this.store.callOdoo("log_task_start", "", {
+                res_id: record_id,
+                res_model: taskDef?.res_model,
+                operator_email: this.store.role.email,
+                task_title: taskDef?.title || pick
+            });
+
+            if (task_id === "cycle_count_assigned") {
+                this.store.mandatory_uncompleted.component_props = { cc_id: record_id };
+                this.store.mandatory_uncompleted.component = "CycleCountOperator";
+            } else if (taskDef && taskDef.res_model) {
+                this.store.mandatory_uncompleted.component = "BarcodeOperationComponent";
+                this.store.mandatory_uncompleted.component_props = {
+                    res_id: record_id,
+                    res_model: taskDef.res_model,
+                    config: {
+                        buttons_to_add: taskDef.buttons_to_add,
+                        buttons_to_subtract: taskDef.buttons_to_subtract,
+                        extra_products: taskDef.extra_products,
+                        backorder: taskDef.backorder,
+                        post_validate: taskDef.post_validate,
+                        scan_source: taskDef.scan_source,
+                        scan_dest: taskDef.scan_dest,
+                        any_source: taskDef.any_source,
+                        any_dest: taskDef.any_dest
+                    }
+                };
+                this.store.mandatory_uncompleted.user = this.store.role.email;
+                this.store.mandatory_uncompleted.loadToStorage();
+            } else {
                 const url = await this.store.callOdoo("get_barcode_url", "", { pick_name: pick });
                 window.location.href = url;
             }
-           
         },
         createView(task){
+            // Log task start for view
+            this.store.callOdoo("log_task_start", "", {
+                operator_email: this.store.role.email,
+                task_title: task.title
+            });
             this.store.mandatory_uncompleted.component = task.view;
         }
     }
@@ -209,15 +235,16 @@ export default {
 
 <style scoped>
 .task-container {
-    overflow-y: scroll; 
+    overflow-y: auto; 
     padding: 1em; 
+    padding-bottom: 15rem;
     width: 100%; 
-    height: 90vh; 
-    margin-bottom: 3em;
+    height: 100vh; 
     display: flex; 
     flex-direction: column;
     position: relative;
     overscroll-behavior-y: contain;
+    background: #fff;
 }
 
 .pull-to-refresh-indicator {

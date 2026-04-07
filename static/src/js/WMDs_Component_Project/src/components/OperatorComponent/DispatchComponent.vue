@@ -458,7 +458,17 @@ export default {
                 });
 
                 if (response.valid) {
-                    if (response.state && response.state.dispatched) {
+                    if (response.so_state === 'cancel') {
+                        console.log("Action: Order is cancelled");
+                        if(this.$toast) {
+                            this.$toast.add({ 
+                                severity: 'error', 
+                                summary: 'Pedido Cancelado', 
+                                detail: `El pedido ${response.so} está cancelado y no puede ser despachado.`, 
+                                life: 5000 
+                            });
+                        }
+                    } else if (response.state && response.state.dispatched) {
                         console.log("Action: Guide already dispatched");
                         if(this.$toast) {
                             this.$toast.add({ 
@@ -768,7 +778,7 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    min-height: 80vh;
+    min-height: 100%;
     padding: 10px;
     box-sizing: border-box;
     overflow-y: auto;

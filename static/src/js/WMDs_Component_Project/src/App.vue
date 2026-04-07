@@ -35,6 +35,7 @@ import BinComponent  from "./components/OperatorComponent/BinComponent.vue"
 import DockComponent  from "./components/OperatorComponent/DockComponent.vue"
 import DispatchComponent  from "./components/OperatorComponent/DispatchComponent.vue"
 import DispatchComponentFul  from "./components/OperatorComponent/DispatchComponentFul.vue"
+import BarcodeOperationComponent from "./components/OperatorComponent/BarcodeOperationComponent.vue"
 
 import { useGeneralStore } from "./store/index"
 
@@ -52,7 +53,8 @@ export default {
     BinComponent,
     DockComponent,
     DispatchComponent,
-    DispatchComponentFul
+    DispatchComponentFul,
+    BarcodeOperationComponent
   },
   data() {
     return {
@@ -175,7 +177,7 @@ export default {
   width: 100vw;
   margin: 0px;
   padding: 0px;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 :root {

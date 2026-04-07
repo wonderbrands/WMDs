@@ -46,6 +46,7 @@ Planned replacement for the current WMS
         "views/user.xml",
         "views/dock_n_bin.xml",
         "views/stock_move_wmds.xml",
+        "views/stock_move_line_wmds.xml",
         "views/stock_location_block_wizard_view.xml",
         "security/ir.model.access.csv",
     ],

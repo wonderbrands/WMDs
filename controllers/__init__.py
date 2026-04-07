@@ -14,3 +14,4 @@ from . import dock_n_bin
 from . import dispatch
 from . import cycle_count
 from . import dispatch_session_controller
+from . import barcode_controller

@@ -287,22 +287,22 @@ export default {
 .test-flow-container {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    min-height: 80vh;
+    height: 100vh;
     padding: 10px;
     box-sizing: border-box;
     overflow-y: auto;
+    gap: 1rem;
+    background: #fff;
 }
 
 .scanner-col {
-    height: 35%;
+    flex: 0 0 auto;
     display: flex;
     gap: 10px;
 }
 
 .scanner-wrapper, .confirmation-wrapper {
     flex: 1;
-    overflow: hidden;
     position: relative;
 }
 
@@ -316,7 +316,6 @@ export default {
     color: #2c3e50;
     text-align: center;
     padding: 20px;
-    overflow-y: auto;
 }
 
 .confirmation-icon {
@@ -340,7 +339,7 @@ export default {
 }
 
 .buttons-col {
-    height: 10%;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -356,7 +355,7 @@ export default {
     border-radius: 8px;
     padding: 15px;
     color: #ecf0f1;
-    overflow: hidden;
+    min-height: 300px;
 }
 
 .log-header {

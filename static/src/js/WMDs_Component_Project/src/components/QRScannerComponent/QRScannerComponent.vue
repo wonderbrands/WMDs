@@ -269,13 +269,11 @@ export default {
 .scanner-wrapper {
     padding: 1em;
     width: 100%;
-    height: 100%;
     display: flex;
     flex-direction: column; 
     position: relative;
     box-sizing: border-box;
-    overflow-y: auto;
-    overscroll-behavior-y: contain;
+    overflow-y: visible;
 }
 
 .pull-to-refresh-indicator {
@@ -312,7 +310,7 @@ export default {
 
 .camera-container {
     width: 100%;
-    flex: 0 0 80%; 
+    height: 250px;
     position: relative;
     border-radius: 8px;
     overflow: hidden;
@@ -331,7 +329,6 @@ export default {
 
 .laser-container {
     width: 100%;
-    flex: 0 0 10%; 
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -352,7 +349,6 @@ export default {
 
 .message-container {
     width: 100%;
-    flex: 1; 
     display: flex;
     align-items: center; 
     justify-content: center;

@@ -36,6 +36,7 @@ class DockNBin(http.Controller):
                 return {
                     "valid": True,
                     "so": ei_tag.so_id.name,
+                    "so_state": ei_tag.so_id.state,
                     "name": ei_tag.display_name_custom,
                     "total": ei_tag.so_id.ei_total,
                     "current": ei_tag.sequence_number,
@@ -74,6 +75,7 @@ class DockNBin(http.Controller):
                             return {
                                 "valid": True,
                                 "so": so.name,
+                                "so_state": so.state,
                                 "name": attachment_id,
                                 "total": so.ei_total,
                                 "current": seq,

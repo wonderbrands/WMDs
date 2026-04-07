@@ -11,3 +11,4 @@ from . import cyclic_count
 from . import stock_picking_barcode_print
 from . import stock_location_block_wizard
 from . import wmds_dispatch_session
+from . import stock_move_line

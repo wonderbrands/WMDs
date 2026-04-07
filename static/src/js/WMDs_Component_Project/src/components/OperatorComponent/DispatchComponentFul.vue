@@ -142,7 +142,7 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    min-height: 80vh;
+    min-height: 100%;
     padding: 10px;
     box-sizing: border-box;
     overflow-y: auto;

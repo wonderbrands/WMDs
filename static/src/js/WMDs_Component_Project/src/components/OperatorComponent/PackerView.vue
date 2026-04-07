@@ -1,8 +1,17 @@
 <template>
     <div class="pack-container">
-        <h1>{{ store.role.name }}</h1>
+        <div class="pack-header">
+            <h1>{{ store.role.name }}</h1>
+            <Button 
+                icon="fa fa-refresh" 
+                class="p-button-rounded p-button-text p-button-info" 
+                @click="loadPackTasks" 
+                :loading="loading"
+                v-tooltip.bottom="'Actualizar tareas'"
+            />
+        </div>
         
-        <div class="tasks-wrapper" v-if="rawPackData.length > 0">
+        <div class="tasks-wrapper" v-if="rawPackData.length > 0 && !loading">
             <div 
                 v-for="(group, index) in groupedTasks" 
                 :key="index" 
@@ -47,18 +56,20 @@
 
 <script>
 import Tag from 'primevue/tag';
+import Button from 'primevue/button';
 import LogoutComponent from "../RolePicker/LogoutComponent.vue"
 import { useGeneralStore } from "../../store/index";
 
 export default {
     name: "PickerView",
-    components: { LogoutComponent, Tag },
+    components: { LogoutComponent, Tag, Button },
 
     data() {
         return {
             store: useGeneralStore(),
             rawPackData: [],
-            batchColors: {}
+            batchColors: {},
+            loading: false
         };
     },
 
@@ -80,41 +91,49 @@ export default {
     },
 
     async mounted() {
-        try {
-            const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-            const data = await this.store.callOdoo(
-                "pending_tasks",
-                "pack",
-                { 
-                    email: this.store.role.email,
-                    tz: clientTimeZone 
-                }
-            );
-
-            if (data && Array.isArray(data)) {
-                this.rawPackData = data.map((p, i) => ({
-                    key: `pack-${i}`,
-                    label: p.label || p,
-                    data: p.data || p,
-                    origin: p.origin || 'Sin origen',
-                    pick: p.pick || p,
-                    date: p.date || new Date().toLocaleDateString(),
-                    carrier: p.carrier,
-                    batch: p.batch
-                }));
-            }
-        } catch (error) {
-            this.$toast.add({ 
-                severity: 'error', 
-                summary: 'Error de Carga', 
-                detail: 'No se pudieron recuperar las tareas de empaque. ' + (error.message || 'Error de conexión'), 
-                life: 5000 
-            });
-        }
+        await this.loadPackTasks();
     },
 
     methods: {
+        async loadPackTasks() {
+            this.loading = true;
+            try {
+                const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+                const data = await this.store.callOdoo(
+                    "pending_tasks",
+                    "pack",
+                    { 
+                        email: this.store.role.email,
+                        tz: clientTimeZone 
+                    }
+                );
+
+                if (data && Array.isArray(data)) {
+                    this.rawPackData = data.map((p, i) => ({
+                        key: `pack-${i}`,
+                        label: p.label || p,
+                        data: p.data || p,
+                        origin: p.origin || 'Sin origen',
+                        pick: p.pick || p,
+                        date: p.date || new Date().toLocaleDateString(),
+                        carrier: p.carrier,
+                        batch: p.batch
+                    }));
+                } else {
+                    this.rawPackData = [];
+                }
+            } catch (error) {
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Carga', 
+                    detail: 'No se pudieron recuperar las tareas de empaque. ' + (error.message || 'Error de conexión'), 
+                    life: 5000 
+                });
+            } finally {
+                this.loading = false;
+            }
+        },
         async openTask(pickName) {
             if (!pickName) return;
             const url = await this.store.callOdoo("get_barcode_url", "", { pick_name: pickName });
@@ -138,9 +157,20 @@ export default {
 .pack-container {
     padding: 1rem;
     width: 100%;
-    height: 90vh;
+    height: 100vh;
     display: flex;
     flex-direction: column;
+    background: #fff;
+    overflow-y: auto;
+}
+
+.pack-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid #f8f9fa;
+    padding-bottom: 0.5rem;
 }
 
 .tasks-wrapper {

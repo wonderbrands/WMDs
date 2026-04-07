@@ -626,6 +626,24 @@ export const useGeneralStore = defineStore('general_store', {
                     this.mandatory_uncompleted.doneMandatory();
                 }
             },
+            'post_batch_validate': async (data, extra) => {
+                // Emulate the behavior of barcode_behaviour.js after batch validation
+                this.mandatory_uncompleted.screen = null;
+                this.mandatory_uncompleted.component = "BarcodeScannerComponent";
+                this.mandatory_uncompleted.component_props = {
+                    context: "assign_pack_for_operator",
+                    instructions: "Escanea la linea de empaque para asignar el Pack",
+                    can_close: false,
+                    before_mount: "check_pack_assigned",
+                    extra_data: {
+                        pick_id: extra.res_id,
+                        is_batch: extra.res_model === 'stock.picking.batch',
+                        operation_type: "Pack"
+                    }
+                };
+                this.mandatory_uncompleted.user = this.role.email;
+                this.mandatory_uncompleted.loadToStorage();
+            }
         };
 
         if (actionsMap[context]) {
