@@ -30,7 +30,7 @@
                     v-if="pending_locations.length === 0"
                     @click="finishWave"
                     class="p-button-text p-button-success p-button-sm mr-2" 
-                    label="Finalizar" 
+                    label="Finalizar ola" 
                     icon="fa fa-check-circle"
                     :loading="loading"
                 />
