@@ -14,8 +14,5 @@ from . import dock_n_bin
 from . import dispatch
 from . import cycle_count
 from . import dispatch_session_controller
-<<<<<<< Updated upstream
 from . import barcode_controller
-=======
 from . import dispatch_sheet_print_controller
->>>>>>> Stashed changes
