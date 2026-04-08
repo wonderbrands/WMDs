@@ -662,8 +662,66 @@ export default {
         // IMPRESIÓN — Hoja de Salida A4
         // ═══════════════════════════════════════════
 
-        printSheet() {
-            window.print();
+       async printSheet() {
+            this.iotPrinting = true;
+            try {
+                // 1. Pedimos la acción al backend Python
+                const response = await this.store.callOdoo("print_dispatch_sheet", "", {
+                    session_id: this.printData.session_id,
+                });
+        
+                if (response && response.ok && response.action) {
+                    console.log("Acción nativa recibida. Buscando el puente con Odoo OWL...");
+
+                    let actionService = null;
+
+                    // A) Intentamos buscar el entorno OWL global (Modo Debug de Odoo)
+                    if (window.odoo && window.odoo.__WOWL_DEBUG__ && window.odoo.__WOWL_DEBUG__.root) {
+                        actionService = window.odoo.__WOWL_DEBUG__.root.env.services.action;
+                    }
+
+                    // B) Si no lo encuentra, hackeamos el DOM para extraer el motor nativo de Odoo 18
+                    if (!actionService) {
+                        const webClient = document.querySelector('.o_web_client');
+                        if (webClient && webClient.__owl__) {
+                            const owlInstance = webClient.__owl__;
+                            // En Odoo 17/18 la estructura del entorno varía ligeramente, buscamos ambas:
+                            if (owlInstance.app && owlInstance.app.env) {
+                                actionService = owlInstance.app.env.services.action;
+                            } else if (owlInstance.env) {
+                                actionService = owlInstance.env.services.action;
+                            }
+                        }
+                    }
+
+                    // C) ¡Ejecutamos la magia!
+                    if (actionService) {
+                        console.log("¡Puente Odoo-Vue encontrado! Enviando silenciosamente a IoT Box...");
+                        
+                        // Esto le dice a Odoo que maneje la impresión, interceptando CORS e IPs por nosotros
+                        await actionService.doAction(response.action);
+                        
+                        if (this.$toast) {
+                            this.$toast.add({ severity: 'success', summary: 'Impresión IoT', detail: 'Hoja de salida enviada correctamente.', life: 3000 });
+                        }
+                    } else {
+                        // Si por alguna razón extrema no encontramos Odoo, abrimos el PDF
+                        console.warn("No se pudo conectar Vue con el ActionManager de Odoo. Abriendo PDF...");
+                        const pdfUrl = window.location.origin + `/report/pdf/wmds.report_dispatch_sheet_document/${this.printData.session_id}`;
+                        window.open(pdfUrl, '_blank');
+                    }
+
+                } else {
+                    console.error("Error del servidor:", response?.error);
+                    if (this.$toast) {
+                        this.$toast.add({ severity: 'error', summary: 'Error de Impresión', detail: response?.error || 'No se recibió la acción.', life: 4000 });
+                    }
+                }
+            } catch (e) {
+                console.error("Error crítico en printSheet:", e);
+            } finally {
+                this.iotPrinting = false;
+            }
         },
 
         finishAndExit() {

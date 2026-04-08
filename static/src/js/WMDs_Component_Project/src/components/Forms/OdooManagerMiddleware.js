@@ -475,6 +475,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             complete_dispatch_session: {url: '/wmds/v2/engine/post/complete_dispatch_session', method: 'POST'},
             cancel_dispatch_session: {url: '/wmds/v2/engine/post/cancel_dispatch_session', method: 'POST'},
             get_active_dispatch_sessions: {url: '/wmds/v2/engine/post/get_active_dispatch_sessions', method: 'POST'},
+            print_dispatch_sheet: {url: '/wmds/v2/engine/post/print_dispatch_sheet', method: 'POST'},
         };
     }
 

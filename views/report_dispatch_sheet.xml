@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- ═══════════════════════════════════════════
+         HOJA DE SALIDA — Reporte PDF (QWeb)
+         Modelo: wmds.dispatch.session
+         ═══════════════════════════════════════════ -->
+
+    <template id="report_dispatch_sheet_document">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="session">
+                <div class="page" style="font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #2c3e50; padding: 15mm;">
+
+                    <!-- ── HEADER ── -->
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 15px;">
+                        <div>
+                            <h1 style="margin: 0; font-size: 20pt; color: #2c3e50;">HOJA DE SALIDA</h1>
+                            <span style="font-size: 9pt; color: #7f8c8d;">Registro de Despacho a Paquetería</span>
+                        </div>
+                        <div style="text-align: right; font-size: 9pt; line-height: 1.6; color: #34495e;">
+                            <div><strong>Fecha de Despacho:</strong> 
+                                <span t-esc="session.date_end" t-options="{'widget': 'datetime', 'format': 'dd/MM/yyyy HH:mm:ss'}"/>
+                            </div>
+                            <div><strong>Operador:</strong> <span t-esc="session.operator_name"/></div>
+                            <div><strong>Sesión ID:</strong> #<span t-esc="session.id"/></div>
+                            <div><strong>Total Paquetes:</strong> <span t-esc="len(session.line_ids)"/></div>
+                        </div>
+                    </div>
+
+                    <div style="border-bottom: 2px solid #2c3e50; margin-bottom: 20px;"/>
+
+                    <!-- ── RESUMEN POR ORDEN ── -->
+                    <div style="margin-bottom: 20px;">
+                        <h3 style="font-size: 12pt; color: #2c3e50; border-bottom: 1px solid #bdc3c7; padding-bottom: 5px; margin-bottom: 10px;">
+                            Resumen por Orden
+                        </h3>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 9pt;">
+                            <thead>
+                                <tr>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">#</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">Orden SO</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">Carrier</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">Producto(s)</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">EI Escaneadas</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">Total EI</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">Estado</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-set="so_summary" t-value="session._get_so_summary()"/>
+                                <t t-foreach="so_summary" t-as="summary">
+                                    <tr t-attf-style="#{summary_index % 2 == 1 and 'background: #f8f9fa;' or ''}">
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd;">
+                                            <t t-esc="summary_index + 1"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd; font-weight: bold;">
+                                            <t t-esc="summary['so_name']"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd;">
+                                            <t t-esc="summary['carrier_name'] or 'N/A'"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                            <t t-esc="summary['product_name'] or 'N/A'"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd;">
+                                            <t t-esc="summary['scanned_count']"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd;">
+                                            <t t-esc="summary['total_ei']"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd;">
+                                            <span t-if="summary['scanned_count'] >= summary['total_ei']"
+                                                  style="color: #27ae60; font-weight: bold;">COMPLETA</span>
+                                            <span t-else=""
+                                                  style="color: #e67e22; font-weight: bold;">PARCIAL</span>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- ── DETALLE DE ESCANEOS ── -->
+                    <div style="margin-bottom: 20px;">
+                        <h3 style="font-size: 12pt; color: #2c3e50; border-bottom: 1px solid #bdc3c7; padding-bottom: 5px; margin-bottom: 10px;">
+                            Detalle de Escaneos
+                        </h3>
+                        <table style="width: 100%; border-collapse: collapse; font-size: 9pt;">
+                            <thead>
+                                <tr>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">#</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">Etiqueta EI</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">Orden SO</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">Producto</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">Carrier</th>
+                                    <th style="background: #2c3e50; color: white; padding: 6px 8px; text-align: left;">Fecha/Hora Escaneo</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="session.line_ids.sorted('scan_datetime')" t-as="line">
+                                    <tr t-attf-style="#{line_index % 2 == 1 and 'background: #f8f9fa;' or ''}">
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd;">
+                                            <t t-esc="line_index + 1"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd; font-weight: bold;">
+                                            <t t-esc="line.ei_name"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd;">
+                                            <t t-esc="line.so_name"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                            <t t-esc="line.product_name or 'N/A'"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd;">
+                                            <t t-esc="line.carrier_name or 'N/A'"/>
+                                        </td>
+                                        <td style="padding: 5px 8px; border-bottom: 1px solid #ddd;">
+                                            <span t-esc="line.scan_datetime" t-options="{'widget': 'datetime', 'format': 'dd/MM/yyyy HH:mm:ss'}"/>
+                                        </td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- ── FIRMAS ── -->
+                    <div style="display: flex; justify-content: space-around; margin-top: 50px; padding-top: 20px;">
+                        <div style="text-align: center; width: 40%;">
+                            <div style="border-bottom: 1px solid #2c3e50; margin-bottom: 8px; height: 50px;"/>
+                            <span style="font-size: 9pt; color: #7f8c8d;">Operador de Despacho</span>
+                        </div>
+                        <div style="text-align: center; width: 40%;">
+                            <div style="border-bottom: 1px solid #2c3e50; margin-bottom: 8px; height: 50px;"/>
+                            <span style="font-size: 9pt; color: #7f8c8d;">Recibe Paquetería</span>
+                        </div>
+                    </div>
+
+                </div>
+            </t>
+        </t>
+    </template>
+
+    <!-- Wrapper requerido por Odoo -->
+    <template id="report_dispatch_sheet">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="wmds.report_dispatch_sheet_document"/>
+            </t>
+        </t>
+    </template>
+
+    <!-- ── ACCIÓN DE REPORTE (asociable a impresora IoT) ── -->
+    <record id="action_report_dispatch_sheet" model="ir.actions.report">
+        <field name="name">Data - Hoja de Salida</field>
+        <field name="model">wmds.dispatch.session</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">wmds.report_dispatch_sheet_document</field>
+        <field name="report_file">wmds.report_dispatch_sheet_document</field>
+        <field name="paperformat_id" ref="base.paperformat_euro"/>
+        <field name="binding_type">report</field>
+    </record>
+
+</odoo>
