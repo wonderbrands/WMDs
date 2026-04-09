@@ -105,6 +105,7 @@ class DockNBin(http.Controller):
             orders = kw.get("orders")
             batch_id = kw.get("batch_id")
             pick_id = kw.get("pick_id")
+            carrier_id = kw.get("carrier_id")
 
             if not bin_name or not operator_login:
                 _logger.error("Faltan datos en move_to_bin")
@@ -115,6 +116,10 @@ class DockNBin(http.Controller):
             if not bin_storage:
                 _logger.error(f"Bin {bin_name} no encontrado")
                 return {'error': 'Bin not found'}
+
+            # Guardar el carrier en el BIN
+            if carrier_id:
+                bin_storage.write({'carrier_id': int(carrier_id)})
 
             bin_log = request.env["bin.log"].sudo().search([('bin_id', '=', bin_storage.id)], limit=1)
             if not bin_log:
@@ -285,7 +290,8 @@ class DockNBin(http.Controller):
                 "bin": bin_storage.name,
                 "packages": packages,
                 "package_details": package_details,
-                "total_packages": len(packages) + len(moves)
+                "total_packages": len(packages) + len(moves),
+                "carrier_name": bin_storage.carrier_id.name if bin_storage.carrier_id else "",
             }
         except Exception as e:
             return {"error": str(e), "valid": False}
@@ -469,7 +475,11 @@ class DockNBin(http.Controller):
                     "user": operator_orm.id if operator_orm else False,
                 })
 
-            bin_storage.state = 'available'
+            # Limpiar carrier del BIN al vaciarlo
+            bin_storage.write({
+                'state': 'available',
+                'carrier_id': False,
+            })
 
             return {"ok": True, "moved_packages": len(ei_tags) + len(moves)}
 

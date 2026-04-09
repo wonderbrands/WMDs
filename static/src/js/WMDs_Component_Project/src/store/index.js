@@ -493,6 +493,23 @@ export const useGeneralStore = defineStore('general_store', {
                             life: 4000 
                         });
                     } else {
+                        // Validar carrier si el componente tiene uno seleccionado
+                        if (component.selectedCarrierId) {
+                            const carrierCheck = await this.callOdoo("validate_ei_carrier", "", {
+                                so_name: response.so,
+                                carrier_id: component.selectedCarrierId,
+                            });
+                            if (!carrierCheck.valid) {
+                                this.toast.add({
+                                    severity: 'error',
+                                    summary: 'Carrier No Coincide',
+                                    detail: carrierCheck.message,
+                                    life: 6000
+                                });
+                                component.restartScanner();
+                                return;
+                            }
+                        }
                         component.so.push({
                             name: response.name,
                             so_name: response.so,
@@ -523,6 +540,7 @@ export const useGeneralStore = defineStore('general_store', {
                         component.scannedBin = binName;
                         component.packageCount = response.total_packages || 0;
                         component.packageDetails = response.package_details || [];
+                        component.binCarrierName = response.carrier_name || '';
                     } else {
                         this.toast.add({ 
                             severity: 'error', 

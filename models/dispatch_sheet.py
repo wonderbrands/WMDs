@@ -21,6 +21,9 @@ class WmdsDispatchSheet(models.Model):
     so_names = fields.Char(string="Órdenes de Venta", readonly=True)
     pdf_file = fields.Binary(string="PDF Hoja de Salida", attachment=True, readonly=True)
     pdf_filename = fields.Char(string="Nombre Archivo")
+    
+    
+    line_ids = fields.One2many(related='session_id.line_ids', string="Líneas de Escaneo", readonly=True)
 
     def action_download_pdf(self):
         """Abre el PDF almacenado para descarga / impresión."""
@@ -39,12 +42,16 @@ class WmdsDispatchSheet(models.Model):
 
     @api.model
     def create_from_session(self, session):
+        existing = self.search([('session_id', '=', session.id)], limit=1)
+        if existing:
+            return existing
+        
         report = self.env.ref('wmds.action_report_dispatch_sheet')
         pdf_content, _ = report._render_qweb_pdf(report.report_name, [session.id])
-
-        # Nombre limpio: HOJA-21-08Abr
+        
         date_str = fields.Datetime.now().strftime('%d%b')
-        name = f"HOJA-{session.id}-{date_str}"
+        carrier_label = session.carrier_id.name if session.carrier_id else "HOJA"
+        name = f"{carrier_label}-{session.id}-{date_str}"
 
         # Órdenes asociadas
         so_list = list({line.so_name for line in session.line_ids if line.so_name})

@@ -1,109 +1,156 @@
 <template>
     <div class="test-flow-container">
-        
-        <div class="scanner-col">
-            <div v-if="ready && !scan_bin && !showConfirmation" class="scanner-wrapper">
-                <BarcodeScannerComponent 
-                    :key="scannerKey"
-                    context="bin_scan_so"
-                    :extra_data="this"
-                    instructions="Escanea la etiqueta de orden SO"
-                />
-            </div>
-            <div v-else-if="ready && scan_bin && !showConfirmation" class="scanner-wrapper">
-                <Button 
-                    icon="fa fa-arrow-left" 
-                    @click="backToScanSO" 
-                    class="p-button-rounded p-button-secondary back-button" 
-                />
-                <QRScannerComponent 
-                    instructions="Escanea la ubicación BIN"
-                    :onScan="(data) => validateBin(data)"
-                />
-            </div>
 
-            <div v-else-if="showConfirmation" class="confirmation-wrapper">
-                <div class="confirmation-content">
-                    <i class="fa fa-exclamation-triangle confirmation-icon"></i>
-                    <h3>Confirmación de Traslado</h3>
-                    <p>Vas a mover <b>{{ so.length }}</b> órdenes al BIN: <b>{{ targetBin }}</b></p>
-                    <div class="confirmation-buttons">
-                        <Button label="Confirmar" icon="fa fa-check" class="p-button-success" @click="confirmMove" />
-                        <Button label="Re-escanear BIN" icon="fa fa-refresh" class="p-button-secondary" @click="cancelConfirmation" />
-                    </div>
-                </div>
+        <!-- ── Selección de Carrier (antes de escanear) ── -->
+        <div v-if="!selectedCarrierId && !loadingCarriers" class="carrier-select-overlay">
+            <div class="carrier-select-card">
+                <i class="fa fa-truck" style="font-size: 2.5rem; color: #3498db; margin-bottom: 10px;"></i>
+                <h3 style="margin: 0 0 5px;">Seleccione el Carrier</h3>
+                <span style="font-size: 0.8rem; color: #95a5a6; margin-bottom: 15px;">
+                    Los escaneos se asociarán a este carrier
+                </span>
+                <select v-model="carrierIdChoice" class="carrier-dropdown">
+                    <option :value="null" disabled>-- Seleccionar --</option>
+                    <option v-for="c in carrierList" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+                <Button
+                    label="Continuar"
+                    icon="fa fa-check"
+                    class="p-button-success"
+                    :disabled="!carrierIdChoice"
+                    @click="confirmCarrier"
+                />
+                <Button
+                    label="Cancelar"
+                    icon="fa fa-times"
+                    class="p-button-text p-button-danger p-button-sm"
+                    @click="exitFlow"
+                    style="margin-top: 5px;"
+                />
             </div>
         </div>
 
-        <div class="buttons-col" v-if="!showConfirmation">
-            <Button v-if="so.length > 0 && !scan_bin"
-                @click="goToScanBin"
-                class="p-button-success p-button-sm" 
-                label="Trasladar a BIN" 
-                icon="fa fa-paper-plane"
-            />
-            <Button v-if="so.length === 0 && !scan_bin && !lastUsedBin"
-                @click="goToScanBin"
-                class="p-button-warning p-button-sm" 
-                label="Bloquear un BIN" 
-                icon="fa fa-lock"
-            />
-            <Button v-if="lastUsedBin && so.length === 0"
-                @click="blockLastBin"
-                class="p-button-warning p-button-sm" 
-                :label="'Bloquear BIN ' + lastUsedBin" 
-                icon="fa fa-lock"
-            />
-            <Button v-if="lastUsedBin && so.length === 0"
-                @click="lastUsedBin = null"
-                class="p-button-text p-button-secondary p-button-sm" 
-                label="Limpiar BIN seleccionado" 
-                icon="fa fa-refresh"
-            />
-            <Button 
-                @click="exitFlow"
-                class="p-button-text p-button-danger p-button-sm" 
-                label="Salir / Finalizar" 
-                icon="fa fa-times"
-            />
-        </div>
+        <!-- ── Contenido principal (solo si hay carrier) ── -->
+        <template v-if="selectedCarrierId">
 
-        <div class="log-col">
-            <div class="log-header">
-                <div class="log-header-info">
-                    <span class="log-title">Resumen de Escaneo</span>
-                    <Button icon="fa fa-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0 && !showConfirmation"/>
-                </div>
+            <!-- Carrier indicator -->
+            <div class="carrier-indicator">
+                <i class="fa fa-truck"></i> {{ selectedCarrierName }}
+                <Button
+                    v-if="so.length === 0 && !scan_bin && !showConfirmation"
+                    icon="fa fa-pencil"
+                    class="p-button-text p-button-sm"
+                    style="color: white; margin-left: 8px; padding: 2px 6px;"
+                    @click="changeCarrier"
+                />
             </div>
 
-            <!-- Visualization of n/total -->
-            <div class="scan-summary-grid" v-if="scanSummary.length > 0">
-                <div v-for="item in scanSummary" :key="item.so_name" class="summary-card">
-                    <div class="summary-so">{{ item.so_name }}</div>
-                    <div class="summary-progress">
-                        <div class="progress-text">{{ item.total_scanned }} / {{ item.total }}</div>
-                        <div class="progress-bar">
-                            <div class="progress-fill" :style="{ width: (item.total_scanned / item.total * 100) + '%' }"></div>
+            <div class="scanner-col">
+                <div v-if="ready && !scan_bin && !showConfirmation" class="scanner-wrapper">
+                    <BarcodeScannerComponent 
+                        :key="scannerKey"
+                        context="bin_scan_so"
+                        :extra_data="this"
+                        instructions="Escanea la etiqueta de orden SO"
+                    />
+                </div>
+                <div v-else-if="ready && scan_bin && !showConfirmation" class="scanner-wrapper">
+                    <Button 
+                        icon="fa fa-arrow-left" 
+                        @click="backToScanSO" 
+                        class="p-button-rounded p-button-secondary back-button" 
+                    />
+                    <QRScannerComponent 
+                        instructions="Escanea la ubicación BIN"
+                        :onScan="(data) => validateBin(data)"
+                    />
+                </div>
+
+                <div v-else-if="showConfirmation" class="confirmation-wrapper">
+                    <div class="confirmation-content">
+                        <i class="fa fa-exclamation-triangle confirmation-icon"></i>
+                        <h3>Confirmación de Traslado</h3>
+                        <p>Vas a mover <b>{{ so.length }}</b> órdenes al BIN: <b>{{ targetBin }}</b></p>
+                        <p style="font-size: 0.85rem; color: #3498db;"><i class="fa fa-truck"></i> Carrier: <b>{{ selectedCarrierName }}</b></p>
+                        <div class="confirmation-buttons">
+                            <Button label="Confirmar" icon="fa fa-check" class="p-button-success" @click="confirmMove" />
+                            <Button label="Re-escanear BIN" icon="fa fa-refresh" class="p-button-secondary" @click="cancelConfirmation" />
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div class="log-list">
-                <div v-for="(order, index) in so" :key="index" class="log-item">
-                    <div>
-                        <i class="fa fa-barcode barcode-icon"></i>
-                        {{ order.name }}
-                        <small class="text-info ml-2">({{ order.current }}/{{ order.total }})</small>
+            <div class="buttons-col" v-if="!showConfirmation">
+                <Button v-if="so.length > 0 && !scan_bin"
+                    @click="goToScanBin"
+                    class="p-button-success p-button-sm" 
+                    label="Trasladar a BIN" 
+                    icon="fa fa-paper-plane"
+                />
+                <Button v-if="so.length === 0 && !scan_bin && !lastUsedBin"
+                    @click="goToScanBin"
+                    class="p-button-warning p-button-sm" 
+                    label="Bloquear un BIN" 
+                    icon="fa fa-lock"
+                />
+                <Button v-if="lastUsedBin && so.length === 0"
+                    @click="blockLastBin"
+                    class="p-button-warning p-button-sm" 
+                    :label="'Bloquear BIN ' + lastUsedBin" 
+                    icon="fa fa-lock"
+                />
+                <Button v-if="lastUsedBin && so.length === 0"
+                    @click="lastUsedBin = null"
+                    class="p-button-text p-button-secondary p-button-sm" 
+                    label="Limpiar BIN seleccionado" 
+                    icon="fa fa-refresh"
+                />
+                <Button 
+                    @click="exitFlow"
+                    class="p-button-text p-button-danger p-button-sm" 
+                    label="Salir / Finalizar" 
+                    icon="fa fa-times"
+                />
+            </div>
+
+            <div class="log-col">
+                <div class="log-header">
+                    <div class="log-header-info">
+                        <span class="log-title">Resumen de Escaneo</span>
+                        <Button icon="fa fa-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0 && !showConfirmation"/>
                     </div>
-                    <Button v-if="!showConfirmation" icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
                 </div>
-                <div v-if="so.length === 0" class="empty-log">
-                    <i class="fa fa-search search-icon"></i>
-                    Esperando escaneo de etiqueta EI (SOXXXX/N)...
+
+                <!-- Visualization of n/total -->
+                <div class="scan-summary-grid" v-if="scanSummary.length > 0">
+                    <div v-for="item in scanSummary" :key="item.so_name" class="summary-card">
+                        <div class="summary-so">{{ item.so_name }}</div>
+                        <div class="summary-progress">
+                            <div class="progress-text">{{ item.total_scanned }} / {{ item.total }}</div>
+                            <div class="progress-bar">
+                                <div class="progress-fill" :style="{ width: (item.total_scanned / item.total * 100) + '%' }"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="log-list">
+                    <div v-for="(order, index) in so" :key="index" class="log-item">
+                        <div>
+                            <i class="fa fa-barcode barcode-icon"></i>
+                            {{ order.name }}
+                            <small class="text-info ml-2">({{ order.current }}/{{ order.total }})</small>
+                        </div>
+                        <Button v-if="!showConfirmation" icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
+                    </div>
+                    <div v-if="so.length === 0" class="empty-log">
+                        <i class="fa fa-search search-icon"></i>
+                        Esperando escaneo de etiqueta EI (SOXXXX/N)...
+                    </div>
                 </div>
             </div>
-        </div>
+
+        </template>
     </div>
 </template>
 
@@ -124,12 +171,18 @@ export default {
         return {
             store: useGeneralStore(),
             scan_bin: false,
-            so: [], // Array of objects: { name, so_name, total, current }
+            so: [],
             ready: false,
             scannerKey: 0,
             showConfirmation: false,
             targetBin: null,
-            lastUsedBin: null
+            lastUsedBin: null,
+            // ── Carrier ──
+            carrierList: [],
+            carrierIdChoice: null,
+            selectedCarrierId: null,
+            selectedCarrierName: '',
+            loadingCarriers: true,
         }
     },
     computed: {
@@ -137,7 +190,6 @@ export default {
             const summaryMap = {};
             this.so.forEach(item => {
                 if (!summaryMap[item.so_name]) {
-                    // Start from the count already processed in Odoo
                     summaryMap[item.so_name] = { 
                         so_name: item.so_name, 
                         scanned: item.processed_count || 0, 
@@ -148,7 +200,6 @@ export default {
                 summaryMap[item.so_name].newly_scanned++;
             });
             
-            // Final count is what's in Odoo + what we scanned in this session
             const result = Object.values(summaryMap).map(item => {
                 return {
                     ...item,
@@ -158,15 +209,44 @@ export default {
             return result;
         }
     },
-    mounted() {
-        console.log("Action: Component mounted");
+    async mounted() {
+        console.log("Action: BinComponent mounted");
         localStorage.removeItem("mandatory_uncompleted");
+        await this.fetchCarrierList();
         setTimeout(() => {
             this.ready = true;
+            this.loadingCarriers = false;
             console.log("Action: Component ready state set to true");
         }, 500);
     },
     methods: {
+        // ── Carrier ──
+        async fetchCarrierList() {
+            try {
+                const res = await this.store.callOdoo("get_carrier_list", "", {});
+                if (res && res.ok) {
+                    this.carrierList = res.carriers;
+                }
+            } catch (e) {
+                console.error("Error cargando carriers:", e);
+            }
+        },
+
+        confirmCarrier() {
+            const c = this.carrierList.find(x => x.id === this.carrierIdChoice);
+            if (c) {
+                this.selectedCarrierId = c.id;
+                this.selectedCarrierName = c.name;
+            }
+        },
+
+        changeCarrier() {
+            this.selectedCarrierId = null;
+            this.selectedCarrierName = '';
+            this.carrierIdChoice = null;
+        },
+
+        // ── Existing methods ──
         restartScanner() {
             console.log("Action: restartScanner triggered");
             this.scannerKey++;
@@ -202,7 +282,6 @@ export default {
                         this.showConfirmation = true;
                         console.log("Action: Confirmation screen displayed for bin:", this.targetBin);
                     } else {
-                        // Modo "solo bloquear": ponemos el BIN como lastUsedBin para habilitar el botón de bloqueo
                         this.lastUsedBin = binName;
                         this.scan_bin = false;
                         this.$toast.add({ severity: 'info', summary: 'BIN seleccionado', detail: `El BIN ${binName} está listo para ser bloqueado.`, life: 3000 });
@@ -223,7 +302,8 @@ export default {
                 let response = await this.store.callOdoo("move_to_bin", "", {
                     bin: binName,
                     operator: this.store.role.email,
-                    orders: this.so.map(o => o.name)
+                    orders: this.so.map(o => o.name),
+                    carrier_id: this.selectedCarrierId,
                 });
 
                 if (response.ok) {
@@ -293,6 +373,52 @@ export default {
     overflow-y: auto;
     gap: 1rem;
     background: #fff;
+}
+
+/* ── Carrier Selection ── */
+.carrier-select-overlay {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
+
+.carrier-select-card {
+    background: #2c3e50;
+    border-radius: 12px;
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #ecf0f1;
+    gap: 8px;
+    min-width: 280px;
+}
+
+.carrier-dropdown {
+    width: 100%;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #3498db;
+    background: #34495e;
+    color: #ecf0f1;
+    font-size: 1rem;
+    margin-bottom: 10px;
+}
+
+.carrier-dropdown option {
+    background: #34495e;
+    color: #ecf0f1;
+}
+
+.carrier-indicator {
+    background: #3498db;
+    color: white;
+    padding: 6px 15px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    text-align: center;
 }
 
 .scanner-col {

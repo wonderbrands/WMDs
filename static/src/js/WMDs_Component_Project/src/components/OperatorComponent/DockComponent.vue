@@ -39,6 +39,9 @@
                             <span class="value">{{ targetDock }}</span>
                         </div>
                     </div>
+                    <p v-if="binCarrierName" style="font-size: 0.85rem; color: #3498db; margin-bottom: 5px;">
+                        <i class="fa fa-truck"></i> Carrier: <b>{{ binCarrierName }}</b>
+                    </p>
                     <p class="packages-alert">Se moverán <b>{{ packageCount }}</b> paquetes en total.</p>
                     <div class="confirmation-buttons">
                         <Button label="Confirmar Envío" icon="fa fa-check" class="p-button-success" @click="confirmDockMove" />
@@ -71,6 +74,10 @@
                 <div v-else class="active-status">
                     <div class="bin-scanned">
                         <i class="fa fa-archive me-2"></i> {{ scannedBin }}
+                    </div>
+                    <!-- Carrier del BIN -->
+                    <div v-if="binCarrierName" class="bin-carrier-tag">
+                        <i class="fa fa-truck"></i> {{ binCarrierName }}
                     </div>
                     <div class="package-count">
                         <i class="fa fa-check-circle me-1"></i> {{ packageCount }} paquetes detectados
@@ -117,7 +124,8 @@ export default {
             packageCount: 0,
             packageDetails: [],
             showDockConfirmation: false,
-            targetDock: null
+            targetDock: null,
+            binCarrierName: '',
         }
     },
     mounted() {
@@ -221,6 +229,7 @@ export default {
             this.scannedBin = null;
             this.packageCount = 0;
             this.packageDetails = [];
+            this.binCarrierName = '';
             this.showDockConfirmation = false;
             this.targetDock = null;
             this.scannerKey++;
@@ -388,6 +397,17 @@ export default {
     font-size: 1.5rem;
     color: #f39c12;
     margin-bottom: 5px;
+}
+
+.bin-carrier-tag {
+    background: #3498db;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: bold;
+    display: inline-block;
+    margin-bottom: 10px;
 }
 
 .package-count {

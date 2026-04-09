@@ -27,6 +27,9 @@ class BinCartStorage(models.Model):
         compute='_compute_qr_code',
         store=False
     )
+    
+    # ---------------------------------------------------------
+    carrier_id = fields.Many2one("carriers.list", string="Carrier")
 
     @api.depends('name')
     def _compute_qr_code(self):

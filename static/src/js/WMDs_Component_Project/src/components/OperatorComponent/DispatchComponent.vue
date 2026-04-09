@@ -13,89 +13,140 @@
 
         <!-- ═══════════ MODO INDIVIDUAL (ESCANEO) ═══════════ -->
         <div v-if="dispatchMode === 'individual' && !showPrintView" class="individual-mode">
-            
-            <!-- Session recovery banner -->
-            <div v-if="sessionRecovered" class="session-banner">
-                <i class="fa fa-info-circle"></i>
-                Sesión recuperada — {{ so.length }} escaneo(s) previo(s) restaurados.
-                <Button icon="fa fa-times" class="p-button-text p-button-sm session-banner-close" @click="sessionRecovered = false" />
-            </div>
 
-            <div class="scanner-col">
-                <div v-if="ready && !loadingSession" class="scanner-wrapper">
-                    <BarcodeScannerComponent 
-                        :key="scannerKey"
-                        instructions="Escanea la guía para despacho"
-                        :onScan="(data) => searchAndValidateSO(data)"
+            <!--seleccion de carrier-->
+            <div v-if="!sessionCarrierId && !loadingSession" class="carrier-select-overlay">
+                <div class="carrier-select-card">
+                    <i class="fa fa-truck" style="font-size: 2.5rem; color: #3498db; margin-bottom: 10px;"></i>
+                    <h3 style="margin: 0 0 5px;">Seleccione el Carrier</h3>
+                    <span style="font-size: 0.8rem; color: #95a5a6; margin-bottom: 15px;">
+                        La sesión será exclusiva para este carrier
+                    </span>
+                    <select v-model="selectedCarrierId" class="carrier-dropdown">
+                        <option :value="null" disabled>-- Seleccionar --</option>
+                        <option v-for="c in carrierList" :key="c.id" :value="c.id">{{ c.name }}</option>
+                    </select>
+                    <Button
+                        label="Iniciar Sesión"
+                        icon="fa fa-check"
+                        class="p-button-success"
+                        :disabled="!selectedCarrierId"
+                        @click="confirmCarrier"
+                    />
+                    <Button
+                        label="Cancelar"
+                        icon="fa fa-times"
+                        class="p-button-text p-button-danger p-button-sm"
+                        @click="exitFlow"
+                        style="margin-top: 5px;"
                     />
                 </div>
-                <div v-else-if="loadingSession" class="scanner-wrapper loading-session">
-                    <i class="fa fa-spin fa-spinner loading-icon"></i>
+            </div>
+
+            <!-- ── Loading session ── -->
+            <div v-else-if="loadingSession" class="carrier-select-overlay">
+                <div class="carrier-select-card">
+                    <i class="fa fa-spin fa-spinner" style="font-size: 2rem;"></i>
                     <span>Recuperando sesión...</span>
                 </div>
             </div>
 
-            <div class="buttons-col">
-                <Button v-if="so.length > 0"
-                    @click="dispatchToCarrier"
-                    class="p-button-success p-button-sm" 
-                    label="Entregar a paquetería" 
-                    icon="fa fa-truck"
-                    :loading="dispatching"
-                />
-                <Button 
-                    @click="exitFlow"
-                    class="p-button-text p-button-danger p-button-sm" 
-                    label="Salir / Finalizar" 
-                    icon="fa fa-times"
-                />
-            </div>
+            <!-- ── Contenido principal (solo si hay carrier seleccionado) ── -->
+            <template v-if="sessionCarrierId">
 
-            <div class="log-col">
-                <div class="log-header">
-                    <div class="log-header-info">
-                        <span class="log-title">Resumen de Despacho</span>
-                        <Button icon="fa fa-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0"/>
+                <!-- Session recovery banner -->
+                <div v-if="sessionRecovered" class="session-banner">
+                    <i class="fa fa-info-circle"></i>
+                    Sesión recuperada — {{ so.length }} escaneo(s) previo(s) restaurados.
+                    <span style="margin-left: 8px; font-weight: bold;">| Carrier: {{ sessionCarrierName }}</span>
+                    <Button icon="fa fa-times" class="p-button-text p-button-sm session-banner-close" @click="sessionRecovered = false" />
+                </div>
+
+                <!-- Carrier indicator -->
+                <div class="carrier-indicator">
+                    <i class="fa fa-truck"></i> {{ sessionCarrierName }}
+                    <Button
+                        v-if="so.length === 0"
+                        icon="fa fa-pencil"
+                        class="p-button-text p-button-sm"
+                        style="color: white; margin-left: 8px; padding: 2px 6px;"
+                        @click="changeCarrier"
+                    />
+                </div>
+
+                <div class="scanner-col">
+                    <div v-if="ready" class="scanner-wrapper">
+                        <BarcodeScannerComponent 
+                            :key="scannerKey"
+                            instructions="Escanea la guía para despacho"
+                            :onScan="(data) => searchAndValidateSO(data)"
+                        />
                     </div>
                 </div>
 
-                <!-- Visualization of n/total -->
-                <div class="scan-summary-grid" v-if="scanSummary.length > 0">
-                    <div v-for="item in scanSummary" :key="item.so_name" class="summary-card">
-                        <div class="summary-so">{{ item.so_name }}</div>
-                        <div class="summary-carrier" v-if="item.carrier_name">
-                            <i class="fa fa-truck"></i> {{ item.carrier_name }}
+                <div class="buttons-col">
+                    <Button v-if="so.length > 0"
+                        @click="dispatchToCarrier"
+                        class="p-button-success p-button-sm" 
+                        label="Entregar a paquetería" 
+                        icon="fa fa-truck"
+                        :loading="dispatching"
+                    />
+                    <Button 
+                        @click="exitFlow"
+                        class="p-button-text p-button-danger p-button-sm" 
+                        label="Salir / Finalizar" 
+                        icon="fa fa-times"
+                    />
+                </div>
+
+                <div class="log-col">
+                    <div class="log-header">
+                        <div class="log-header-info">
+                            <span class="log-title">Resumen de Despacho</span>
+                            <Button icon="fa fa-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0"/>
                         </div>
-                        <div class="summary-progress">
-                            <div class="progress-text">{{ item.total_scanned }} / {{ item.total }}</div>
-                            <div class="progress-bar">
-                                <div class="progress-fill" :style="{ width: (item.total_scanned / item.total * 100) + '%' }"></div>
+                    </div>
+
+                    <!-- Visualization of n/total -->
+                    <div class="scan-summary-grid" v-if="scanSummary.length > 0">
+                        <div v-for="item in scanSummary" :key="item.so_name" class="summary-card">
+                            <div class="summary-so">{{ item.so_name }}</div>
+                            <div class="summary-carrier" v-if="item.carrier_name">
+                                <i class="fa fa-truck"></i> {{ item.carrier_name }}
                             </div>
+                            <div class="summary-progress">
+                                <div class="progress-text">{{ item.total_scanned }} / {{ item.total }}</div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" :style="{ width: (item.total_scanned / item.total * 100) + '%' }"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="log-list">
+                        <div v-for="(order, index) in so" :key="index" class="log-item">
+                            <div class="log-item-info">
+                                <div>
+                                    <i class="fa fa-barcode barcode-icon"></i>
+                                    {{ order.name }}
+                                    <small class="text-info ml-2">({{ order.current }}/{{ order.total }})</small>
+                                </div>
+                                <div v-if="order.product_name" class="log-item-product">
+                                    <small>{{ order.product_name }}</small>
+                                </div>
+                            </div>
+                            <Button icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
+                        </div>
+                        
+                        <div v-if="so.length === 0" class="empty-log">
+                            <i class="fa fa-archive search-icon"></i>
+                            Esperando escaneo de etiqueta EI (SOXXXX/N)...
                         </div>
                     </div>
                 </div>
 
-                <div class="log-list">
-                    <div v-for="(order, index) in so" :key="index" class="log-item">
-                        <div class="log-item-info">
-                            <div>
-                                <i class="fa fa-barcode barcode-icon"></i>
-                                {{ order.name }}
-                                <small class="text-info ml-2">({{ order.current }}/{{ order.total }})</small>
-                            </div>
-                            <div v-if="order.product_name" class="log-item-product">
-                                <small>{{ order.product_name }}</small>
-                            </div>
-                        </div>
-                        <Button icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
-                    </div>
-                    
-                    <div v-if="so.length === 0" class="empty-log">
-                        <i class="fa fa-archive search-icon"></i>
-                        Esperando escaneo de etiqueta EI (SOXXXX/N)...
-                    </div>
-                </div>
-            </div>
+            </template>
         </div>
 
         <!-- ═══════════ VISTA DE IMPRESION (HOJA DE SALIDA) ═══════════ -->
@@ -122,6 +173,7 @@
                         <span class="sheet-subtitle">Registro de Despacho a Paquetería</span>
                     </div>
                     <div class="sheet-meta">
+                        <div><strong>Carrier:</strong> {{ printData.carrier_name || 'N/A' }}</div>
                         <div><strong>Fecha de Despacho:</strong> {{ printData.date_end_formatted }}</div>
                         <div><strong>Operador:</strong> {{ printData.operator_name }}</div>
                         <div><strong>Sesión ID:</strong> #{{ printData.session_id }}</div>
@@ -222,7 +274,11 @@ export default {
     data() {
         return {
             store: useGeneralStore(),
+<<<<<<< Updated upstream
             so: [], 
+=======
+            so: [],
+>>>>>>> Stashed changes
             ready: false,
             scannerKey: 0,
             dispatchMode: 'individual',
@@ -230,10 +286,20 @@ export default {
             sessionId: null,
             loadingSession: true,
             sessionRecovered: false,
+<<<<<<< Updated upstream
+=======
+            // ── Carrier ──
+            carrierList: [],
+            selectedCarrierId: null,
+            sessionCarrierId: null,
+            sessionCarrierName: '',
+            // ── Impresión ──
+>>>>>>> Stashed changes
             showPrintView: false,
             printData: {
                 session_id: null,
                 operator_name: '',
+                carrier_name: '',
                 date_start: '',
                 date_end_formatted: '',
                 lines: [],
@@ -278,6 +344,10 @@ export default {
         console.log("Action: DispatchComponent mounted");
         localStorage.removeItem("mandatory_uncompleted");
 
+<<<<<<< Updated upstream
+=======
+        await this.fetchCarrierList();
+>>>>>>> Stashed changes
         await this.recoverSession();
 
         setTimeout(() => {
@@ -291,6 +361,7 @@ export default {
         }
     },
     methods: {
+<<<<<<< Updated upstream
         async refreshData() {
             this.loadingSession = true;
             await this.recoverSession();
@@ -300,6 +371,34 @@ export default {
             this.loadingSession = false;
             this.scannerKey++;
         },
+=======
+        // ═══════════════════════════════════════════
+        // CARRIER — Selección y carga
+        // ═══════════════════════════════════════════
+
+        async fetchCarrierList() {
+            try {
+                const res = await this.store.callOdoo("get_carrier_list", "", {});
+                if (res && res.ok) {
+                    this.carrierList = res.carriers;
+                }
+            } catch (e) {
+                console.error("Error cargando carriers:", e);
+            }
+        },
+
+        confirmCarrier() {
+            const c = this.carrierList.find(x => x.id === this.selectedCarrierId);
+            if (c) {
+                this.sessionCarrierId = c.id;
+                this.sessionCarrierName = c.name;
+            }
+        },
+
+        // ═══════════════════════════════════════════
+        // SESIÓN PERSISTENTE — Métodos principales
+        // ═══════════════════════════════════════════
+>>>>>>> Stashed changes
 
         async recoverSession() {
             try {
@@ -309,6 +408,12 @@ export default {
 
                 if (response && response.active && response.lines && response.lines.length > 0) {
                     this.sessionId = response.session_id;
+
+                    // Restaurar carrier de la sesión
+                    if (response.carrier_id) {
+                        this.sessionCarrierId = response.carrier_id;
+                        this.sessionCarrierName = response.carrier_name || '';
+                    }
                     
                     this.so = response.lines.map(line => ({
                         name: line.ei_name,
@@ -329,13 +434,17 @@ export default {
                     if (this.$toast) {
                         this.$toast.add({ 
                             severity: 'info', 
-                            summary: 'Sesión Recuperada', 
+                            summary: 'Sesión recuperada', 
                             detail: `Se restauraron ${this.so.length} escaneo(s) de tu sesión anterior.`, 
                             life: 4000 
                         });
                     }
                 } else if (response && response.active) {
                     this.sessionId = response.session_id;
+                    if (response.carrier_id) {
+                        this.sessionCarrierId = response.carrier_id;
+                        this.sessionCarrierName = response.carrier_name || '';
+                    }
                 }
             } catch (e) {
                 console.error("Error recuperando sesión:", e);
@@ -351,7 +460,23 @@ export default {
                     total: orderData.total,
                     current: orderData.current,
                     dispatched_count: orderData.dispatched_count || 0,
+                    carrier_id: this.sessionCarrierId,
                 });
+
+                // Carrier mismatch — rechazado por el backend
+                if (response && response.carrier_mismatch) {
+                    const idx = this.so.findIndex(o => o.name === orderData.name);
+                    if (idx !== -1) this.so.splice(idx, 1);
+                    if (this.$toast) {
+                        this.$toast.add({
+                            severity: 'error',
+                            summary: 'Carrier No Coincide',
+                            detail: response.mismatch_message,
+                            life: 6000
+                        });
+                    }
+                    return;
+                }
 
                 if (response && response.ok) {
                     this.sessionId = response.session_id;
@@ -398,6 +523,7 @@ export default {
                     this.printData = {
                         session_id: response.session_id,
                         operator_name: response.operator_name,
+                        carrier_name: response.carrier_name || this.sessionCarrierName || '',
                         date_start: response.date_start,
                         date_end_formatted: this.formatDateTime(response.date_end),
                         lines: response.lines,
@@ -424,6 +550,21 @@ export default {
             }
         },
 
+<<<<<<< Updated upstream
+=======
+        async changeCarrier() {
+            await this.cancelSession();
+            this.sessionCarrierId = null;
+            this.sessionCarrierName = '';
+            this.selectedCarrierId = null;
+            this.so = [];
+        },
+
+        // ═══════════════════════════════════════════
+        // ESCANEO — Lógica existente + persistencia
+        // ═══════════════════════════════════════════
+
+>>>>>>> Stashed changes
         setMode(mode) {
             this.dispatchMode = mode;
             if (mode === 'full') {
@@ -469,7 +610,7 @@ export default {
                         if(this.$toast) {
                             this.$toast.add({ 
                                 severity: 'error', 
-                                summary: 'Pedido Cancelado', 
+                                summary: 'Pedido cancelado', 
                                 detail: `El pedido ${response.so} está cancelado y no puede ser despachado.`, 
                                 life: 5000 
                             });
@@ -487,7 +628,7 @@ export default {
                         if(this.$toast) {
                             this.$toast.add({ 
                                 severity: 'error', 
-                                summary: 'Ubicación Incorrecta', 
+                                summary: 'Ubicación incorrecta', 
                                 detail: `La guía ${data} no se encuentra en un DOCK y no puede ser despachada.`, 
                                 life: 4000 
                             });
@@ -507,13 +648,17 @@ export default {
                         };
                         this.so.push(newItem);
 
+<<<<<<< Updated upstream
+=======
+                        // ── Persistir en backend (valida carrier) ──
+>>>>>>> Stashed changes
                         await this.persistScanToSession(newItem);
                     }
                 } else {
                     if(this.$toast) {
                         this.$toast.add({ 
                             severity: 'error', 
-                            summary: 'Guía Inválida', 
+                            summary: 'Guía inválida', 
                             detail: 'El código escaneado no corresponde a una guía válida para despacho o el formato es incorrecto.', 
                             life: 4000 
                         });
@@ -543,7 +688,7 @@ export default {
                 if (this.$toast) {
                     this.$toast.add({ 
                         severity: 'error', 
-                        summary: 'Pedido(s) Cancelado(s)', 
+                        summary: 'Pedido(s) cancelado(s)', 
                         detail: `No se puede despachar porque los pedidos ${names} están cancelados. Por favor remuévalos de la lista.`, 
                         life: 6000 
                     });
@@ -564,7 +709,7 @@ export default {
                     if (response.warning) {
                         this.$toast.add({ 
                             severity: 'warn', 
-                            summary: 'Entrega Parcial', 
+                            summary: 'Entrega parcial', 
                             detail: 'Se procesaron las guías, pero hay advertencias: ' + response.warning, 
                             life: 6000 
                         });
@@ -573,7 +718,7 @@ export default {
                         if (!isManager) {
                             this.$toast.add({ 
                                 severity: 'success', 
-                                summary: 'Despacho Completado', 
+                                summary: 'Despacho completado', 
                                 detail: 'Todas las órdenes han sido entregadas. Generando hoja de salida...', 
                                 life: 4000 
                             });
@@ -597,7 +742,7 @@ export default {
                 if(this.$toast) {
                     this.$toast.add({ 
                         severity: 'error', 
-                        summary: 'Error de Entrega', 
+                        summary: 'Error de entrega', 
                         detail: 'No se pudo completar la entrega a paquetería. Detalle técnico: ' + (e.message || 'Error desconocido'), 
                         life: 5000 
                     });
@@ -629,6 +774,7 @@ export default {
             this.printData = {
                 session_id: this.sessionId || 'N/A',
                 operator_name: this.store.role.user || this.store.role.name || '',
+                carrier_name: this.sessionCarrierName || '',
                 date_start: '',
                 date_end_formatted: this.formatDateTime(now.toISOString()),
                 lines: this.so.map(item => ({
@@ -650,7 +796,6 @@ export default {
        async printSheet() {
             this.iotPrinting = true;
             try {
-                // 1. Pedimos la acción al backend Python
                 const response = await this.store.callOdoo("print_dispatch_sheet", "", {
                     session_id: this.printData.session_id,
                 });
@@ -660,17 +805,14 @@ export default {
 
                     let actionService = null;
 
-                    // A) Intentamos buscar el entorno OWL global (Modo Debug de Odoo)
                     if (window.odoo && window.odoo.__WOWL_DEBUG__ && window.odoo.__WOWL_DEBUG__.root) {
                         actionService = window.odoo.__WOWL_DEBUG__.root.env.services.action;
                     }
 
-                    // B) Si no lo encuentra, hackeamos el DOM para extraer el motor nativo de Odoo 18
                     if (!actionService) {
                         const webClient = document.querySelector('.o_web_client');
                         if (webClient && webClient.__owl__) {
                             const owlInstance = webClient.__owl__;
-                            // En Odoo 17/18 la estructura del entorno varía ligeramente, buscamos ambas:
                             if (owlInstance.app && owlInstance.app.env) {
                                 actionService = owlInstance.app.env.services.action;
                             } else if (owlInstance.env) {
@@ -679,18 +821,14 @@ export default {
                         }
                     }
 
-                    // C) ¡Ejecutamos la magia!
                     if (actionService) {
                         console.log("¡Puente Odoo-Vue encontrado! Enviando silenciosamente a IoT Box...");
-                        
-                        // Esto le dice a Odoo que maneje la impresión, interceptando CORS e IPs por nosotros
                         await actionService.doAction(response.action);
                         
                         if (this.$toast) {
-                            this.$toast.add({ severity: 'success', summary: 'Impresión IoT', detail: 'Hoja de salida enviada correctamente.', life: 3000 });
+                            this.$toast.add({ severity: 'success', summary: 'Impresión enviada', detail: 'Hoja de salida enviada correctamente.', life: 3000 });
                         }
                     } else {
-                        // Si por alguna razón extrema no encontramos Odoo, abrimos el PDF
                         console.warn("No se pudo conectar Vue con el ActionManager de Odoo. Abriendo PDF...");
                         const pdfUrl = window.location.origin + `/report/pdf/wmds.report_dispatch_sheet_document/${this.printData.session_id}`;
                         window.open(pdfUrl, '_blank');
@@ -699,7 +837,7 @@ export default {
                 } else {
                     console.error("Error del servidor:", response?.error);
                     if (this.$toast) {
-                        this.$toast.add({ severity: 'error', summary: 'Error de Impresión', detail: response?.error || 'No se recibió la acción.', life: 4000 });
+                        this.$toast.add({ severity: 'error', summary: 'Error de impresión', detail: response?.error || 'No se recibió la acción.', life: 4000 });
                     }
                 }
             } catch (e) {
@@ -713,7 +851,10 @@ export default {
             this.showPrintView = false;
             this.so = [];
             this.sessionId = null;
-            this.printData = { session_id: null, operator_name: '', date_start: '', date_end_formatted: '', lines: [], so_summary: [], total_lines: 0 };
+            this.sessionCarrierId = null;
+            this.sessionCarrierName = '';
+            this.selectedCarrierId = null;
+            this.printData = { session_id: null, operator_name: '', carrier_name: '', date_start: '', date_end_formatted: '', lines: [], so_summary: [], total_lines: 0 };
             this.store.mandatory_uncompleted.doneMandatory();
         },
 
@@ -732,18 +873,37 @@ export default {
             }
         },
 
+<<<<<<< Updated upstream
         exitFlow() {
             if (this.so.length > 0 || (this.dispatchMode === 'full' && this.pendingFullItems.some(i => i.dispatchQty < i.qty))) {
+=======
+        // ═══════════════════════════════════════════
+        // ACCIONES DE LISTA — Con persistencia
+        // ═══════════════════════════════════════════
+       
+        async exitFlow() {
+            console.log("Action: exitFlow triggered");
+            if (this.so.length > 0) {
+>>>>>>> Stashed changes
                 const action = confirm(
                     "Tienes escaneos en esta sesión.\n\n" +
-                    "• Aceptar = Salir SIN cancelar la sesión (podrás retomarla después)\n" +
+                    "• Aceptar = Salir y CANCELAR la sesión actual\n" +
                     "• Cancelar = Volver al escaneo"
                 );
+<<<<<<< Updated upstream
                 if (!action) {
                     return;
                 }
             }
+=======
+                if (!action) return;
+            }
+            await this.cancelSession();
+>>>>>>> Stashed changes
             this.so = [];
+            this.sessionCarrierId = null;
+            this.sessionCarrierName = '';
+            this.selectedCarrierId = null;
             this.store.mandatory_uncompleted.doneMandatory();
         },
 
@@ -765,7 +925,7 @@ export default {
             if (item.dispatchQty <= 0) return;
             if (item.dispatchQty > item.qty) {
                 item.dispatchQty = item.qty;
-                this.$toast.add({ severity: 'warn', summary: 'Cantidad Ajustada', detail: 'Se ha ajustado automáticamente al máximo disponible.', life: 3000 });
+                this.$toast.add({ severity: 'warn', summary: 'Cantidad ajustada', detail: 'Se ha ajustado automáticamente al máximo disponible.', life: 3000 });
             }
             try {
                 const response = await this.store.callOdoo("dispatch_full_items", "", {
@@ -780,7 +940,7 @@ export default {
                     this.fetchPendingFullItems();
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error de Despacho', detail: 'Detalle técnico: ' + (e.message || 'Error desconocido'), life: 4000 });
+                this.$toast.add({ severity: 'error', summary: 'Error de despacho', detail: 'Detalle técnico: ' + (e.message || 'Error desconocido'), life: 4000 });
             }
         },
 
@@ -793,7 +953,7 @@ export default {
                 return { move_id: i.id, qty: i.dispatchQty };
             });
             if (adjusted) {
-                this.$toast.add({ severity: 'warn', summary: 'Ajuste de Cantidades', detail: 'Algunas cantidades fueron ajustadas.', life: 3000 });
+                this.$toast.add({ severity: 'warn', summary: 'Ajuste de cantidades', detail: 'Algunas cantidades fueron ajustadas.', life: 3000 });
             }
             try {
                 const response = await this.store.callOdoo("dispatch_full_items", "", {
@@ -803,12 +963,12 @@ export default {
                 if (response.status === "success") {
                     const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
                     if (!isManager) {
-                        this.$toast.add({ severity: 'success', summary: 'Despacho Exitoso', detail: 'Productos despachados correctamente.', life: 3000 });
+                        this.$toast.add({ severity: 'success', summary: 'Despacho exitoso', detail: 'Productos despachados correctamente.', life: 3000 });
                     }
                     this.fetchPendingFullItems();
                 }
             } catch (e) {
-                this.$toast.add({ severity: 'error', summary: 'Error en Despacho Masivo', detail: 'Detalle técnico: ' + (e.message || 'Error desconocido'), life: 4000 });
+                this.$toast.add({ severity: 'error', summary: 'Error en despacho masivo', detail: 'Detalle técnico: ' + (e.message || 'Error desconocido'), life: 4000 });
             }
         },
 
@@ -949,6 +1109,47 @@ export default {
 
 .log-title {
     font-weight: bold;
+}
+
+/* ── Carrier Selection ── */
+.carrier-select-overlay {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+}
+
+.carrier-select-card {
+    background: #2c3e50;
+    border-radius: 12px;
+    padding: 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: #ecf0f1;
+    gap: 8px;
+    min-width: 280px;
+}
+
+.carrier-dropdown {
+    width: 100%;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #3498db;
+    background: #34495e;
+    color: #000000;
+    font-size: 1rem;
+    margin-bottom: 10px;
+}
+
+.carrier-indicator {
+    background: #3498db;
+    color: white;
+    padding: 6px 15px;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    text-align: center;
 }
 
 /* ── Session Banner ── */

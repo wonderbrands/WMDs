@@ -1,8 +1,12 @@
-from odoo import models, api
+from odoo import models, api, fields
 
 
 class WmdsDispatchSessionReport(models.Model):
     _inherit = 'wmds.dispatch.session'
+    
+    carrier_id = fields.Many2one("carriers.list", string="Carrier de sesión")
+
+    carrier_name_session = fields.Char(related="carrier_id.name", store=True, string="Carrier")
 
     def _get_so_summary(self):
         """

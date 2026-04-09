@@ -252,6 +252,21 @@
                         <field name="pdf_file" filename="pdf_filename" widget="binary"/>
                         <field name="pdf_filename" invisible="1"/>
                     </group>
+                    <notebook>
+                        <page string="Detalle de Escaneos">
+                            <field name="line_ids" readonly="1">
+                                <list>
+                                    <field name="ei_name"/>
+                                    <field name="so_name"/>
+                                    <field name="product_name"/>
+                                    <field name="carrier_name"/>
+                                    <field name="scan_datetime"/>
+                                    <field name="sequence_number"/>
+                                    <field name="total_ei"/>
+                                </list>
+                            </field>
+                        </page>
+                    </notebook>
                 </sheet>
             </form>
         </field>

@@ -8,6 +8,45 @@ _logger = logging.getLogger(__name__)
 class DispatchSessionController(http.Controller):
 
     # ─────────────────────────────────────────────
+    # VALIDATE EI CARRIER — shared by BIN and DISPATCH
+    # ─────────────────────────────────────────────
+    @http.route('/wmds/v2/engine/post/validate_ei_carrier', type='json', auth='user', methods=['POST'], csrf=True)
+    def validate_ei_carrier(self, **kw):
+        """
+        Valida si la EI (vía so_name) pertenece al carrier indicado.
+        Usado por BinComponent y DispatchComponent antes de aceptar un escaneo.
+        """
+        try:
+            so_name = kw.get("so_name")
+            carrier_id = kw.get("carrier_id")
+
+            if not so_name or not carrier_id:
+                return {"valid": True}
+
+            so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
+            if not so:
+                return {"valid": True}
+
+            so_carrier = so.data_carrier_selection_relational
+            if not so_carrier:
+                return {"valid": True}
+
+            session_carrier = request.env["carriers.list"].sudo().browse(int(carrier_id))
+            if so_carrier.id != session_carrier.id:
+                return {
+                    "valid": False,
+                    "so_carrier": so_carrier.name,
+                    "session_carrier": session_carrier.name,
+                    "message": f"Carrier no coincide. Seleccionado: {session_carrier.name} — Orden {so_name}: {so_carrier.name}.",
+                }
+
+            return {"valid": True}
+
+        except Exception as e:
+            _logger.error(f"Error en validate_ei_carrier: {e}")
+            return {"valid": True}
+
+    # ─────────────────────────────────────────────
     # GET / RECOVER active session for an operator
     # ─────────────────────────────────────────────
     @http.route('/wmds/v2/engine/post/get_dispatch_session', type='json', auth='user', methods=['POST'], csrf=True)
@@ -59,6 +98,8 @@ class DispatchSessionController(http.Controller):
                 "session_id": session.id,
                 "date_start": fields.Datetime.to_string(session.date_start),
                 "operator_name": session.operator_name,
+                "carrier_id": session.carrier_id.id if session.carrier_id else None,
+                "carrier_name": session.carrier_id.name if session.carrier_id else None,
                 "lines": lines
             }
 
@@ -78,8 +119,9 @@ class DispatchSessionController(http.Controller):
         """
         try:
             operator_login = kw.get("operator_login")
-            ei_name = kw.get("ei_name")        # e.g. "SO12345/1"
-            so_name = kw.get("so_name")        # e.g. "SO12345"
+            carrier_id = kw.get("carrier_id")
+            ei_name = kw.get("ei_name")
+            so_name = kw.get("so_name")
             total = kw.get("total", 0)
             current = kw.get("current", 0)
             dispatched_count = kw.get("dispatched_count", 0)
@@ -98,9 +140,12 @@ class DispatchSessionController(http.Controller):
             ], limit=1, order='date_start desc')
 
             if not session:
+                if not carrier_id:
+                    return {"ok": False, "error": "Debe seleccionar un carrier antes de escanear"}
                 session = request.env["wmds.dispatch.session"].sudo().create({
                     'operator_id': operator.id,
                     'state': 'active',
+                    'carrier_id': int(carrier_id),
                 })
                 _logger.info(f"Nueva sesión de despacho creada: {session.id} para {operator_login}")
 
@@ -118,6 +163,17 @@ class DispatchSessionController(http.Controller):
             carrier_name = ""
 
             so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
+
+            # Validar carrier — IMPORTANTE: NO usar key "error" para evitar toast genérico de callOdoo
+            if so and session.carrier_id:
+                so_carrier = so.data_carrier_selection_relational
+                if so_carrier and so_carrier.id != session.carrier_id.id:
+                    return {
+                        "ok": False,
+                        "carrier_mismatch": True,
+                        "mismatch_message": f"Carrier no coincide. Sesión: {session.carrier_id.name} — Orden: {so_carrier.name}.",
+                    }
+
             if so:
                 # Carrier
                 if so.data_carrier_selection_relational:
@@ -198,7 +254,7 @@ class DispatchSessionController(http.Controller):
             return {"ok": False, "error": str(e)}
 
     # ─────────────────────────────────────────────
-    # CLEAR all lines from the session (Limpiar Todo)
+    # CLEAR all lines from the session
     # ─────────────────────────────────────────────
     @http.route('/wmds/v2/engine/post/clear_dispatch_session', type='json', auth='user', methods=['POST'], csrf=True)
     def clear_dispatch_session(self, **kw):
@@ -227,7 +283,7 @@ class DispatchSessionController(http.Controller):
             return {"ok": False, "error": str(e)}
 
     # ─────────────────────────────────────────────
-    # COMPLETE session (after successful dispatch)
+    # COMPLETE session
     # ─────────────────────────────────────────────
     @http.route('/wmds/v2/engine/post/complete_dispatch_session', type='json', auth='user', methods=['POST'], csrf=True)
     def complete_dispatch_session(self, **kw):
@@ -257,7 +313,8 @@ class DispatchSessionController(http.Controller):
                 'date_end': fields.Datetime.now(),
             })
 
-            # Construir datos para la hoja de salida
+            request.env["wmds.dispatch.sheet"].sudo().create_from_session(session)
+
             lines_data = []
             so_summary = {}
             for line in session.line_ids.sorted('scan_datetime'):
@@ -271,7 +328,7 @@ class DispatchSessionController(http.Controller):
                     "total_ei": line.total_ei,
                 })
 
-                # Agrupar por SO para el resumen
+                #Agrupar por SO para el resumen
                 if line.so_name not in so_summary:
                     so_summary[line.so_name] = {
                         "so_name": line.so_name,
@@ -288,6 +345,7 @@ class DispatchSessionController(http.Controller):
                 "ok": True,
                 "session_id": session.id,
                 "operator_name": session.operator_name,
+                "carrier_name": session.carrier_id.name if session.carrier_id else "",
                 "date_start": fields.Datetime.to_string(session.date_start),
                 "date_end": fields.Datetime.to_string(session.date_end),
                 "lines": lines_data,
@@ -300,7 +358,7 @@ class DispatchSessionController(http.Controller):
             return {"ok": False, "error": str(e)}
 
     # ─────────────────────────────────────────────
-    # CANCEL session (operator exits without completing)
+    # CANCEL session
     # ─────────────────────────────────────────────
     @http.route('/wmds/v2/engine/post/cancel_dispatch_session', type='json', auth='user', methods=['POST'], csrf=True)
     def cancel_dispatch_session(self, **kw):
@@ -333,7 +391,7 @@ class DispatchSessionController(http.Controller):
             return {"ok": False, "error": str(e)}
 
     # ─────────────────────────────────────────────
-    # GET active sessions (for Manager visibility)
+    # GET active sessions (Manager)
     # ─────────────────────────────────────────────
     @http.route('/wmds/v2/engine/post/get_active_dispatch_sessions', type='json', auth='user', methods=['POST'], csrf=True)
     def get_active_dispatch_sessions(self, **kw):
@@ -366,3 +424,18 @@ class DispatchSessionController(http.Controller):
         except Exception as e:
             _logger.error(f"Error en get_active_dispatch_sessions: {e}")
             return {"sessions": [], "error": str(e)}
+
+    # ─────────────────────────────────────────────
+    # GET carrier list
+    # ─────────────────────────────────────────────
+    @http.route('/wmds/v2/engine/post/get_carrier_list', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_carrier_list(self, **kw):
+        try:
+            carriers = request.env["carriers.list"].sudo().search([], order="name")
+            return {
+                "ok": True,
+                "carriers": [{"id": c.id, "name": c.name} for c in carriers]
+            }
+        except Exception as e:
+            _logger.error(f"Error en get_carrier_list: {e}")
+            return {"ok": False, "carriers": []}
