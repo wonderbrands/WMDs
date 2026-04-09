@@ -29,8 +29,9 @@ class PendingTasks(http.Controller):
                 "ingresos": "Recepciones",
                 "acomodo": "Storage",
                 "pack": "Pack",
-                "reabastecimiento": "Traslados  internos            ",
-                "dispatch_ful": "Resurtido a Ful: Despacho"
+                "reabastecimiento": "Traslados internos",
+                "dispatch_ful": "Resurtido a Ful: Despacho",
+                "devoluciones": "Devolucion",
             }
 
             if task == "batch_pick":
