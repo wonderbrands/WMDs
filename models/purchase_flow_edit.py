@@ -368,6 +368,15 @@ class PurchaseWMDS(models.Model):
                         'user': self.env.user.id,
                         'date': fields.Datetime.now(),
                     })
+                    # Force propagation to picking and batches if canceled
+                    if new_state == 'cancel':
+                        pickings = self.env['stock.picking'].sudo().search([('purchase_id', '=', record.id)])
+                        for pick in pickings:
+                            self.env['wmds.log'].sudo().create({
+                                'pick': pick.id,
+                                'log': f"Orden de compra {record.name} cancelada - {msg_state}",
+                                'user': self.env.user.id,
+                            })
 
         if 'check_commertial' in vals:
             is_comm = vals.get('check_commertial')

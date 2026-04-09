@@ -74,16 +74,16 @@ export default {
             current_task: {},
             expandedKeys: {},
             taskDefinitions: [
-                { id: "ingresos", title: "Recepciones", description: "Validación de ingresos.", fetch: true, label: "Abiertas", permission: "WMDs Operator - Reception", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: false, any_source: true, any_dest: true },
-                { id: "acomodo", title: "Rackeo", description: "Acomodo de productos.", fetch: true, label: "Abiertos", permission: "WMDs Operator - Forklift operator", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: true, any_source: true, any_dest: true },
-                { id: "traslados", title: "Traslados", description: "Traslado interno.", fetch: false, label: "Asignados", permission: "WMDs Operator - Forklift operator", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: true, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true },
-                { id: "batch_pick", title: "Plan de pickeo", description: "Plan de pickeo", fetch: true, label: "Asignados", permission: "WMDs Operator - Picker", buttons_to_add: true, buttons_to_subtract: true, backorder: false, extra_products: false, res_model: 'stock.picking.batch', post_validate: 'post_batch_validate', scan_source: true, scan_dest: false, any_source: false, any_dest: false },
+                { id: "ingresos", title: "Recepciones", description: "Validación de ingresos.", fetch: true, label: "Abiertas", permission: "WMDs Operator - Reception", buttons_to_add: false, buttons_to_subtract: true, stock_input_add: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: false, any_source: true, any_dest: true },
+                { id: "acomodo", title: "Rackeo", description: "Acomodo de productos.", fetch: true, label: "Abiertos", permission: "WMDs Operator - Forklift operator", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: true, any_source: true, any_dest: true },
+                { id: "batch_pick", title: "Plan de pickeo", description: "Plan de pickeo", fetch: true, label: "Asignados", permission: "WMDs Operator - Picker", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: false, extra_products: false, res_model: 'stock.picking.batch', post_validate: 'post_batch_validate', scan_source: true, scan_dest: false, any_source: false, any_dest: false },
                 { id: "bin", title:"BIN", description:"Ingresar a BIN", fetch: false, label: "Registrar", view: "BinComponent", permission: "WMDs Operator - BIN" },
                 { id: "dock", title:"DOCK", description:"Trasladar a DOCK", fetch: false, label: "Registrar", view: "DockComponent", permission: "WMDs Operator - DOCK" },
                 { id: "dispatch", title:"Despacho", description:"Entrega paquetera", fetch: false, label: "Registrar", view: "DispatchComponent", permission: "WMDs Operator - Dispatch" },
-                { id: "dispatch_ful", title:"Despacho fulfilment", description:"Entrega a paquetería de ordenes ful", fetch: true, label: "Asignados", permission: "WMDs Operator - Dispatch", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: false, any_source: true, any_dest: true },
+                { id: "dispatch_ful", title:"Despacho fulfilment", description:"Entrega a paquetería de ordenes ful", fetch: false, label: "Escanear WH/DFUL", view: "BarcodeScannerComponent", permission: "WMDs Operator - Dispatch", context: "open_dfull_operation", instructions: "Escanea la operación WH/DFUL/xxxx para comenzar", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: false, any_source: true, any_dest: true },
                 { id: "cycle_count_assigned", title: "Conteo cíclico", description: "Conteo de inventario por ubicación", fetch: true, label: "Asignados", permission: "WMDs Operator - Stock Counter" },
-                { id: "reabastecimiento", title: "Reabastecimiento", description: "Traslado de stock de niveles superiores a niveles inferiores para disponibilizar", fetch: true, label: "Abiertos", permission: "WMDs Operator - Replenishment", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true },
+                { id: "reabastecimiento", title: "Reabastecimiento/Traslado", description: "Traslados internos entre ubicaciones de almacen", fetch: true, label: "Abiertos", permission: "WMDs Operator - Replenishment", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true },
+                { id: "devoluciones", title: "Devoluciones", description: "Manejo de retornos", fetch: true, label: "Asignados", permission: "WMDs Operator - Replenishment", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: true, any_source: true, any_dest: true },
             ],
             tasks: [],
             // Pull to refresh state
@@ -207,6 +207,7 @@ export default {
                     config: {
                         buttons_to_add: taskDef.buttons_to_add,
                         buttons_to_subtract: taskDef.buttons_to_subtract,
+                        stock_input_add: taskDef.stock_input_add,
                         extra_products: taskDef.extra_products,
                         backorder: taskDef.backorder,
                         post_validate: taskDef.post_validate,
@@ -230,6 +231,13 @@ export default {
                 task_title: task.title
             });
             this.store.mandatory_uncompleted.component = task.view;
+            this.store.mandatory_uncompleted.component_props = {
+                context: task.context,
+                instructions: task.instructions,
+                extra_data: task // Pass the whole task def as extra data if needed
+            };
+            this.store.mandatory_uncompleted.user = this.store.role.email;
+            this.store.mandatory_uncompleted.loadToStorage();
         }
     }
 };

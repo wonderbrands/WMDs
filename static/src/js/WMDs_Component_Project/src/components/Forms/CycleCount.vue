@@ -1,4 +1,4 @@
-0<template>
+<template>
     <div class="cycle-count-wrapper">
         <div class="cycle-count-modal">
             <div v-if="isCreating">
@@ -11,10 +11,10 @@
                 <div v-if="currentStep === 1" class="fade-in">
                     <div class="filter-section card-background">
                         <div class="filter-group">
-                            <label class="filter-label">Pasillo (A - Z)</label>
+                            <label class="filter-label">Pasillo (A - ZZ)</label>
                             <div class="flex-row gap-small">
-                                <InputText v-model="filters.aisle_from" maxlength="1" @input="filters.aisle_from = filters.aisle_from.toUpperCase()" class="input-full" />
-                                <InputText v-model="filters.aisle_to" maxlength="1" @input="filters.aisle_to = filters.aisle_to.toUpperCase()" class="input-full" />
+                                <InputText v-model="filters.aisle_from" maxlength="2" @input="filters.aisle_from = filters.aisle_from.toUpperCase()" class="input-full" />
+                                <InputText v-model="filters.aisle_to" maxlength="2" @input="filters.aisle_to = filters.aisle_to.toUpperCase()" class="input-full" />
                             </div>
                         </div>
                         <div class="filter-group">
@@ -59,7 +59,17 @@
                                     </div>
                                 </template>
                                 <Column selectionMode="multiple" headerStyle="width: 3rem" :selectable="isSelectable"></Column>
-                                <Column field="complete_name" header="Ubicación Encontrada"></Column>
+                                <Column field="complete_name" header="Ubicación Encontrada">
+                                    <template #body="slotProps">
+                                        <div class="flex align-items-center gap-2">
+                                            <span>{{ slotProps.data.complete_name }}</span>
+                                            <i v-if="slotProps.data.has_reservation" 
+                                               class="fa fa-info-circle text-blue-500" 
+                                               :title="'Reservado por: ' + slotProps.data.reservation_info">
+                                            </i>
+                                        </div>
+                                    </template>
+                                </Column>
                             </DataTable>
                         </div>
                         <div class="table-half">
@@ -127,7 +137,7 @@
                             <Button label="Ver Logs" icon="fa fa-list" severity="secondary" class="mr-2" @click="showLogsReport" />
                             <Button label="Comparar Conteos" icon="fa fa-bar-chart" severity="help" class="mr-2" @click="showComparisonReport" />
                             <Button v-if="!hasActiveWave" label="Añadir Ola" icon="fa fa-plus" class="p-button-outlined mr-2" @click="showOperatorDialog('add')" />
-                            <Button label="Finalizar Ciclo" icon="fa fa-check-square" severity="success" class="mr-2" @click="closeEntireCount" :loading="store.loading" />
+                            <!-- "Finalizar Ciclo" button removed as per request -->
                             <Button label="Cancelar Ciclo" icon="fa fa-ban" severity="danger" class="p-button-outlined" @click="cancelEntireCount" :loading="store.loading" />
                         </div>
                         <div v-else class="flex-row">
@@ -232,7 +242,8 @@
                             <Button label="Seleccionar Coincidencias" icon="fa fa-circle-o" class="p-button-text p-button-sm" @click="selectAllMatches" />
                         </div>
                         <div :title="anyWaveOpen ? 'No están todas las olas cerradas.' : ''">
-                            <Button label="AJUSTAR SELECCIONADOS" icon="fa fa-bolt" severity="success" :disabled="!canBulkAdjust || anyWaveOpen" @click="prepareBulkAdjustment" :loading="store.loading" />
+                            <!-- Button label changed to "AJUSTAR Y FINALIZAR CONTEO" -->
+                            <Button label="AJUSTAR Y FINALIZAR CONTEO" icon="fa fa-bolt" severity="success" :disabled="!canBulkAdjust || anyWaveOpen" @click="prepareBulkAdjustment" :loading="store.loading" />
                         </div>
                     </div>
 
@@ -240,8 +251,14 @@
                         <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
                         <Column header="Ubicación" field="location_name" sortable style="min-width: 150px">
                              <template #body="slotProps">
-                                <span :class="['font-bold', slotProps.data.is_blocked ? 'text-secondary line-through' : 'text-primary']">{{ slotProps.data.location_name }}</span>
-                                <i v-if="slotProps.data.is_blocked" class="fa fa-lock ml-2 text-secondary" title="Ubicación Bloqueada"></i>
+                                <div class="flex align-items-center gap-2">
+                                    <span :class="['font-bold', slotProps.data.is_blocked ? 'text-secondary line-through' : 'text-primary']">{{ slotProps.data.location_name }}</span>
+                                    <i v-if="slotProps.data.is_blocked" class="fa fa-lock text-secondary" title="Ubicación Excluida"></i>
+                                    <i v-if="slotProps.data.has_reservation" 
+                                       class="fa fa-info-circle text-blue-500" 
+                                       :title="'Reservado por: ' + slotProps.data.reservation_info">
+                                    </i>
+                                </div>
                              </template>
                         </Column>
                         <Column field="product_sku" header="SKU" sortable></Column>
@@ -285,7 +302,8 @@
                             </template>
                         </Column>
 
-                        <Column header="Propuesto" headerStyle="width: 8rem">
+                        <!-- Header changed to "Ajustar cantidad a:" -->
+                        <Column header="Ajustar cantidad a:" headerStyle="width: 8rem">
                             <template #body="slotProps">
                                 <InputNumber v-model="proposedQuantities[slotProps.data.__uid]" :min="0" inputClass="input-center font-bold p-inputtext-sm" />
                             </template>
@@ -302,13 +320,14 @@
                             </template>
                         </Column>
 
-                        <Column header="Bloquear" headerStyle="width: 5rem">
+                        <!-- Header changed to "Excluir de futuras olas" -->
+                        <Column header="Excluir de futuras olas" headerStyle="width: 8rem">
                             <template #body="slotProps">
                                 <Button 
                                     :icon="slotProps.data.is_blocked ? 'fa fa-lock' : 'fa fa-unlock'" 
                                     :class="['p-button-rounded p-button-text', slotProps.data.is_blocked ? 'p-button-danger' : 'p-button-secondary']"
                                     @click="toggleLocationBlock(slotProps.data)"
-                                    title="Bloquear para nuevas olas"
+                                    title="Excluir de futuras olas"
                                 />
                             </template>
                         </Column>
@@ -318,13 +337,14 @@
         </div>
 
         <!-- Bulk Adjustment Dialog -->
-        <Dialog v-model:visible="bulkAdjDialog.visible" header="Ajuste Masivo de Inventario" modal class="p-fluid" style="width: 500px">
+        <!-- Header changed to reflect adjustment and finalization -->
+        <Dialog v-model:visible="bulkAdjDialog.visible" header="Ajustar y Finalizar Conteo" modal class="p-fluid" style="width: 500px">
              <div class="mb-3">
                 <div v-if="anyWaveOpen" class="warning-box mb-3">
                     <i class="fa fa-exclamation-triangle"></i>
                     <span>Hay olas que aún no han sido finalizadas. Se recomienda esperar a que todos los operadores terminen.</span>
                 </div>
-                <p>Estás por ajustar <strong>{{ comparisonSelection.length }}</strong> registros de inventario.</p>
+                <p>Estás por ajustar <strong>{{ comparisonSelection.length }}</strong> registros de inventario y finalizar el conteo.</p>
                 <p class="text-danger font-bold">¡Esta acción es irreversible!</p>
             </div>
             <div class="field">
@@ -334,7 +354,7 @@
             <template #footer>
                 <div :title="anyWaveOpen ? 'No están todas las olas cerradas.' : ''" style="display:inline-block">
                     <Button label="Cancelar" icon="fa fa-times" @click="bulkAdjDialog.visible = false" class="p-button-text mr-2" />
-                    <Button label="CONFIRMAR TODO" icon="fa fa-check" severity="success" @click="confirmBulkAdjustment" :loading="store.loading" :disabled="anyWaveOpen" />
+                    <Button label="CONFIRMAR Y FINALIZAR" icon="fa fa-check" severity="success" @click="confirmBulkAdjustment" :loading="store.loading" :disabled="anyWaveOpen" />
                 </div>
             </template>
         </Dialog>
@@ -475,7 +495,16 @@ export default {
         isRangeInvalid() {
             const f = this.filters;
             if (!f.aisle_from || !f.aisle_to) return true;
-            return (f.aisle_from > f.aisle_to) || (f.position_from > f.position_to) || (f.level_from > f.level_to) || (f.front_from > f.front_to);
+            
+            // Warehouse logic: shorter length is smaller (A < Z < AA < ZZ)
+            // If lengths same, standard string compare
+            const isAisleInvalid = (a, b) => {
+                if (a.length > b.length) return true;
+                if (a.length < b.length) return false;
+                return a > b;
+            };
+
+            return isAisleInvalid(f.aisle_from, f.aisle_to) || (f.position_from > f.position_to) || (f.level_from > f.level_to) || (f.front_from > f.front_to);
         },
         isSaveDisabled() {
             return !this.newCount.ref || this.assignedOperators.length === 0 || this.assignedOperators.some(op => !op.operator_id) || !this.selectedLocations.length;
@@ -608,9 +637,10 @@ export default {
             if (res.ok) await this.loadExistingCountDetails();
         },
         async closeEntireCount() {
-            if (!confirm("¿Cerrar ciclo completo? Las olas no finalizadas no podrán ser procesadas.")) return;
+            // Internal method to close cycle, now also called by confirmBulkAdjustment
             let res = await this.store.callOdoo("close_cycle_count", "", { count_id: this.modalData.id });
             if (res.ok) await this.loadExistingCountDetails();
+            return res;
         },
         async cancelEntireCount() {
             if (!confirm("¿Cancelar ciclo completo? Todas las olas en curso también serán canceladas.")) return;
@@ -691,9 +721,6 @@ export default {
                     const key = this.rowKey(row);
                     const new_qty = this.proposedQuantities[key];
                     
-                    // Solo ajustar si hay discrepancia real con lo propuesto
-                    // o si el usuario explícitamente lo quiere.
-                    // Para simplificar, ajustamos todos los seleccionados con su 'truth'.
                     let res = await this.store.callOdoo("adjust_cycle_count_stock", "", {
                         line: row,
                         new_qty: new_qty,
@@ -702,12 +729,16 @@ export default {
                     });
                     if (res.ok) count++;
                 }
+                
+                // After bulk adjustment, finalize the entire count automatically
+                await this.closeEntireCount();
+
                 const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
                 if (!isManager) {
-                    this.$toast.add({ severity: 'success', summary: 'Masivo Finalizado', detail: `${count} ajustes realizados.`, life: 3000 });
+                    this.$toast.add({ severity: 'success', summary: 'Ajuste y Cierre Finalizado', detail: `${count} ajustes realizados y ciclo cerrado.`, life: 3000 });
                 }
                 this.bulkAdjDialog.visible = false;
-                await this.showComparisonReport();
+                await this.loadExistingCountDetails(); // Go back to overview
             } catch (e) {
                 this.$toast.add({ severity: 'error', summary: 'Error Masivo', detail: 'Hubo un error en el procesamiento masivo.', life: 3000 });
             } finally {
@@ -716,11 +747,9 @@ export default {
         },
         prepareAdjustment(line) {
             this.adjDialog.line = line;
-            // Pre-llenar con una sugerencia de cantidad (ej: el primer conteo disponible)
             const firstCount = Object.values(line.wave_counts).find(c => c !== '-');
             this.adjDialog.qty = firstCount !== undefined ? firstCount : line.theoretical_qty;
             
-            // Sugerencia de motivo
             const waveNames = this.comparisonWaves.map(w => w.name).join(', ');
             this.adjDialog.reason = `Ajuste Ciclo ${this.modalData.name}. Olas: ${waveNames}.`;
             this.adjDialog.visible = true;
@@ -732,7 +761,6 @@ export default {
                 return;
             }
 
-            // Skip adjustment for dummy "Empty Location" rows
             if (!this.adjDialog.line.product_id || this.adjDialog.line.product_id === 0) {
                 this.adjDialog.visible = false;
                 return;
@@ -751,7 +779,7 @@ export default {
                     this.$toast.add({ severity: 'success', summary: 'Éxito', detail: 'Stock ajustado correctamente.', life: 3000 });
                 }
                 this.adjDialog.visible = false;
-                await this.showComparisonReport(); // Refrescar reporte
+                await this.showComparisonReport(); 
             } else {
                 this.$toast.add({ severity: 'error', summary: 'Error', detail: (res.error || 'Error desconocido'), life: 3000 });
             }
@@ -795,7 +823,6 @@ export default {
                 location_id: row.location_id
             });
             if (res.ok) {
-                // Update local data to reflect change immediately
                 this.comparisonData.forEach(d => {
                     if (d.location_id === row.location_id) {
                         d.is_blocked = res.is_blocked;
@@ -803,7 +830,7 @@ export default {
                 });
                 const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
                 if (!isManager) {
-                    this.$toast.add({ severity: 'success', summary: 'Ubicación Actualizada', detail: `La ubicación ahora está ${res.is_blocked ? 'bloqueada' : 'disponible'}.`, life: 2000 });
+                    this.$toast.add({ severity: 'success', summary: 'Ubicación Actualizada', detail: `La ubicación ahora está ${res.is_blocked ? 'excluida' : 'disponible'}.`, life: 2000 });
                 }
             } else {
                 this.$toast.add({ severity: 'error', summary: 'Error al Cambiar Estado', detail: (res.error || 'No se pudo cambiar el estado de bloqueo.'), life: 5000 });
@@ -904,42 +931,4 @@ export default {
 }
 
 :deep(::-webkit-scrollbar-track) {
-    background: #f1f1f1;
-    border-radius: 5px;
-}
-
-:deep(::-webkit-scrollbar-thumb) {
-    background: #3498db;
-    border-radius: 5px;
-    border: 2px solid #f1f1f1;
-}
-
-:deep(::-webkit-scrollbar-thumb:hover) {
-    background: #2980b9;
-}
-
-/* Wave State Indicators */
-.wave-state-indicator {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 5px;
-}
-.wave-state-indicator.draft { background-color: #95a5a6; }
-.wave-state-indicator.ongoing { background-color: #f1c40f; }
-.wave-state-indicator.done { background-color: #2ecc71; }
-.wave-state-indicator.cancelled { background-color: #e74c3c; }
-
-.warning-box {
-    background: #fff3cd;
-    border: 1px solid #ffeeba;
-    color: #856404;
-    padding: 10px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 0.9rem;
-}
-</style>
+    background: #f1f1f1; border-radius: 5px; } :deep(::-webkit-scrollbar-thumb) { background: #3498db; border-radius: 5px; border: 2px solid #f1f1f1; } :deep(::-webkit-scrollbar-thumb:hover) { background: #2980b9; } /* Wave State Indicators */ .wave-state-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; } .wave-state-indicator.draft { background-color: #95a5a6; } .wave-state-indicator.ongoing { background-color: #f1c40f; } .wave-state-indicator.done { background-color: #2ecc71; } .wave-state-indicator.cancelled { background-color: #e74c3c; } .warning-box { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 4px; display: flex; align-items: center; gap: 10px; font-size: 0.9rem; } </style>

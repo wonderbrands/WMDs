@@ -97,12 +97,33 @@ class CycleCount(http.Controller):
                 'f_from': int(kw.get('front_from', 1)),
                 'f_to': int(kw.get('front_to', 2)),
             }
-            re_aisle = rf"[{f['a_from']}-{f['a_to']}]"
-            pos_list = [str(i).zfill(2) for i in range(f['p_from'], f['p_to'] + 1)]
-            re_pos = rf"P({'|'.join(pos_list)})"
-            re_front = rf"F[{f['f_from']}-{f['f_to']}]"
-            re_level = rf"N[{f['l_from']}-{f['l_to']}]"
-            final_regex = rf".*{re_aisle}-{re_pos}-{re_front}-{re_level}$"
+
+            # Regex to identify the structure and extract parts: [Aisle]-[Position]-[Front]-[Level]
+            # Supports 1 or 2 letters for Aisle.
+            loc_pattern = re.compile(r"([A-Z]{1,2})-P(\d{2})-F(\d)-N(\d)$", re.IGNORECASE)
+
+            def aisle_to_key(val):
+                return (len(val), val)
+
+            def is_location_in_range(complete_name):
+                match = loc_pattern.search(complete_name)
+                if not match:
+                    return False
+                
+                aisle, pos, front, level = match.groups()
+                aisle = aisle.upper()
+                pos, front, level = int(pos), int(front), int(level)
+
+                if not (aisle_to_key(f['a_from']) <= aisle_to_key(aisle) <= aisle_to_key(f['a_to'])):
+                    return False
+                if not (f['p_from'] <= pos <= f['p_to']):
+                    return False
+                if not (f['f_from'] <= front <= f['f_to']):
+                    return False
+                if not (f['l_from'] <= level <= f['l_to']):
+                    return False
+                
+                return True
             
             domain = [
                 ('complete_name', '=ilike', 'WH%'),
@@ -114,7 +135,8 @@ class CycleCount(http.Controller):
             active_counts = request.env['scheduled.cycle.count'].sudo().search([('state', 'not in', ['finalized', 'cancelled'])])
             active_location_ids = active_counts.mapped('selected_location_ids.location_id.id')
             
-            locations = all_locs.filtered(lambda u: u.id not in active_location_ids and re.fullmatch(final_regex, u.complete_name, re.IGNORECASE))
+            # Apply our advanced range filter
+            locations = all_locs.filtered(lambda u: u.id not in active_location_ids and is_location_in_range(u.complete_name))
             
             # Identify locations with active reservations
             reservations = request.env['stock.move.line'].sudo().search([
@@ -122,7 +144,15 @@ class CycleCount(http.Controller):
                 ('state', 'not in', ['done', 'cancel']),
                 ('quantity', '>', 0)
             ])
-            reserved_location_ids = set(reservations.mapped('location_id.id'))
+            
+            res_info_map = {}
+            for res in reservations:
+                lid = res.location_id.id
+                if lid not in res_info_map:
+                    res_info_map[lid] = []
+                p_name = res.picking_id.name or res.move_id.reference or "Movimiento Interno"
+                if p_name not in res_info_map[lid]:
+                    res_info_map[lid].append(p_name)
 
             return {
                 'ok': True,
@@ -130,7 +160,8 @@ class CycleCount(http.Controller):
                     {
                         'id': l.id, 
                         'complete_name': l.complete_name,
-                        'has_reservation': l.id in reserved_location_ids
+                        'has_reservation': l.id in res_info_map,
+                        'reservation_info': ", ".join(res_info_map.get(l.id, []))
                     } for l in locations
                 ]
             }
@@ -388,6 +419,21 @@ class CycleCount(http.Controller):
             # Track which locations were marked as empty by which waves
             empty_locations_by_wave = set() # (wave_id, location_id)
             
+            # Identify locations with active reservations for comparison view
+            reservations = request.env['stock.move.line'].sudo().search([
+                ('location_id', 'in', loc_ids),
+                ('state', 'not in', ['done', 'cancel']),
+                ('quantity', '>', 0)
+            ])
+            res_info_map = {}
+            for res in reservations:
+                lid = res.location_id.id
+                if lid not in res_info_map:
+                    res_info_map[lid] = []
+                p_name = res.picking_id.name or res.move_id.reference or "Movimiento Interno"
+                if p_name not in res_info_map[lid]:
+                    res_info_map[lid].append(p_name)
+
             # Inicializar con lo contado
             for line in all_lines:
                 if not line.product_id or not line.stock_location_id:
@@ -396,10 +442,13 @@ class CycleCount(http.Controller):
                     continue
                 key = (line.stock_location_id.id, line.product_id.id)
                 if key not in comparison_map:
+                    lid = line.stock_location_id.id
                     comparison_map[key] = {
-                        'location_id': line.stock_location_id.id,
+                        'location_id': lid,
                         'location_name': line.stock_location_id.complete_name,
-                        'is_blocked': loc_block_map.get(line.stock_location_id.id, False),
+                        'is_blocked': loc_block_map.get(lid, False),
+                        'has_reservation': lid in res_info_map,
+                        'reservation_info': ", ".join(res_info_map.get(lid, [])),
                         'product_id': line.product_id.id,
                         'product_sku': line.product_id.default_code or 'N/A',
                         'product_name': line.product_id.name,
@@ -418,10 +467,13 @@ class CycleCount(http.Controller):
             for q in quants:
                 key = (q.location_id.id, q.product_id.id)
                 if key not in comparison_map:
+                    lid = q.location_id.id
                     comparison_map[key] = {
-                        'location_id': q.location_id.id,
+                        'location_id': lid,
                         'location_name': q.location_id.complete_name,
-                        'is_blocked': loc_block_map.get(q.location_id.id, False),
+                        'is_blocked': loc_block_map.get(lid, False),
+                        'has_reservation': lid in res_info_map,
+                        'reservation_info': ", ".join(res_info_map.get(lid, [])),
                         'product_id': q.product_id.id,
                         'product_sku': q.product_id.default_code or 'N/A',
                         'product_name': q.product_id.name,
@@ -441,6 +493,8 @@ class CycleCount(http.Controller):
                         'location_id': loc_id,
                         'location_name': loc.complete_name,
                         'is_blocked': loc_block_map.get(loc_id, False),
+                        'has_reservation': loc_id in res_info_map,
+                        'reservation_info': ", ".join(res_info_map.get(loc_id, [])),
                         'product_id': 0,
                         'product_sku': '---',
                         'product_name': '(Ubicación Vacía)',
@@ -551,6 +605,9 @@ class CycleCount(http.Controller):
             
             old_qty = quant.quantity if quant else 0
             
+            if old_qty == new_qty:
+                return {'ok': True, 'skipped': True}
+
             if not quant:
                 quant = request.env['stock.quant'].sudo().with_context(active_test=False).create({
                     'product_id': product.id,
@@ -646,16 +703,28 @@ class CycleCount(http.Controller):
                 {'name': 'Cantidad Contada', 'field': 'qty'},
             ]
             
-            data = [{
-                'id': line.id,
-                'product_name': line.product_id.display_name if line.product_id else '---',
-                'product_sku': line.product_id.default_code if line.product_id else '---',
-                'barcode': line.product_id.barcode if line.product_id and line.product_id.barcode else '---',
-                'location_name': line.stock_location_id.complete_name,
-                'qty': line.qty,
-            } for line in lines if line.product_id]
+            data = []
+            for line in lines:
+                if line.product_id:
+                    data.append({
+                        'id': line.id,
+                        'product_name': line.product_id.display_name,
+                        'product_sku': line.product_id.default_code or '---',
+                        'barcode': line.product_id.barcode or '---',
+                        'location_name': line.stock_location_id.complete_name,
+                        'qty': line.qty,
+                    })
+                elif line.description == 'Marcada como vacía':
+                    data.append({
+                        'id': line.id,
+                        'product_name': '(EL OPERADOR MARCÓ LA UBICACIÓN COMO VACÍA)',
+                        'product_sku': 'N/A',
+                        'barcode': 'N/A',
+                        'location_name': line.stock_location_id.complete_name,
+                        'qty': 0,
+                    })
             
-            return {'ok': True, 'map_cols': map_cols, 'data': data, 'total_count': len(lines)}
+            return {'ok': True, 'map_cols': map_cols, 'data': data, 'total_count': len(data)}
         except Exception as e:
             _logger.error(f"Error getting wave lines {e}")
             return {'ok': False, 'error': str(e)}
