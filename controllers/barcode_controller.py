@@ -278,13 +278,15 @@ class BarcodeController(http.Controller):
             if status['status'] == 'error':
                 return status
 
-            # Identify if it is DFUL
+            # Identify if it is DFUL or PFUL
             pickings = record if res_model == 'stock.picking' else record.picking_ids
             type_names = pickings.mapped('picking_type_id.name')
             is_dful = any('Resurtido a Ful: Despacho' in name for name in type_names if name)
+            is_pful = any('Resurtido a Ful: Pick' in name for name in type_names if name)
+
+            logger.info(f"Validating {res_model} {record.name}. is_dful: {is_dful}, is_pful: {is_pful}")
 
             # Synchronize 'picked' to 'quantity' (qty_done)
-            # For DFUL, we also want to track which lines were processed to update origin moves
             processed_lines_info = []
             for line in record.move_line_ids:
                 if line.wmds_picked_qty > 0:
@@ -293,6 +295,7 @@ class BarcodeController(http.Controller):
                         'qty': line.wmds_picked_qty
                     })
                 
+                # En Odoo 19 es quantity
                 line.sudo().write({
                     'quantity': line.wmds_picked_qty,
                     'picked': True if line.wmds_picked_qty > 0 else line.picked
@@ -300,19 +303,14 @@ class BarcodeController(http.Controller):
 
             # Call Odoo's native validation
             res = None
-            if res_model == 'stock.picking':
-                res = record.button_validate()
-            else:
-                res = record.action_done()
-
-            # Log closure
             try:
-                source = record.location_id.display_name if res_model == 'stock.picking' else "Múltiples ubicaciones"
-                dest = record.location_dest_id.display_name if res_model == 'stock.picking' else "Múltiples"
-                close_msg = f"Traslado {record.name} cerrado de {source} a {dest}"
-                self._create_log(record, close_msg, res_model, operator_email)
-            except Exception as log_e:
-                logger.error(f"Error logging closure: {log_e}")
+                if res_model == 'stock.picking':
+                    res = record.button_validate()
+                else:
+                    res = record.action_done()
+            except Exception as odoo_e:
+                logger.error(f"Odoo Validation Error: {str(odoo_e)}")
+                return {"status": "error", "message": f"Error de Odoo: {str(odoo_e)}"}
 
             # Logistics Update for DFUL: mark origin moves as dispatched
             if is_dful:
@@ -323,19 +321,22 @@ class BarcodeController(http.Controller):
                     # Find origin moves (PFUL)
                     origin_moves = move.move_orig_ids
                     for orig in origin_moves:
+                        if not orig.exists(): continue
                         # Update origin move status in BIN/DOCK
-                        new_qty_dispatched = orig.qty_dispatched + qty
+                        new_qty_dispatched = (orig.qty_dispatched or 0.0) + qty
                         orig.write({
                             'qty_dispatched': new_qty_dispatched,
-                            'dispatched': True if new_qty_dispatched >= orig.quantity else False,
-                            'on_bin': False if new_qty_dispatched >= orig.quantity else orig.on_bin,
-                            'on_dock': False if new_qty_dispatched >= orig.quantity else orig.on_dock,
+                            'dispatched': True if new_qty_dispatched >= (orig.quantity or 0.0) else False,
+                            'on_bin': False if new_qty_dispatched >= (orig.quantity or 0.0) else orig.on_bin,
+                            'on_dock': False if new_qty_dispatched >= (orig.quantity or 0.0) else orig.on_dock,
                         })
                         
-                        self._create_log(orig.picking_id or orig.batch_id, 
-                                         f"Producto {orig.product_id.display_name} despachado (DFUL). Cantidad: {qty}", 
-                                         'stock.picking' if orig.picking_id else 'stock.picking.batch', 
-                                         operator_email)
+                        target_log = orig.picking_id or orig.batch_id
+                        if target_log:
+                            self._create_log(target_log, 
+                                            f"Producto {orig.product_id.display_name} despachado (DFUL). Cantidad: {qty}", 
+                                            'stock.picking' if orig.picking_id else 'stock.picking.batch', 
+                                            operator_email)
 
             # If Odoo returns a wizard (like backorder confirmation)
             if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
@@ -345,19 +346,12 @@ class BarcodeController(http.Controller):
                 })
                 wizard.process()
 
-                # Log backorder creation
-                for p in pickings_to_backorder:
-                    backorder = request.env['stock.picking'].sudo().search([('backorder_id', '=', p.id)], limit=1)
-                    if backorder:
-                        bo_msg = f"Backorder creado: {backorder.name} para el picking {p.name}"
-                        self._create_log(p, bo_msg, 'stock.picking', operator_email)
-
             return {
                 "status": "ok", 
                 "message": "Validación exitosa.",
                 "pick_type": getattr(record, 'pick_type', False),
                 "res_model": res_model,
-                "is_pful": any('Resurtido a Ful: Pick' in name for name in type_names if name),
+                "is_pful": is_pful,
                 "is_dful": is_dful
             }
         except Exception as e:

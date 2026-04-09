@@ -514,6 +514,7 @@ export default {
             }
         },
         async validateOperation() {
+            console.log("Action: validateOperation triggered");
             const incomplete = this.missingLines.length > 0;
 
             if (incomplete) {
@@ -541,7 +542,7 @@ export default {
                     operator_email: this.store.role.email
                 });
 
-                if (res.status === 'ok') {
+                if (res && res.status === 'ok') {
                     this.$toast.add({ severity: 'success', summary: 'Éxito', detail: 'Operación validada correctamente.', life: 3000 });
                     
                     const confirmedResModel = res.res_model;
@@ -592,8 +593,12 @@ export default {
                         this.exitFlow();
                     }
                 } else {
-                    this.$toast.add({ severity: 'error', summary: 'Error de Validación', detail: res.message, life: 5000 });
+                    const errorMsg = res?.message || 'Error desconocido durante la validación.';
+                    this.$toast.add({ severity: 'error', summary: 'Error de Validación', detail: errorMsg, life: 5000 });
                 }
+            } catch (e) {
+                console.error("Validation crash:", e);
+                this.$toast.add({ severity: 'error', summary: 'Error Crítico', detail: 'No se pudo procesar la validación. Verifique logs.', life: 5000 });
             } finally {
                 this.loading = false;
             }

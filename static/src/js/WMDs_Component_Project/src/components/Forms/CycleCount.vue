@@ -591,8 +591,10 @@ export default {
             }
         },
         isAlreadySelected(data) { return this.selectedLocations.some(s => s.id === data.id); },
-        isSelectable(event) { 
-            return !this.isAlreadySelected(event.data) && !event.data.has_reservation; 
+        isSelectable(data) { 
+            // data might be the record directly or an event object depending on PrimeVue version
+            const item = data.data || data;
+            return !this.isAlreadySelected(item) && !item.has_reservation; 
         },
         rowClass(data) { 
             if (this.isAlreadySelected(data)) return 'row-locked';
@@ -600,7 +602,7 @@ export default {
             return '';
         },
         addSelected() {
-            const toAdd = this.tempSelection.filter(item => !this.isAlreadySelected(item));
+            const toAdd = this.tempSelection.filter(item => !this.isAlreadySelected(item) && !item.has_reservation);
             this.selectedLocations = [...this.selectedLocations, ...toAdd];
             this.tempSelection = [];
         },
