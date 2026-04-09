@@ -1,5 +1,15 @@
 <template>
-    <div class="test-flow-container">
+    <div 
+        class="test-flow-container"
+        @touchstart="handleTouchStart"
+        @touchmove="handleTouchMove"
+        @touchend="handleTouchEnd"
+    >
+        <!-- Pull to refresh indicator -->
+        <div v-if="pulling" class="pull-to-refresh-indicator" :style="{ height: pullDistance + 'px', opacity: pullDistance / 100 }">
+            <i class="fa fa-refresh" :class="{ 'fa-spin': refreshing }"></i>
+            <span>{{ refreshing ? 'Actualizando...' : 'Tire para actualizar' }}</span>
+        </div>
 
         <!-- ═══════════ MODO INDIVIDUAL (ESCANEO) ═══════════ -->
         <div v-if="dispatchMode === 'individual' && !showPrintView" class="individual-mode">
@@ -212,16 +222,14 @@ export default {
     data() {
         return {
             store: useGeneralStore(),
-            so: [], // Array of objects: { name, so_name, total, current, dispatched_count, product_name, carrier_name, scan_datetime, line_id }
+            so: [], 
             ready: false,
             scannerKey: 0,
             dispatchMode: 'individual',
             pendingFullItems: [],
-            // ── Sesión persistente ──
             sessionId: null,
             loadingSession: true,
             sessionRecovered: false,
-            // ── Impresión ──
             showPrintView: false,
             printData: {
                 session_id: null,
@@ -233,6 +241,12 @@ export default {
                 total_lines: 0
             },
             dispatching: false,
+            // Pull to refresh state
+            startY: 0,
+            pullDistance: 0,
+            pulling: false,
+            refreshing: false,
+            maxPullDistance: 100
         }
     },
     computed: {
@@ -264,7 +278,6 @@ export default {
         console.log("Action: DispatchComponent mounted");
         localStorage.removeItem("mandatory_uncompleted");
 
-        // ── Intentar recuperar sesión activa ──
         await this.recoverSession();
 
         setTimeout(() => {
@@ -278,9 +291,15 @@ export default {
         }
     },
     methods: {
-        // ═══════════════════════════════════════════
-        // SESIÓN PERSISTENTE — Métodos principales
-        // ═══════════════════════════════════════════
+        async refreshData() {
+            this.loadingSession = true;
+            await this.recoverSession();
+            if (this.dispatchMode === 'full') {
+                await this.fetchPendingFullItems();
+            }
+            this.loadingSession = false;
+            this.scannerKey++;
+        },
 
         async recoverSession() {
             try {
@@ -291,7 +310,6 @@ export default {
                 if (response && response.active && response.lines && response.lines.length > 0) {
                     this.sessionId = response.session_id;
                     
-                    // Restaurar el array so[] desde las líneas guardadas
                     this.so = response.lines.map(line => ({
                         name: line.ei_name,
                         so_name: line.so_name,
@@ -317,12 +335,10 @@ export default {
                         });
                     }
                 } else if (response && response.active) {
-                    // Sesión activa pero sin líneas
                     this.sessionId = response.session_id;
                 }
             } catch (e) {
                 console.error("Error recuperando sesión:", e);
-                // No bloquear la UI si falla la recuperación
             }
         },
 
@@ -339,18 +355,15 @@ export default {
 
                 if (response && response.ok) {
                     this.sessionId = response.session_id;
-                    // Actualizar el item en el array con la info del backend
                     const idx = this.so.findIndex(o => o.name === orderData.name);
                     if (idx !== -1) {
                         this.so[idx].line_id = response.line_id;
                         this.so[idx].product_name = response.product_name || '';
                         this.so[idx].carrier_name = response.carrier_name || '';
                     }
-                    console.log(`Action: Línea ${orderData.name} persistida en sesión ${this.sessionId}`);
                 }
             } catch (e) {
                 console.error("Error persistiendo escaneo:", e);
-                // El escaneo ya está en memoria, no bloquear
             }
         },
 
@@ -411,10 +424,6 @@ export default {
             }
         },
 
-        // ═══════════════════════════════════════════
-        // ESCANEO — Lógica existente + persistencia
-        // ═══════════════════════════════════════════
-
         setMode(mode) {
             this.dispatchMode = mode;
             if (mode === 'full') {
@@ -437,10 +446,8 @@ export default {
         },
 
         async searchAndValidateSO(data) {
-            console.log("Action: searchAndValidateSO triggered with data:", data);
             try {
                 if (this.so.some(o => o.name === data)) {
-                    console.log("Action: Duplicate guide detected, restarting scanner");
                     if (this.$toast) {
                         this.$toast.add({ 
                             severity: 'warn', 
@@ -453,14 +460,12 @@ export default {
                     return;
                 }
 
-                console.log("Action: Calling Odoo validate_attachment_guide");
                 let response = await this.store.callOdoo("validate_attachment_guide", "", {
                     attachment_id: data,
                 });
 
                 if (response.valid) {
                     if (response.so_state === 'cancel') {
-                        console.log("Action: Order is cancelled");
                         if(this.$toast) {
                             this.$toast.add({ 
                                 severity: 'error', 
@@ -470,7 +475,6 @@ export default {
                             });
                         }
                     } else if (response.state && response.state.dispatched) {
-                        console.log("Action: Guide already dispatched");
                         if(this.$toast) {
                             this.$toast.add({ 
                                 severity: 'error', 
@@ -480,7 +484,6 @@ export default {
                             });
                         }
                     } else if (response.state && !response.state.on_dock) {
-                        console.log("Action: Guide not on dock");
                         if(this.$toast) {
                             this.$toast.add({ 
                                 severity: 'error', 
@@ -490,7 +493,6 @@ export default {
                             });
                         }
                     } else {
-                        console.log("Action: Validation successful, pushing to array");
                         const newItem = {
                             name: response.name,
                             so_name: response.so,
@@ -505,11 +507,9 @@ export default {
                         };
                         this.so.push(newItem);
 
-                        // ── Persistir en backend ──
                         await this.persistScanToSession(newItem);
                     }
                 } else {
-                    console.log("Action: Validation failed");
                     if(this.$toast) {
                         this.$toast.add({ 
                             severity: 'error', 
@@ -522,28 +522,21 @@ export default {
                 
                 this.restartScanner();
             } catch (e) {
-                console.log("Action: Error in searchAndValidateSO", e);
                 this.restartScanner();
             }
         },
 
         restartScanner() {
-            console.log("Action: restartScanner triggered");
             this.scannerKey++;
+            // Silent refresh after each scan
+            this.recoverSession();
         },
 
-        // ═══════════════════════════════════════════
-        // DESPACHO — Entregar + completar sesión
-        // ═══════════════════════════════════════════
-
         async dispatchToCarrier() {
-            console.log("Action: dispatchToCarrier triggered");
             if (this.so.length === 0) {
-                console.log("Action: No guides to dispatch, returning");
                 return;
             }
 
-            // Check for cancelled orders before sending to backend
             const cancelledOrders = this.so.filter(o => o.so_state === 'cancel');
             if (cancelledOrders.length > 0) {
                 const names = [...new Set(cancelledOrders.map(o => o.so_name))].join(", ");
@@ -562,15 +555,12 @@ export default {
 
             try {
                 const picks_ids = this.so.map(o => o.name);
-                console.log("Action: Calling Odoo dispatch_orders with picks_ids:", picks_ids);
                 let response = await this.store.callOdoo("dispatch_orders", "", {
                     operator_login: this.store.role.email,
                     picks_ids: picks_ids 
                 });
 
                 if (response.status === "success") {
-                    console.log("Action: Dispatch successful");
-
                     if (response.warning) {
                         this.$toast.add({ 
                             severity: 'warn', 
@@ -590,24 +580,20 @@ export default {
                         }
                     }
 
-                    // ── Completar sesión y mostrar vista de impresión ──
                     const sessionCompleted = await this.completeSession();
                     
                     if (sessionCompleted) {
                         this.showPrintView = true;
                     } else {
-                        // Si falló completar sesión, generar printData desde la data local
                         this.generatePrintDataFromLocal();
                         this.showPrintView = true;
                     }
 
                     this.restartScanner(); 
                 } else {
-                    console.log("Action: Dispatch returned non-success status", response);
                     throw new Error(response.message || "Error desconocido");
                 }
             } catch (e) {
-                console.log("Action: Error in dispatchToCarrier", e);
                 if(this.$toast) {
                     this.$toast.add({ 
                         severity: 'error', 
@@ -622,7 +608,6 @@ export default {
         },
 
         generatePrintDataFromLocal() {
-            // Fallback: generar datos de impresión desde la data local cuando el backend falla
             const now = new Date();
             const soSummary = {};
 
@@ -658,10 +643,6 @@ export default {
             };
         },
 
-        // ═══════════════════════════════════════════
-        // IMPRESIÓN — Hoja de Salida A4
-        // ═══════════════════════════════════════════
-
         printSheet() {
             window.print();
         },
@@ -689,12 +670,7 @@ export default {
             }
         },
 
-        // ═══════════════════════════════════════════
-        // ACCIONES DE LISTA — Con persistencia
-        // ═══════════════════════════════════════════
-       
         exitFlow() {
-            console.log("Action: exitFlow triggered");
             if (this.so.length > 0 || (this.dispatchMode === 'full' && this.pendingFullItems.some(i => i.dispatchQty < i.qty))) {
                 const action = confirm(
                     "Tienes escaneos en esta sesión.\n\n" +
@@ -702,39 +678,26 @@ export default {
                     "• Cancelar = Volver al escaneo"
                 );
                 if (!action) {
-                    console.log("Action: exitFlow cancelled by user");
                     return;
                 }
-
-                // La sesión queda ACTIVA en el backend para poder recuperarla
-                console.log("Action: Saliendo sin cancelar sesión — se puede retomar");
             }
-            console.log("Action: Finalizing flow");
             this.so = [];
             this.store.mandatory_uncompleted.doneMandatory();
         },
 
         async clearAllOrders() {
-            console.log("Action: clearAllOrders triggered");
             if (!confirm("¿Estás seguro de limpiar todos los escaneos?\nEsto también cancelará la sesión actual.")) {
                 return;
             }
-            // ── Limpiar en backend ──
             await this.clearSession();
             this.so = [];
         },
 
         async removeOrder(index) {
-            console.log("Action: removeOrder triggered for index:", index);
             const eiName = this.so[index].name;
             this.so.splice(index, 1);
-            // ── Eliminar del backend ──
             await this.removeFromSession(eiName);
         },
-
-        // ═══════════════════════════════════════════
-        // DESPACHO FULL (sin cambios relevantes)
-        // ═══════════════════════════════════════════
 
         async dispatchFullItem(item) {
             if (item.dispatchQty <= 0) return;
@@ -786,6 +749,33 @@ export default {
                 this.$toast.add({ severity: 'error', summary: 'Error en Despacho Masivo', detail: 'Detalle técnico: ' + (e.message || 'Error desconocido'), life: 4000 });
             }
         },
+
+        // Pull to refresh handlers
+        handleTouchStart(e) {
+            if (this.$el.scrollTop === 0) {
+                this.startY = e.touches[0].pageY;
+                this.pulling = true;
+            }
+        },
+        handleTouchMove(e) {
+            if (!this.pulling || this.refreshing) return;
+            const currentY = e.touches[0].pageY;
+            const diff = currentY - this.startY;
+            if (diff > 0) {
+                this.pullDistance = Math.min(diff, this.maxPullDistance);
+                if (diff > 10) e.preventDefault(); 
+            }
+        },
+        async handleTouchEnd() {
+            if (!this.pulling) return;
+            if (this.pullDistance >= 60) {
+                this.refreshing = true;
+                await this.refreshData();
+                this.refreshing = false;
+            }
+            this.pulling = false;
+            this.pullDistance = 0;
+        }
     }
 }
 </script>
@@ -799,6 +789,31 @@ export default {
     padding: 10px;
     box-sizing: border-box;
     overflow-y: auto;
+    position: relative;
+    overscroll-behavior-y: contain;
+}
+
+.pull-to-refresh-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3B82F6;
+    z-index: 1000;
+    transition: height 0.1s ease;
+    font-size: 0.8rem;
+    font-weight: bold;
+    gap: 5px;
+}
+
+.pull-to-refresh-indicator i {
+    font-size: 1.2rem;
 }
 
 .individual-mode {
@@ -1144,7 +1159,6 @@ export default {
    ═══════════════════════════════════════════ */
 
 @media print {
-    /* Ocultar todo excepto la hoja */
     body * {
         visibility: hidden !important;
     }

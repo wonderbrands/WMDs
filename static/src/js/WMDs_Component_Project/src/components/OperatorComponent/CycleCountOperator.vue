@@ -1,22 +1,21 @@
 <template>
-    <div class="cycle-count-operator-container">
-        
+    <div 
+        class="cycle-count-operator-container"
+        @touchstart="handleTouchStart"
+        @touchmove="handleTouchMove"
+        @touchend="handleTouchEnd"
+    >
+        <!-- Pull to refresh indicator -->
+        <div v-if="pulling" class="pull-to-refresh-indicator" :style="{ height: pullDistance + 'px', opacity: pullDistance / 100 }">
+            <i class="fa fa-refresh" :class="{ 'fa-spin': refreshing }"></i>
+            <span>{{ refreshing ? 'Actualizando...' : 'Tire para actualizar' }}</span>
+        </div>
+
         <!-- Header Info -->
         <div class="operator-header">
-            <div v-if="step !== 'quantity'" class="wave-info">
+            <div class="wave-info">
                 <span class="label">OLA:</span>
                 <span class="value">{{ waveName }}</span>
-            </div>
-            <div v-else class="context-info-header">
-                <div class="header-item">
-                    <i class="fa fa-map-marker"></i>
-                    <span class="header-val">{{ current_location.name }}</span>
-                    <i class="fa fa-pencil edit-icon" @click="resetToLocation"></i>
-                </div>
-                <div class="header-item">
-                    <i class="fa fa-box"></i>
-                    <span class="header-val">{{ current_product.sku || current_product.name }}</span>
-                </div>
             </div>
             
             <div class="header-actions">
@@ -46,52 +45,44 @@
         <!-- Main Workflow Area -->
         <div class="workflow-area">
             
-            <!-- Step 1: Scan Location -->
-            <div v-if="step === 'location'" class="step-container">
-                <!-- Pending Locations Info -->
-                <div class="pending-summary" v-if="pending_locations.length > 0">
-                    <div class="summary-title">Próximas Ubicaciones ({{ pending_locations.length }})</div>
-                    <div class="summary-list">
-                        <span v-for="loc in pending_locations.slice(0, 3)" :key="loc.id" class="loc-badge">
-                            {{ loc.name }}
-                        </span>
-                        <span v-if="pending_locations.length > 3" class="loc-badge more">
-                            +{{ pending_locations.length - 3 }} más
-                        </span>
+            <!-- Context Banner (Current Location) -->
+            <div class="current-context-banner" v-if="current_location.id">
+                <div class="context-main">
+                    <i class="fa fa-map-marker"></i>
+                    <div class="loc-info">
+                        <span class="loc-label">UBICACIÓN ACTUAL</span>
+                        <span class="loc-name">{{ current_location.name }}</span>
                     </div>
                 </div>
-                <div class="pending-summary completed" v-else>
-                    <div class="summary-title">¡Todas las ubicaciones contadas!</div>
-                </div>
-
-                <div class="scanner-section">
-                    <BarcodeScannerComponent 
-                        :key="scannerKey"
-                        instructions="Escanea la UBICACIÓN a contar"
-                        :onScan="(data) => handleLocationScan(data)"
-                    />
+                <div class="context-stats">
+                    <span class="pending-count">Quedan {{ pending_locations.length }}</span>
                 </div>
             </div>
 
-            <!-- Step 2: Scan Product -->
-            <div v-else-if="step === 'product'" class="step-container">
-                <div class="current-context">
-                    <div class="context-item">
-                        <i class="fa fa-map-marker"></i>
-                        <span>{{ current_location.name }}</span>
-                        <Button icon="fa fa-pencil" class="p-button-rounded p-button-warning p-button-sm ml-auto" @click="resetToLocation" label="Cambiar" />
-                    </div>
-                    <div class="mt-2 flex justify-content-center">
-                        <Button 
-                            label="UBICACIÓN VACÍA" 
-                            icon="fa fa-trash" 
-                            severity="danger" 
-                            class="p-button-sm"
-                            @click="markEmpty"
-                            :loading="loading"
-                        />
-                    </div>
+            <!-- Step: Scan Product / Location Overview -->
+            <div v-if="step === 'product'" class="step-container">
+                
+                <div class="action-bar-top" v-if="current_location.id">
+                    <Button 
+                        v-if="!locationHasCounts"
+                        label="UBICACIÓN VACÍA" 
+                        icon="fa fa-trash" 
+                        severity="danger" 
+                        class="p-button-sm flex-1"
+                        @click="markEmpty"
+                        :loading="loading"
+                    />
+                    <Button 
+                        label="SIGUIENTE UBICACIÓN" 
+                        icon="fa fa-arrow-right" 
+                        iconPos="right"
+                        severity="info" 
+                        class="p-button-sm flex-1"
+                        @click="moveToNextLocation"
+                        :loading="loading"
+                    />
                 </div>
+
                 <div class="scanner-section">
                     <BarcodeScannerComponent 
                         :key="scannerKey"
@@ -103,6 +94,11 @@
 
             <!-- Step 3: Set Quantity -->
             <div v-else-if="step === 'quantity'" class="step-container quantity-step">
+                <div class="context-info-compact">
+                    <i class="fa fa-box"></i>
+                    <span>{{ current_product.sku || current_product.name }}</span>
+                </div>
+
                 <div class="quantity-form-wrapper">
                     <div class="quantity-form">
                         <label>Cantidad Contada</label>
@@ -117,6 +113,14 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- No Pending State -->
+            <div v-if="pending_locations.length === 0 && !loading" class="empty-state-container">
+                <i class="fa fa-check-circle success-icon"></i>
+                <h3>¡Conteo Terminado!</h3>
+                <p>Has procesado todas las ubicaciones de esta ola.</p>
+                <Button label="FINALIZAR OLA" icon="fa fa-check" severity="success" size="large" @click="finishWave" />
             </div>
         </div>
 
@@ -190,23 +194,33 @@ export default {
             ready: false,
             loading: false,
             scannerKey: 0,
-            step: 'location', // location, product, quantity
+            step: 'product', // product, quantity
             current_location: { id: null, name: '' },
             current_product: { id: null, name: '', sku: '' },
             quantity: 0,
             session_log: [],
             waveId: null,
             waveName: 'Cargando...',
-            locations_list: [], // [{id, name, status}]
-            showLocationsModal: false
+            locations_list: [], 
+            showLocationsModal: false,
+            // Pull to refresh state
+            startY: 0,
+            pullDistance: 0,
+            pulling: false,
+            refreshing: false,
+            maxPullDistance: 100
         }
     },
     computed: {
         pending_locations() {
-            return this.locations_list.filter(l => l.status === 'pending');
+            return (this.locations_list || []).filter(l => l.status === 'pending');
         },
         done_locations() {
-            return this.locations_list.filter(l => l.status === 'done');
+            return (this.locations_list || []).filter(l => l.status === 'done');
+        },
+        locationHasCounts() {
+            if (!this.current_location.id) return false;
+            return this.session_log.some(log => log.location === this.current_location.name && log.qty > 0);
         }
     },
     async mounted() {
@@ -215,78 +229,47 @@ export default {
             this.$toast.add({ 
                 severity: 'error', 
                 summary: 'Error de Inicialización', 
-                detail: 'No se pudo recuperar el identificador de la ola de conteo. Por favor, reintente desde el menú principal.', 
+                detail: 'No se pudo recuperar el identificador de la ola de conteo.', 
                 life: 5000 
             });
             this.exitFlow();
             return;
         }
         
-        // Cargar nombre de la ola si es necesario, o usar el que viene
-        // Por ahora asumimos que el store o props lo tienen o lo recuperamos
-        this.waveName = "Cargando...";
         await this.loadWaveInfo();
-        
+        this.autoSelectFirstLocation();
         this.ready = true;
     },
     methods: {
-        async loadWaveInfo() {
-            let res = await this.store.callOdoo("get_cycle_count_details_minimal", "", { wave_id: this.waveId });
-            if (res && res.ok) {
-                this.waveName = res.name ? res.name.split(' ')[0] : 'Cargando...';
-                this.locations_list = res.locations || [];
+        async loadWaveInfo(silent = false) {
+            if (!silent) this.loading = true;
+            try {
+                let res = await this.store.callOdoo("get_cycle_count_details_minimal", "", { wave_id: this.waveId });
+                if (res && res.ok) {
+                    this.waveName = res.name ? res.name.split(' ')[0] : 'Cargando...';
+                    this.locations_list = res.locations || [];
+                } else if (res && res.error) {
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 5000 });
+                }
+            } finally {
+                if (!silent) this.loading = false;
             }
         },
 
-        async handleLocationScan(data) {
-            console.log("Location Scanned:", data);
-            try {
-                let res = await this.store.callOdoo("validate_cycle_count_location", "", {
-                    wave_id: this.waveId,
-                    location_name: data
-                });
-
-                if (res.ok) {
-                    const isDone = this.done_locations.some(l => l.id === res.location_id);
-                    if (isDone) {
-                        this.$toast.add({ 
-                            severity: 'warn', 
-                            summary: 'Ubicación ya contada', 
-                            detail: 'Esta ubicación ya fue procesada y no puede volver a escanearse.', 
-                            life: 4000 
-                        });
-                        this.scannerKey++;
-                        return;
-                    }
-
-                    this.current_location = {
-                        id: res.location_id,
-                        name: res.location_name
-                    };
-                    this.step = 'product';
-                    this.scannerKey++;
-                } else {
-                    this.$toast.add({ 
-                        severity: 'error', 
-                        summary: 'Ubicación Inválida', 
-                        detail: (res.error || 'La ubicación escaneada no es válida para esta ola.'), 
-                        life: 4000 
-                    });
-                    this.scannerKey++;
-                }
-            } catch (e) {
-                this.$toast.add({ 
-                    severity: 'error', 
-                    summary: 'Error de Validación', 
-                    detail: (e.message || 'Error al validar la ubicación.'), 
-                    life: 4000 
-                });
-                this.scannerKey++;
+        autoSelectFirstLocation() {
+            if (this.pending_locations.length > 0) {
+                const loc = this.pending_locations[0];
+                this.current_location = {
+                    id: loc.id,
+                    name: loc.name
+                };
+                this.step = 'product';
+            } else {
+                this.current_location = { id: null, name: '' };
             }
         },
 
         async handleProductScan(data) {
-            console.log("Product Scanned:", data);
             try {
                 let res = await this.store.callOdoo("validate_cycle_count_product", "", {
                     barcode: data
@@ -318,13 +301,14 @@ export default {
                 });
                 this.scannerKey++;
             }
+            await this.loadWaveInfo(true);
         },
 
         async markEmpty() {
-            const isLast = this.pending_locations.length === 1 && this.pending_locations[0].id === this.current_location.id;
-            const confirmMsg = isLast 
-                ? "Si se pone esta ubicación vacía, se cerrará la ola en automático ya que es la última. ¿Desea continuar?"
-                : `¿Confirmas que la ubicación ${this.current_location.name} está totalmente vacía?`;
+            if (!this.current_location.id) return;
+            
+            const isLast = this.pending_locations.length === 1;
+            const confirmMsg = `¿Confirmas que la ubicación ${this.current_location.name} está totalmente vacía?`;
 
             if (!confirm(confirmMsg)) return;
             
@@ -342,47 +326,51 @@ export default {
                         this.$toast.add({ 
                             severity: 'success', 
                             summary: 'Ubicación Vacía', 
-                            detail: `Se ha registrado correctamente que la ubicación ${this.current_location.name} no contiene stock.`, 
-                            life: 3000 
+                            detail: `Ubicación ${this.current_location.name} registrada como vacía.`, 
+                            life: 2000 
                         });
                     }
                     
-                    // Update local list status
-                    let loc = this.locations_list.find(l => l.id === this.current_location.id);
-                    if (loc) loc.status = 'done';
-
-                    // Update local session log
                     this.session_log.unshift({
                         location: this.current_location.name,
                         product: '(UBICACIÓN VACÍA)',
                         qty: 0
                     });
 
-                    if (isLast) {
-                        // Automáticamente finalizar ola
-                        await this.finishWave(true);
-                    } else {
-                        // Reset to location step to scan next location
-                        this.resetToLocation();
-                    }
+                    await this.loadWaveInfo(true);
+                    this.autoSelectFirstLocation();
+                    this.scannerKey++;
                 } else {
-                    this.$toast.add({ 
-                        severity: 'error', 
-                        summary: 'Error de Registro', 
-                        detail: (res.error || 'No se pudo marcar la ubicación como vacía.'), 
-                        life: 4000 
-                    });
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 4000 });
                 }
-            } catch (e) {
-                this.$toast.add({ 
-                    severity: 'error', 
-                    summary: 'Error de Comunicación', 
-                    detail: (e.message || 'Error al completar la acción de vaciado.'), 
-                    life: 4000 
-                });
             } finally {
                 this.loading = false;
             }
+        },
+
+        async moveToNextLocation() {
+            if (!this.current_location.id) return;
+
+            // Mark current as "done" by sending a dummy counted line if it doesn't have any product yet
+            // to ensure it disappears from pending. If it has products, it's already counted.
+            if (!this.locationHasCounts) {
+                 this.loading = true;
+                 try {
+                     // We mark it as counted (implicitly "finished")
+                     await this.store.callOdoo("mark_location_empty", "", {
+                        wave_id: this.waveId,
+                        location_id: this.current_location.id,
+                        operator_email: this.store.role.email
+                    });
+                 } finally {
+                     this.loading = false;
+                 }
+            }
+
+            await this.loadWaveInfo(true);
+            this.autoSelectFirstLocation();
+            this.scannerKey++;
+            this.$toast.add({ severity: 'info', summary: 'Siguiente Ubicación', detail: this.current_location.name || 'Ola completada', life: 2000 });
         },
 
         async confirmCount() {
@@ -402,106 +390,85 @@ export default {
                         this.$toast.add({ 
                             severity: 'success', 
                             summary: 'Conteo Registrado', 
-                            detail: `Se registró un conteo de ${this.quantity} para el producto ${this.current_product.sku || this.current_product.name}.`, 
+                            detail: `Registrado: ${this.quantity} de ${this.current_product.sku || this.current_product.name}.`, 
                             life: 2000 
                         });
                     }
                     
-                    // Update local list status
-                    let loc = this.locations_list.find(l => l.id === this.current_location.id);
-                    if (loc) loc.status = 'done';
-
-                    // Agregar al log local
                     this.session_log.unshift({
                         location: this.current_location.name,
                         product: this.current_product.sku || this.current_product.name,
                         qty: this.quantity
                     });
 
-                    // Limpiar producto y volver a escanear producto (manteniendo ubicación)
                     this.current_product = { id: null, name: '', sku: '' };
                     this.quantity = 0;
                     this.step = 'product';
                     this.scannerKey++;
                 } else {
-                    this.$toast.add({ 
-                        severity: 'error', 
-                        summary: 'Error al Guardar', 
-                        detail: (res.error || 'Error al guardar el conteo.'), 
-                        life: 4000 
-                    });
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 4000 });
                 }
-            } catch (e) {
-                this.$toast.add({ 
-                    severity: 'error', 
-                    summary: 'Error de Conexión', 
-                    detail: (e.message || 'Error al enviar el conteo.'), 
-                    life: 4000 
-                });
             } finally {
                 this.loading = false;
             }
         },
 
-        async finishWave(autoFinish = false) {
+        async finishWave() {
             if (this.pending_locations.length > 0) {
                 this.$toast.add({ 
                     severity: 'warn', 
-                    summary: 'Ubicaciones Pendientes', 
-                    detail: `No es posible finalizar la ola mientras existan ubicaciones por contar. Quedan ${this.pending_locations.length} pendientes.`, 
-                    life: 5000 
+                    summary: 'Pendientes', 
+                    detail: `Faltan ${this.pending_locations.length} ubicaciones por procesar.`, 
+                    life: 4000 
                 });
                 return;
             }
-            if (!autoFinish && !confirm("¿Estás seguro de que quieres finalizar esta ola? Ya no podrás registrar más productos.")) return;
+            if (!confirm("¿Deseas finalizar esta ola de conteo?")) return;
             this.loading = true;
             try {
                 let res = await this.store.callOdoo("finish_cycle_count_wave", "", { wave_id: this.waveId });
                 if (res.ok) {
-                    const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
-                    if (!isManager) {
-                        this.$toast.add({ 
-                            severity: 'success', 
-                            summary: 'Ola Finalizada', 
-                            detail: 'La ola de conteo ha sido completada exitosamente.', 
-                            life: 3000 
-                        });
-                    }
                     this.store.mandatory_uncompleted.doneMandatory();
                 } else {
-                    this.$toast.add({ 
-                        severity: 'error', 
-                        summary: 'Error al Finalizar', 
-                        detail: 'No se pudo completar el cierre de la ola. ' + (res.error || 'Error en el servidor'), 
-                        life: 4000 
-                    });
+                    this.$toast.add({ severity: 'error', summary: 'Error', detail: res.error, life: 4000 });
                 }
-            } catch (e) {
-                this.$toast.add({ 
-                    severity: 'error', 
-                    summary: 'Error Crítico', 
-                    detail: 'Ocurrió un error inesperado al intentar finalizar la ola. ' + (e.message || 'Error desconocido'), 
-                    life: 4000 
-                });
             } finally {
                 this.loading = false;
             }
         },
 
-        resetToLocation() {
-            this.current_location = { id: null, name: '' };
-            this.current_product = { id: null, name: '', sku: '' };
-            this.step = 'location';
-            this.scannerKey++;
-        },
-
         exitFlow() {
-            if (this.step !== 'location') {
-                if (!confirm("¿Estás seguro de que quieres salir? Se perderá el progreso de la ubicación actual si no has confirmado.")) {
-                    return;
-                }
+            if (this.step === 'quantity') {
+                if (!confirm("Tienes un conteo pendiente. ¿Deseas salir de todas formas?")) return;
             }
             this.store.mandatory_uncompleted.doneMandatory();
+        },
+
+        // Pull to refresh handlers
+        handleTouchStart(e) {
+            if (this.$el.scrollTop === 0) {
+                this.startY = e.touches[0].pageY;
+                this.pulling = true;
+            }
+        },
+        handleTouchMove(e) {
+            if (!this.pulling || this.refreshing) return;
+            const currentY = e.touches[0].pageY;
+            const diff = currentY - this.startY;
+            if (diff > 0) {
+                this.pullDistance = Math.min(diff, this.maxPullDistance);
+                if (diff > 10) e.preventDefault(); 
+            }
+        },
+        async handleTouchEnd() {
+            if (!this.pulling) return;
+            if (this.pullDistance >= 60) {
+                this.refreshing = true;
+                await this.loadWaveInfo();
+                this.refreshing = false;
+            }
+            this.pulling = false;
+            this.pullDistance = 0;
         }
     }
 }
@@ -511,12 +478,27 @@ export default {
 .cycle-count-operator-container {
     display: flex;
     flex-direction: column;
-    min-height: 100%;
-    padding: 10px;
-    box-sizing: border-box;
+    height: 100vh;
     background: #f4f7f6;
-    gap: 10px;
     overflow-y: auto;
+    position: relative;
+    overscroll-behavior-y: contain;
+}
+
+.pull-to-refresh-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3B82F6;
+    z-index: 1000;
+    transition: height 0.1s ease;
 }
 
 .operator-header {
@@ -524,333 +506,101 @@ export default {
     justify-content: space-between;
     align-items: center;
     background: #fff;
-    padding: 10px 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
 }
 
-.wave-info .label {
-    font-size: 0.7rem;
-    color: #888;
-    font-weight: bold;
-    display: block;
-}
-
-.wave-info .value {
-    font-size: 1rem;
-    font-weight: 800;
-    color: #2c3e50;
-}
-
-.context-info-header {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.header-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.85rem;
-    font-weight: bold;
-    color: #2c3e50;
-}
-
-.header-item i {
-    color: #3498db;
-    font-size: 0.8rem;
-}
-
-.header-val {
-    max-width: 150px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.edit-icon {
-    cursor: pointer;
-    color: #f39c12 !important;
-    margin-left: 5px;
-}
-
-.header-actions {
-    display: flex;
-    gap: 5px;
-}
+.wave-info .label { font-size: 0.65rem; color: #64748b; font-weight: 800; display: block; }
+.wave-info .value { font-size: 1.1rem; font-weight: 900; color: #1e293b; }
 
 .workflow-area {
-    flex: 2;
-    background: #fff;
-    border-radius: 8px;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-}
-
-.step-container {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-}
-
-.pending-summary {
-    background: #fff9c4;
-    padding: 10px;
-    border-bottom: 2px solid #fbc02d;
-}
-
-.pending-summary.completed {
-    background: #c8e6c9;
-    border-bottom-color: #4caf50;
-    text-align: center;
-}
-
-.summary-title {
-    font-size: 0.75rem;
-    font-weight: bold;
-    color: #5d4037;
-    margin-bottom: 5px;
-    text-transform: uppercase;
-}
-
-.pending-summary.completed .summary-title {
-    color: #2e7d32;
-    font-size: 0.9rem;
-    margin-bottom: 0;
-}
-
-.summary-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-}
-
-.loc-badge {
-    background: #fbc02d;
-    color: #000;
-    font-size: 0.75rem;
-    font-weight: bold;
-    padding: 2px 8px;
-    border-radius: 12px;
-}
-
-.loc-badge.more {
-    background: #e0e0e0;
-    color: #616161;
-}
-
-.scanner-section {
     flex: 1;
-}
-
-.current-context {
-    background: #eef2f3;
-    padding: 10px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    border-bottom: 1px solid #ddd;
-}
-
-.context-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-weight: bold;
-    color: #34495e;
-}
-
-.context-item i {
-    color: #3498db;
-}
-
-.product-info {
     display: flex;
     flex-direction: column;
 }
 
-.product-sku {
-    font-size: 0.8rem;
-    color: #7f8c8d;
-}
-
-.quantity-step {
-    padding: 10px;
-    justify-content: flex-start;
-}
-
-.quantity-form-wrapper {
-    flex: 1;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-    padding-bottom: 20px;
-}
-
-.quantity-form {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 15px;
-    margin-top: 10px;
-}
-
-.quantity-form label {
-    font-weight: bold;
-    font-size: 1.1rem;
-}
-
-.qty-input-wrapper {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.qty-btn {
-    width: 50px;
-    height: 50px;
-    font-size: 1.5rem !important;
-    font-weight: bold !important;
-}
-
-.qty-input {
-    width: 100px;
-}
-
-:deep(.qty-input input) {
-    text-align: center;
-    font-size: 2rem;
-    font-weight: bold;
-}
-
-.form-actions {
-    display: flex;
-    gap: 20px;
-    width: 100%;
-    justify-content: center;
-    margin-top: 10px;
-}
-
-.session-log {
-    flex: 1;
-    background: #2c3e50;
-    color: #ecf0f1;
-    border-radius: 8px;
-    padding: 15px;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-
-.log-title {
-    font-weight: bold;
-    margin-bottom: 10px;
-    border-bottom: 1px solid #555;
-    padding-bottom: 5px;
-}
-
-.log-items {
-    flex: 1;
-    overflow-y: auto;
-}
-
-.log-item {
+.current-context-banner {
+    background: #1e293b;
+    color: #fff;
+    padding: 1rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 8px 0;
-    border-bottom: 1px solid #3e4f5f;
-    font-size: 0.9rem;
 }
 
-.log-details {
+.context-main { display: flex; align-items: center; gap: 0.75rem; }
+.context-main i { font-size: 1.5rem; color: #3b82f6; }
+.loc-info { display: flex; flex-direction: column; }
+.loc-label { font-size: 0.65rem; color: #94a3b8; font-weight: bold; }
+.loc-name { font-size: 1.2rem; font-weight: 900; }
+.pending-count { font-size: 0.75rem; background: #334155; padding: 4px 8px; border-radius: 4px; }
+
+.action-bar-top {
     display: flex;
-    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
 }
 
-.log-loc {
-    font-weight: bold;
-    color: #3498db;
-    font-size: 0.8rem;
-}
+.scanner-section { flex: 1; }
 
-.log-qty {
-    font-weight: bold;
-    font-size: 1.2rem;
-    color: #2ecc71;
-}
-
-.empty-log {
-    text-align: center;
-    color: #95a5a6;
-    margin-top: 20px;
-    font-style: italic;
-}
-
-/* Modal Styles */
-.locations-modal-content {
-    max-height: 60vh;
-    overflow-y: auto;
-}
-
-.location-group {
-    display: flex;
-    flex-direction: column;
-}
-
-.group-title {
-    font-size: 0.8rem;
-    font-weight: bold;
-    color: #757575;
-    margin-bottom: 10px;
-    border-left: 4px solid #3498db;
-    padding-left: 10px;
-}
-
-.loc-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.loc-item-modal {
+.quantity-step { padding: 1rem; }
+.context-info-compact {
+    background: #e2e8f0;
+    padding: 0.75rem;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 10px;
-    background: #f5f5f5;
-    border-radius: 6px;
-    font-size: 0.9rem;
+    font-weight: 800;
+    margin-bottom: 1rem;
 }
 
-.loc-item-modal i {
-    font-size: 1rem;
-}
+.quantity-form { display: flex; flex-direction: column; align-items: center; gap: 1.5rem; margin-top: 1rem; }
+.quantity-form label { font-weight: 900; font-size: 1.2rem; color: #1e293b; }
+.qty-input-wrapper { display: flex; align-items: center; gap: 1rem; }
+.qty-btn { width: 60px; height: 60px; font-size: 2rem !important; }
+.qty-input { width: 120px; }
+:deep(.qty-input input) { text-align: center; font-size: 2.5rem; font-weight: 900; }
+.form-actions { display: flex; gap: 1rem; width: 100%; margin-top: 1rem; }
+.form-actions button { flex: 1; height: 50px; font-weight: 800; }
 
-.loc-item-modal.pending {
-    border-left: 4px solid #fbc02d;
+.empty-state-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    text-align: center;
+    gap: 1rem;
 }
+.success-icon { font-size: 4rem; color: #22c55e; }
+.empty-state-container h3 { font-size: 1.5rem; font-weight: 900; margin: 0; }
 
-.loc-item-modal.pending i {
-    color: #fbc02d;
+.session-log {
+    background: #1e293b;
+    color: #f8fafc;
+    padding: 1rem;
+    height: 200px;
+    display: flex;
+    flex-direction: column;
 }
+.log-title { font-weight: 800; margin-bottom: 0.5rem; border-bottom: 1px solid #334155; padding-bottom: 0.5rem; font-size: 0.8rem; }
+.log-items { flex: 1; overflow-y: auto; }
+.log-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; border-bottom: 1px solid #334155; }
+.log-loc { color: #3b82f6; font-size: 0.7rem; font-weight: bold; }
+.log-prod { font-size: 0.85rem; display: block; }
+.log-qty { font-weight: 900; font-size: 1.2rem; color: #22c55e; }
 
-.loc-item-modal.done {
-    border-left: 4px solid #4caf50;
-    background: #e8f5e9;
-    color: #2e7d32;
-}
+.locations-modal-content { max-height: 60vh; overflow-y: auto; }
+.group-title { font-size: 0.75rem; font-weight: 900; color: #64748b; margin-bottom: 0.75rem; border-left: 4px solid #3b82f6; padding-left: 10px; }
+.loc-grid { display: flex; flex-direction: column; gap: 8px; }
+.loc-item-modal { display: flex; align-items: center; gap: 10px; padding: 0.75rem; background: #f1f5f9; border-radius: 6px; font-weight: 600; }
+.loc-item-modal.done { background: #dcfce7; color: #166534; border-left: 4px solid #22c55e; }
+.loc-item-modal.pending { border-left: 4px solid #3b82f6; }
 
-.loc-item-modal.done i {
-    color: #4caf50;
-}
-
-.empty-msg {
-    color: #9e9e9e;
-    font-style: italic;
-    font-size: 0.85rem;
-    padding: 10px;
-}
+.flex-1 { flex: 1; }
 </style>

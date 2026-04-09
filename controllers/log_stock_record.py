@@ -24,7 +24,9 @@ class LogStockRecord(http.Controller):
             if not picking or not picking.exists():
                 return {"error": "Picking no encontrado"}
 
-            operator_id = request.env['res.users'].sudo().search([('login', '=', operator_mail)], limit=1)
+            operator_id = False
+            if operator_mail:
+                operator_id = request.env['res.users'].sudo().search([('login', '=ilike', str(operator_mail).strip())], limit=1)
             
             # --- EXTRACCIÓN DE CANTIDADES SEGURA ---
             # Agregamos por producto para evitar duplicados si hay varias líneas del mismo

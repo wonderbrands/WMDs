@@ -430,6 +430,37 @@ export const useGeneralStore = defineStore('general_store', {
     },
     executeActionByContext(context, data, extra) {
         const actionsMap = {
+            'open_dfull_operation': async (barcode, taskDef) => {
+                const res = await this.callOdoo("validate_dfull_pick", "", { pick_name: barcode });
+                if (res.valid) {
+                    this.mandatory_uncompleted.component = "BarcodeOperationComponent";
+                    this.mandatory_uncompleted.component_props = {
+                        res_id: res.pick_id,
+                        res_model: 'stock.picking',
+                        config: {
+                            buttons_to_add: taskDef.buttons_to_add,
+                            buttons_to_subtract: taskDef.buttons_to_subtract,
+                            stock_input_add: taskDef.stock_input_add,
+                            extra_products: taskDef.extra_products,
+                            backorder: taskDef.backorder,
+                            post_validate: taskDef.post_validate,
+                            scan_source: taskDef.scan_source,
+                            scan_dest: taskDef.scan_dest,
+                            any_source: taskDef.any_source,
+                            any_dest: taskDef.any_dest
+                        }
+                    };
+                    this.mandatory_uncompleted.user = this.role.email;
+                    this.mandatory_uncompleted.loadToStorage();
+                } else {
+                    this.toast.add({ 
+                        severity: 'error', 
+                        summary: 'Operación Inválida', 
+                        detail: res.message || 'La operación escaneada no es válida o no existe.', 
+                        life: 5000 
+                    });
+                }
+            },
             'bin_scan_so': async (scannedData, component) => {
                 if (component.so.some(o => o.name === scannedData)) {
                     component.restartScanner();

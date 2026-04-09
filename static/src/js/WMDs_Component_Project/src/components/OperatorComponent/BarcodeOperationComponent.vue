@@ -1,5 +1,16 @@
 <template>
-    <div class="barcode-operation-container">
+    <div 
+        class="barcode-operation-container"
+        @touchstart="handleTouchStart"
+        @touchmove="handleTouchMove"
+        @touchend="handleTouchEnd"
+    >
+        <!-- Pull to refresh indicator -->
+        <div v-if="pulling" class="pull-to-refresh-indicator" :style="{ height: pullDistance + 'px', opacity: pullDistance / 100 }">
+            <i class="fa fa-refresh" :class="{ 'fa-spin': refreshing }"></i>
+            <span>{{ refreshing ? 'Actualizando...' : 'Tire para actualizar' }}</span>
+        </div>
+
         <!-- Header -->
         <div class="op-header">
             <div class="op-info">
@@ -43,7 +54,7 @@
                                 <span class="line-progress">{{ currentLine.picked }} / {{ currentLine.qty_demand }}</span>
                                 <small class="text-secondary" v-if="res_model === 'stock.picking.batch'">{{ currentLine.picking_name }}</small>
                             </div>
-                            <small class="text-info">{{ currentLine.location_name }} → {{ currentLine.location_dest_name }}</small>
+                            <small class="text-info font-bold">{{ currentLine.location_name }} → {{ currentLine.location_dest_name }}</small>
                         </div>
                     </div>
                     <div class="action-buttons">
@@ -56,6 +67,15 @@
                             <Button label="-1" class="p-button-warning" @click="incrementPicked(-1)" :disabled="currentLine.picked <= 0" />
                         </template>
                     </div>
+
+                    <!-- Manual Input Area -->
+                    <div class="manual-input-area mt-3" v-if="localConfig.stock_input_add">
+                        <div class="flex gap-2">
+                            <InputNumber v-model="manualQty" :min="0" class="flex-1" placeholder="Cant. piezas" showButtons buttonLayout="horizontal" />
+                            <Button label="ESTABLECER" icon="fa fa-check" class="p-button-primary" @click="incrementTo(manualQty)" :disabled="manualQty <= 0" />
+                        </div>
+                    </div>
+
                     <div class="action-buttons mt-3" v-if="localConfig.scan_dest && localConfig.backorder">
                         <Button label="ESTABLECER UBICACIÓN DESTINO" icon="fa fa-map-marker" class="p-button-info w-full" @click="currentStep = 'location_dest'" />
                     </div>
@@ -67,18 +87,25 @@
                 <div class="list-header-sticky">
                     <i class="fa fa-list-ul"></i> Lista de Productos
                 </div>
-                <div v-for="(group, pickingName) in groupedLines" :key="pickingName" class="picking-group">
-                    <div class="picking-header" v-if="res_model === 'stock.picking.batch'">
-                        {{ pickingName }}
+                <div v-for="(group, locationName) in groupedLines" :key="locationName" class="picking-group">
+                    <div class="picking-header">
+                        <i class="fa fa-map-marker"></i> {{ locationName }}
                     </div>
                     <DataTable :value="group" class="p-datatable-sm clickable-rows" @row-click="(event) => selectLine(event.data)">
                         <Column header="Producto">
                             <template #body="slotProps">
-                                <div class="flex align-items-center gap-2">
+                                <div class="flex align-items-center gap-2 product-row-container" 
+                                     :class="{'highlight-location': slotProps.data.location_name === scannedLocationSrc || slotProps.data.location_barcode === scannedLocationSrc, 'line-selected': currentLine?.id === slotProps.data.id}">
                                     <img :src="slotProps.data.image_url" style="width: 35px; border-radius: 4px;" />
-                                    <div class="flex flex-column">
-                                        <span class="font-bold text-xs">{{ slotProps.data.product_name }}</span>
-                                        <small class="text-secondary" style="font-size: 0.7rem;">{{ slotProps.data.sku }}</small>
+                                    <div class="flex flex-column flex-1">
+                                        <div class="flex justify-content-between align-items-start">
+                                            <span class="font-bold text-xs">{{ slotProps.data.product_name }}</span>
+                                            <span v-if="slotProps.data.location_name === scannedLocationSrc" class="location-badge-small">MISMA UBICACIÓN</span>
+                                        </div>
+                                        <div class="flex justify-content-between align-items-center mt-1">
+                                            <small class="text-secondary" style="font-size: 0.7rem;">{{ slotProps.data.sku }}</small>
+                                            <small class="text-info font-bold" style="font-size: 0.65rem;">{{ slotProps.data.picking_name }}</small>
+                                        </div>
                                     </div>
                                 </div>
                             </template>
@@ -88,11 +115,6 @@
                                 <span :class="{'text-success font-bold': slotProps.data.picked >= slotProps.data.qty_demand}" class="text-xs">
                                     {{ slotProps.data.picked }} / {{ slotProps.data.qty_demand }}
                                 </span>
-                            </template>
-                        </Column>
-                        <Column style="width: 40px">
-                            <template #body="slotProps">
-                                <Button icon="fa fa-search" class="p-button-text p-button-sm p-0" />
                             </template>
                         </Column>
                     </DataTable>
@@ -138,6 +160,7 @@
 <script>
 import BarcodeScannerComponent from '../QRScannerComponent/BarcodeScannerComponent.vue';
 import Button from 'primevue/button';
+import InputNumber from 'primevue/inputnumber';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dialog from 'primevue/dialog';
@@ -145,7 +168,7 @@ import { useGeneralStore } from "../../store/index";
 
 export default {
     name: "BarcodeOperationComponent",
-    components: { BarcodeScannerComponent, Button, DataTable, Column, Dialog },
+    components: { BarcodeScannerComponent, Button, InputNumber, DataTable, Column, Dialog },
     props: {
         res_id: { required: true },
         res_model: { default: 'stock.picking' },
@@ -154,6 +177,7 @@ export default {
             default: () => ({
                 buttons_to_add: true,
                 buttons_to_subtract: true,
+                stock_input_add: false,
                 extra_products: false,
                 backorder: true,
                 scan_source: false,
@@ -172,7 +196,14 @@ export default {
             scannerKey: 0,
             loading: false,
             localConfig: { ...this.config },
-            showBackorderDialog: false
+            showBackorderDialog: false,
+            manualQty: 0,
+            // Pull to refresh state
+            startY: 0,
+            pullDistance: 0,
+            pulling: false,
+            refreshing: false,
+            maxPullDistance: 100
         }
     },
     computed: {
@@ -200,25 +231,32 @@ export default {
             return this.currentLine && this.currentLine.picked >= this.currentLine.qty_demand;
         },
         totalPickedCount() {
-            return this.operationData.lines.reduce((acc, l) => acc + l.picked, 0);
+            return (this.operationData.lines || []).reduce((acc, l) => acc + l.picked, 0);
         },
         totalDemandCount() {
-            return this.operationData.lines.reduce((acc, l) => acc + l.qty_demand, 0);
+            return (this.operationData.lines || []).reduce((acc, l) => acc + l.qty_demand, 0);
         },
         overallProgress() {
             if (!this.totalDemandCount) return 0;
             return (this.totalPickedCount / this.totalDemandCount) * 100;
         },
         canValidate() {
-            return this.operationData.lines.some(l => l.picked > 0);
+            return (this.operationData.lines || []).some(l => l.picked > 0);
         },
         missingLines() {
-            return this.operationData.lines.filter(l => l.picked < l.qty_demand);
+            return (this.operationData.lines || []).filter(l => l.picked < l.qty_demand);
         },
         groupedLines() {
             const groups = {};
-            this.operationData.lines.forEach(line => {
-                const groupKey = line.picking_name || 'General';
+            // Sort lines by location name first to ensure alphabetical order of groups
+            const sortedLines = [...(this.operationData.lines || [])].sort((a, b) => {
+                const locA = a.location_name || '';
+                const locB = b.location_name || '';
+                return locA.localeCompare(locB);
+            });
+
+            sortedLines.forEach(line => {
+                const groupKey = line.location_name || 'Sin ubicación';
                 if (!groups[groupKey]) groups[groupKey] = [];
                 groups[groupKey].push(line);
             });
@@ -229,8 +267,8 @@ export default {
         await this.loadData();
     },
     methods: {
-        async loadData() {
-            this.loading = true;
+        async loadData(silent = false) {
+            if (!silent) this.loading = true;
             try {
                 const res = await this.store.callOdoo("get_operation_data", "", {
                     res_id: this.res_id,
@@ -238,20 +276,26 @@ export default {
                     operator_email: this.store.role.email
                 });
                 if (res.status === 'ok') {
+                    const currentLineId = this.currentLine?.id;
                     this.operationData = res;
                     
-                    // PFUL/DFUL specific logic
+                    if (currentLineId) {
+                        this.currentLine = this.operationData.lines.find(l => l.id === currentLineId) || null;
+                    } else if (this.operationData.lines.length > 0) {
+                        // Set first incomplete line as current if none selected
+                        this.currentLine = this.operationData.lines.find(l => l.picked < l.qty_demand) || this.operationData.lines[0];
+                    }
+
                     if (res.is_dful) {
                         this.localConfig.scan_source = false;
                         this.localConfig.scan_dest = false;
                         this.localConfig.backorder = true;
                     }
                     if (res.is_pful) {
-                        this.localConfig.scan_dest = false; // Post-validation BIN scan handles this
+                        this.localConfig.scan_dest = false; 
                         this.localConfig.backorder = true;
                     }
 
-                    // Lógica sub picking type
                     if (this.res_model === 'stock.picking.batch') {
                         if (res.pick_type === 'sale') {
                             this.localConfig.backorder = false;
@@ -262,13 +306,15 @@ export default {
                         }
                     }
 
-                    this.checkInitialStep();
+                    if (!silent) this.checkInitialStep();
                 } else {
                     this.$toast.add({ severity: 'error', summary: 'Error', detail: res.message, life: 5000 });
-                    this.exitFlow();
+                    if (res.message.includes('cancelada') || res.message.includes('reasignada')) {
+                        this.exitFlow();
+                    }
                 }
             } finally {
-                this.loading = false;
+                if (!silent) this.loading = false;
             }
         },
         checkInitialStep() {
@@ -296,7 +342,6 @@ export default {
                 if (!this.currentLine) return;
                 
                 if (this.localConfig.any_dest) {
-                    // Flex mode: Call server to update line destination
                     this.loading = true;
                     try {
                         const res = await this.store.callOdoo("process_dest_location_scan", "", {
@@ -323,7 +368,6 @@ export default {
                         this.loading = false;
                     }
                 } else {
-                    // Strict mode: Just validate against original destination
                     const isValid = this.currentLine.location_dest_name === barcode || this.currentLine.location_dest_barcode === barcode || this.currentLine.location_dest_id.toString() === barcode;
                     if (isValid) {
                         this.scannedLocationDest = barcode;
@@ -339,6 +383,10 @@ export default {
                 }
             }
             this.scannerKey++;
+            await this.loadData(true);
+            
+            // After data is refreshed, check if current line is complete and auto-advance
+            this.checkAndAutoAdvance();
         },
         async processProductScan(barcode) {
             this.loading = true;
@@ -376,8 +424,7 @@ export default {
             if (!this.currentLine) return;
             
             if (amt > 0 && !this.localConfig.extra_products && (this.currentLine.picked + amt > this.currentLine.qty_demand)) {
-                this.$toast.add({ severity: 'error', summary: 'Límite alcanzado', detail: 'has recogido la cantidad necesaria del SKU para este pedido, no se acpetara en esta operacion ', life: 3000 });
-                // Log attempt locally if needed, but the server now handles this too
+                this.$toast.add({ severity: 'error', summary: 'Límite alcanzado', detail: 'has recogido la cantidad necesaria del SKU para este pedido', life: 3000 });
                 return;
             }
 
@@ -394,6 +441,8 @@ export default {
 
                 if (res.status === 'ok') {
                     this.currentLine.picked = res.new_picked;
+                    await this.loadData(true);
+                    this.checkAndAutoAdvance();
                 } else {
                     this.$toast.add({ severity: 'error', summary: 'Atención', detail: res.message, life: 4000 });
                     if (res.message.includes('reasignada') || res.message.includes('cancelada')) {
@@ -404,6 +453,66 @@ export default {
                 this.loading = false;
             }
         },
+        async incrementTo(targetQty) {
+            if (!this.currentLine) return;
+            
+            // Calculate increment needed to reach targetQty
+            const amt = targetQty - this.currentLine.picked;
+            if (amt === 0) return;
+
+            if (amt > 0 && !this.localConfig.extra_products && (this.currentLine.picked + amt > this.currentLine.qty_demand)) {
+                this.$toast.add({ severity: 'error', summary: 'Límite alcanzado', detail: 'has recogido la cantidad necesaria del SKU para este pedido', life: 3000 });
+                return;
+            }
+
+            this.loading = true;
+            try {
+                const res = await this.store.callOdoo("process_scan", "", {
+                    res_id: this.res_id,
+                    res_model: this.res_model,
+                    operator_email: this.store.role.email,
+                    line_id: this.currentLine.id,
+                    increment: amt,
+                    extra_products: this.localConfig.extra_products
+                });
+
+                if (res.status === 'ok') {
+                    this.currentLine.picked = res.new_picked;
+                    this.manualQty = 0; // Reset after success
+                    await this.loadData(true);
+                    this.checkAndAutoAdvance();
+                } else {
+                    this.$toast.add({ severity: 'error', summary: 'Atención', detail: res.message, life: 4000 });
+                    if (res.message.includes('reasignada') || res.message.includes('cancelada')) {
+                        this.exitFlow();
+                    }
+                }
+            } finally {
+                this.loading = false;
+            }
+        },
+        checkAndAutoAdvance() {
+            // If current line is finished, find the next one automatically
+            if (this.currentLine && this.currentLine.picked >= this.currentLine.qty_demand) {
+                const lines = this.operationData.lines || [];
+                
+                // Priority 1: Next incomplete line in SAME location
+                let nextLine = lines.find(l => 
+                    l.picked < l.qty_demand && 
+                    (l.location_name === this.scannedLocationSrc || l.location_barcode === this.scannedLocationSrc)
+                );
+
+                // Priority 2: Next incomplete line anywhere
+                if (!nextLine) {
+                    nextLine = lines.find(l => l.picked < l.qty_demand);
+                }
+
+                if (nextLine && nextLine.id !== this.currentLine.id) {
+                    this.selectLine(nextLine);
+                    this.$toast.add({ severity: 'info', summary: 'Siguiente producto', detail: nextLine.product_name, life: 2000 });
+                }
+            }
+        },
         async validateOperation() {
             const incomplete = this.missingLines.length > 0;
 
@@ -412,7 +521,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Operación Incompleta', 
-                        detail: 'Esta operación no permite entregas parciales (Backorders desactivados).', 
+                        detail: 'Esta operación no permite entregas parciales.', 
                         life: 5000 
                     });
                     return;
@@ -456,7 +565,6 @@ export default {
                         };
                         this.store.mandatory_uncompleted.user = this.store.role.email;
                         this.store.mandatory_uncompleted.loadToStorage();
-                        // Component will switch automatically via App.vue
                     } else if (isPFUL || (isBatch && (confirmedPickType === "full" || confirmedPickType === "wholesale"))) {
                         this.store.mandatory_uncompleted.screen = null;
                         this.store.mandatory_uncompleted.component = "BarcodeScannerComponent";
@@ -473,7 +581,6 @@ export default {
                         };
                         this.store.mandatory_uncompleted.user = this.store.role.email;
                         this.store.mandatory_uncompleted.loadToStorage();
-                        // Component will switch automatically via App.vue
                     } else {
                         if (this.localConfig.post_validate) {
                             await this.store.executeActionByContext(this.localConfig.post_validate, null, {
@@ -493,6 +600,7 @@ export default {
         },
         selectLine(line) {
             this.currentLine = line;
+            this.manualQty = 0;
             const isComplete = line.picked >= line.qty_demand;
             const allowPartial = this.localConfig.backorder;
             
@@ -504,13 +612,38 @@ export default {
                 this.currentStep = 'product';
             }
 
-            // Scroll internal container top
             if (this.$refs.mainScroll) {
                 this.$refs.mainScroll.scrollTo({ top: 0, behavior: 'smooth' });
             }
         },
         exitFlow() {
             this.store.mandatory_uncompleted.doneMandatory();
+        },
+        // Pull to refresh handlers
+        handleTouchStart(e) {
+            if (this.$el.scrollTop === 0) {
+                this.startY = e.touches[0].pageY;
+                this.pulling = true;
+            }
+        },
+        handleTouchMove(e) {
+            if (!this.pulling || this.refreshing) return;
+            const currentY = e.touches[0].pageY;
+            const diff = currentY - this.startY;
+            if (diff > 0) {
+                this.pullDistance = Math.min(diff, this.maxPullDistance);
+                if (diff > 10) e.preventDefault(); 
+            }
+        },
+        async handleTouchEnd() {
+            if (!this.pulling) return;
+            if (this.pullDistance >= 60) {
+                this.refreshing = true;
+                await this.loadData();
+                this.refreshing = false;
+            }
+            this.pulling = false;
+            this.pullDistance = 0;
         }
     }
 }
@@ -529,6 +662,29 @@ export default {
     padding-bottom: 15rem;
 }
 
+.pull-to-refresh-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3B82F6;
+    z-index: 1000;
+    transition: height 0.1s ease;
+    font-size: 0.8rem;
+    font-weight: bold;
+    gap: 5px;
+}
+
+.pull-to-refresh-indicator i {
+    font-size: 1.2rem;
+}
+
 .op-header {
     background: #fff;
     padding: 0.75rem 1rem;
@@ -540,26 +696,10 @@ export default {
     flex-shrink: 0;
 }
 
-.op-info {
-    display: flex;
-    flex-direction: column;
-}
-
-.op-name {
-    font-weight: 800;
-    font-size: 1rem;
-}
-
-.op-type {
-    font-size: 0.7rem;
-    color: #6c757d;
-}
-
-.op-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
+.op-info { display: flex; flex-direction: column; }
+.op-name { font-weight: 800; font-size: 1rem; }
+.op-type { font-size: 0.7rem; color: #6c757d; }
+.op-actions { display: flex; align-items: center; gap: 10px; }
 
 .picked-summary-badge {
     background: #111827;
@@ -581,17 +721,8 @@ export default {
     flex-shrink: 0;
 }
 
-.scanner-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-}
-
-.scanner-box {
-    height: 200px;
-    border-radius: 8px;
-    overflow: hidden;
-}
+.scanner-section { display: flex; flex-direction: column; gap: 0.75rem; }
+.scanner-box { height: 200px; border-radius: 8px; overflow: hidden; }
 
 .instruction-banner {
     padding: 0.75rem;
@@ -616,76 +747,45 @@ export default {
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.line-summary {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
+.line-summary { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; }
+.line-img { width: 50px; height: 50px; border-radius: 8px; object-fit: cover; }
+.line-details { display: flex; flex-direction: column; }
+.line-name { font-weight: bold; font-size: 0.8rem; line-height: 1.2; }
+.line-progress { font-size: 1.1rem; font-weight: 800; color: #2ecc71; }
+
+.action-buttons { display: flex; gap: 8px; }
+.action-buttons button { flex: 1; height: 40px; font-weight: bold; font-size: 0.8rem; }
+
+.list-section { background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #eee; }
+.list-header-sticky { padding: 0.75rem; background: #f1f5f9; font-weight: 800; font-size: 0.85rem; color: #475569; border-bottom: 1px solid #e2e8f0; }
+.picking-group { margin-bottom: 1rem; }
+.picking-header { background: #f8fafc; padding: 0.4rem 0.75rem; font-weight: bold; color: #64748b; border-bottom: 1px solid #f1f5f9; font-size: 0.75rem; }
+
+/* Highlight Logic */
+.product-row-container {
+    padding: 8px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+    border: 2px solid transparent;
 }
 
-.line-img {
-    width: 50px;
-    height: 50px;
-    border-radius: 8px;
-    object-fit: cover;
+.highlight-location {
+    background: #eff6ff;
+    border-color: #3b82f6;
 }
 
-.line-details {
-    display: flex;
-    flex-direction: column;
+.line-selected {
+    background: #f0fdf4;
+    border-left: 4px solid #22c55e;
 }
 
-.line-name {
-    font-weight: bold;
-    font-size: 0.8rem;
-    line-height: 1.2;
-}
-
-.line-progress {
-    font-size: 1.1rem;
-    font-weight: 800;
-    color: #2ecc71;
-}
-
-.action-buttons {
-    display: flex;
-    gap: 8px;
-}
-
-.action-buttons button {
-    flex: 1;
-    height: 40px;
-    font-weight: bold;
-    font-size: 0.8rem;
-}
-
-.list-section {
-    background: #fff;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 1px solid #eee;
-}
-
-.list-header-sticky {
-    padding: 0.75rem;
-    background: #f1f5f9;
-    font-weight: 800;
-    font-size: 0.85rem;
-    color: #475569;
-    border-bottom: 1px solid #e2e8f0;
-}
-
-.picking-group {
-    margin-bottom: 1rem;
-}
-
-.picking-header {
-    background: #f8fafc;
-    padding: 0.4rem 0.75rem;
-    font-weight: bold;
-    color: #64748b;
-    border-bottom: 1px solid #f1f5f9;
-    font-size: 0.75rem;
+.location-badge-small {
+    background: #3b82f6;
+    color: white;
+    font-size: 0.55rem;
+    padding: 2px 6px;
+    border-radius: 10px;
+    font-weight: 900;
 }
 
 .op-footer {
@@ -705,38 +805,11 @@ export default {
     font-weight: bold;
 }
 
-.progress-bar-bg {
-    width: 100%;
-    height: 6px;
-    background: #e9ecef;
-    border-radius: 3px;
-    overflow: hidden;
-}
+.progress-bar-bg { width: 100%; height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: #2ecc71; transition: width 0.3s ease; }
+.validate-btn { width: 100%; height: 50px; font-size: 1rem; font-weight: 800; }
 
-.progress-bar-fill {
-    height: 100%;
-    background: #2ecc71;
-    transition: width 0.3s ease;
-}
-
-.validate-btn {
-    width: 100%;
-    height: 50px;
-    font-size: 1rem;
-    font-weight: 800;
-}
-
-:deep(.clickable-rows .p-datatable-tbody > tr) {
-    cursor: pointer;
-    transition: background 0.2s;
-}
-
-:deep(.clickable-rows .p-datatable-tbody > tr:hover) {
-    background: #f1f5f9 !important;
-}
-
-:deep(.p-datatable .p-datatable-tbody > tr > td) {
-    padding: 0.5rem;
-}
+:deep(.clickable-rows .p-datatable-tbody > tr) { cursor: pointer; }
+:deep(.p-datatable .p-datatable-tbody > tr > td) { padding: 0.2rem 0.5rem; }
 
 </style>

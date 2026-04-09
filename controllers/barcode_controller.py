@@ -15,13 +15,18 @@ class BarcodeController(http.Controller):
         if not record.exists():
             return {"status": "error", "message": "La operación no existe."}
         if record.state == 'cancel':
-            return {"status": "error", "message": "Esta operación ha sido cancelada."}
+            message = "Esta operación ha sido cancelada."
+            if record._name == 'stock.picking.batch':
+                message = "El BATCH completo ha sido cancelado."
+            return {"status": "error", "message": message}
         
         # Check operator assignment
-        # Assuming picking and batch models have an 'operator' field which is res.users
         assigned_operator = getattr(record, 'operator', False)
         if assigned_operator and assigned_operator.login != operator_email:
-            return {"status": "error", "message": "Esta operación ha sido reasignada a otro operador."}
+            message = "Esta operación ha sido reasignada a otro operador."
+            if record._name == 'stock.picking.batch':
+                message = "Este BATCH ha sido reasignado a otro operador."
+            return {"status": "error", "message": message}
         
         return {"status": "ok"}
 
@@ -50,7 +55,8 @@ class BarcodeController(http.Controller):
                 is_dful = True
 
             lines_data = []
-            lines = record.move_line_ids
+            # Filter lines to only include those from active pickings (not cancelled or draft)
+            lines = record.move_line_ids.filtered(lambda l: l.picking_id.state not in ['cancel', 'draft'])
 
             for line in lines:
                 # En Odoo 19, 'quantity' es el campo principal. 
@@ -156,7 +162,8 @@ class BarcodeController(http.Controller):
             # Demand validation
             if not extra_products and increment > 0:
                 if line.wmds_picked_qty + increment > line.quantity:
-                    msg = f"Intento de escaneo excedido: Producto {line.product_id.display_name}. Recogidos: {line.wmds_picked_qty}, Demanda: {line.quantity}"
+                    source_loc = line.location_id.display_name
+                    msg = f"Intento de escaneo excedido en {source_loc}: Producto {line.product_id.display_name}. Recogidos: {line.wmds_picked_qty}, Demanda: {line.quantity}"
                     self._create_log(record, msg, res_model, operator_email)
                     return {"status": "error", "message": "has recogido la cantidad necesaria del SKU para este pedido, no se acpetara en esta operacion "}
 
@@ -175,7 +182,14 @@ class BarcodeController(http.Controller):
 
     def _create_log(self, record, message, res_model, operator_email=None):
         try:
-            user = request.env['res.users'].sudo().search([('login', '=', operator_email)], limit=1) if operator_email else request.env.user
+            user = False
+            if operator_email:
+                # Use case-insensitive search for login
+                user = request.env['res.users'].sudo().search([('login', '=ilike', operator_email.strip())], limit=1)
+            
+            if not user:
+                user = request.env.user
+
             log_vals = {
                 'log': message,
                 'user': user.id,
@@ -293,7 +307,7 @@ class BarcodeController(http.Controller):
 
             # Log closure
             try:
-                source = record.location_id.display_name if res_model == 'stock.picking' else "Múltiples"
+                source = record.location_id.display_name if res_model == 'stock.picking' else "Múltiples ubicaciones"
                 dest = record.location_dest_id.display_name if res_model == 'stock.picking' else "Múltiples"
                 close_msg = f"Traslado {record.name} cerrado de {source} a {dest}"
                 self._create_log(record, close_msg, res_model, operator_email)

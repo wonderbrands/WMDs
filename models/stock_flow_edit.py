@@ -240,7 +240,7 @@ class BatchWMDS(models.Model):
                 #si todas las ventas son de tipo mayoreo, es de tipo wholesale
                 so_strings = record.picking_ids.mapped(lambda pick: pick.origin)
                 so_s = [self.env['sale.order'].search([('name', '=', so)]) for so in so_strings]
-                so_wholesales = len(so_s.filtered(lambda so: so.data_is_wholesale_sale))
+                so_wholesales = len(list(so_s.filter(lambda so: so.data_is_wholesale_sale)))
                 if so_wholesales == total_operations:
                     record.pick_type = "wholesale"
                     continue

@@ -61,6 +61,12 @@
             <field name="model">stock.picking</field>
             <field name="inherit_id" ref="stock.view_picking_form"/>
             <field name="arch" type="xml">
+                <xpath expr="//field[@name='location_id']" position="attributes">
+                    <attribute name="domain">[('complete_name', 'not ilike', 'Bloqueado')]</attribute>
+                </xpath>
+                <xpath expr="//field[@name='location_dest_id']" position="attributes">
+                    <attribute name="domain">[('complete_name', 'not ilike', 'Bloqueado')]</attribute>
+                </xpath>
                 <xpath expr="//field[@name='location_dest_id']" position="after">
                     <field name="picking_type_id_name" invisible="1"/>
                     <field name="marketplace_location" 

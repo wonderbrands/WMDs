@@ -44,12 +44,22 @@ class SOWMDS(models.Model):
 
             for record in self:
                 if record.state != new_state:
-                    self.env['wmds.log'].sudo().create({
+                    log_entry = self.env['wmds.log'].sudo().create({
                         'sale': record.id,
                         'log': msg_state,
                         'user': self.env.user.id,
                         'date': fields.Datetime.now(),
                     })
+                    # Force propagation to picking and batches if canceled
+                    if new_state == 'cancel':
+                        pickings = self.env['stock.picking'].sudo().search([('sale_id', '=', record.id)])
+                        for pick in pickings:
+                            # Re-verify if not already propagated by WMDSLog create
+                            self.env['wmds.log'].sudo().create({
+                                'pick': pick.id,
+                                'log': f"Orden de venta {record.name} cancelada - {msg_state}",
+                                'user': self.env.user.id,
+                            })
 
         res = super(SOWMDS, self).write(vals)
 
