@@ -230,14 +230,20 @@ export default {
                 operator_email: this.store.role.email,
                 task_title: task.title
             });
-            this.store.mandatory_uncompleted.component = task.view;
-            this.store.mandatory_uncompleted.component_props = {
-                context: task.context,
-                instructions: task.instructions,
-                extra_data: task // Pass the whole task def as extra data if needed
-            };
-            this.store.mandatory_uncompleted.user = this.store.role.email;
-            this.store.mandatory_uncompleted.loadToStorage();
+
+            // If it's a simple view/scanner that shouldn't be blocking across sessions
+            // we set it as the current screen instead of a mandatory uncompleted task
+            if (task.view === 'BarcodeScannerComponent') {
+                // For the specific case of the scanner, we pass the props through the store
+                this.store.mandatory_uncompleted.component_props = {
+                    context: task.context,
+                    instructions: task.instructions,
+                    extra_data: task,
+                    can_close: true // Allow closing the scanner to go back
+                };
+            }
+            
+            this.store.setCurrentScreen(task.view);
         }
     }
 };
