@@ -397,11 +397,3 @@ class PurchaseWMDS(models.Model):
         return super(PurchaseWMDS, self).write(vals) 
 
 
-class LineDestEditPurchase(models.Model):
-    _inherit = 'stock.move'
-
-
-
-    @api.onchange('')
-    def _onchange_(self):
-        pass
