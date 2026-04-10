@@ -274,10 +274,6 @@ export default {
     data() {
         return {
             store: useGeneralStore(),
-<<<<<<< HEAD
-=======
-            so: [], 
->>>>>>> b873d32 (hotfix: frontend mal compilado)
             so: [],
             ready: false,
             scannerKey: 0,
@@ -364,10 +360,6 @@ export default {
             this.loadingSession = false;
             this.scannerKey++;
         },
-<<<<<<< HEAD
-
-=======
->>>>>>> b873d32 (hotfix: frontend mal compilado)
         // ═══════════════════════════════════════════
         // CARRIER — Selección y carga
         // ═══════════════════════════════════════════
@@ -553,14 +545,7 @@ export default {
             this.so = [];
         },
 
-        // ═══════════════════════════════════════════
-        // ESCANEO — Lógica existente + persistencia
-        // ═══════════════════════════════════════════
 
-<<<<<<< HEAD
-
-=======
->>>>>>> b873d32 (hotfix: frontend mal compilado)
         setMode(mode) {
             this.dispatchMode = mode;
             if (mode === 'full') {
@@ -885,6 +870,7 @@ export default {
             this.sessionCarrierName = '';
             this.selectedCarrierId = null;
             this.store.mandatory_uncompleted.doneMandatory();
+        }
         },
 
         async clearAllOrders() {
