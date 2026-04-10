@@ -603,7 +603,7 @@ export default {
                         this.store.mandatory_uncompleted.loadToStorage();
                     } else if (isPFUL || (isBatch && (confirmedPickType === "full" || confirmedPickType === "wholesale"))) {
                         this.store.mandatory_uncompleted.screen = null;
-                        this.store.mandatory_uncompleted.component = "BarcodeScannerComponent";
+                        this.store.mandatory_uncompleted.component = "QRScannerComponent";
                         this.store.mandatory_uncompleted.component_props = {
                             context: "assign_bin_for_ful",
                             instructions: "Escanea el BIN para trasladar el lote",
