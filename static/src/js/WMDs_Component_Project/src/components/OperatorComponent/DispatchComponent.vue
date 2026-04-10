@@ -274,11 +274,7 @@ export default {
     data() {
         return {
             store: useGeneralStore(),
-<<<<<<< Updated upstream
-            so: [], 
-=======
             so: [],
->>>>>>> Stashed changes
             ready: false,
             scannerKey: 0,
             dispatchMode: 'individual',
@@ -286,15 +282,12 @@ export default {
             sessionId: null,
             loadingSession: true,
             sessionRecovered: false,
-<<<<<<< Updated upstream
-=======
             // ── Carrier ──
             carrierList: [],
             selectedCarrierId: null,
             sessionCarrierId: null,
             sessionCarrierName: '',
             // ── Impresión ──
->>>>>>> Stashed changes
             showPrintView: false,
             printData: {
                 session_id: null,
@@ -344,10 +337,7 @@ export default {
         console.log("Action: DispatchComponent mounted");
         localStorage.removeItem("mandatory_uncompleted");
 
-<<<<<<< Updated upstream
-=======
         await this.fetchCarrierList();
->>>>>>> Stashed changes
         await this.recoverSession();
 
         setTimeout(() => {
@@ -361,7 +351,6 @@ export default {
         }
     },
     methods: {
-<<<<<<< Updated upstream
         async refreshData() {
             this.loadingSession = true;
             await this.recoverSession();
@@ -371,7 +360,7 @@ export default {
             this.loadingSession = false;
             this.scannerKey++;
         },
-=======
+
         // ═══════════════════════════════════════════
         // CARRIER — Selección y carga
         // ═══════════════════════════════════════════
@@ -398,7 +387,6 @@ export default {
         // ═══════════════════════════════════════════
         // SESIÓN PERSISTENTE — Métodos principales
         // ═══════════════════════════════════════════
->>>>>>> Stashed changes
 
         async recoverSession() {
             try {
@@ -550,8 +538,6 @@ export default {
             }
         },
 
-<<<<<<< Updated upstream
-=======
         async changeCarrier() {
             await this.cancelSession();
             this.sessionCarrierId = null;
@@ -564,7 +550,7 @@ export default {
         // ESCANEO — Lógica existente + persistencia
         // ═══════════════════════════════════════════
 
->>>>>>> Stashed changes
+
         setMode(mode) {
             this.dispatchMode = mode;
             if (mode === 'full') {
@@ -648,10 +634,7 @@ export default {
                         };
                         this.so.push(newItem);
 
-<<<<<<< Updated upstream
-=======
                         // ── Persistir en backend (valida carrier) ──
->>>>>>> Stashed changes
                         await this.persistScanToSession(newItem);
                     }
                 } else {
@@ -873,33 +856,20 @@ export default {
             }
         },
 
-<<<<<<< Updated upstream
-        exitFlow() {
-            if (this.so.length > 0 || (this.dispatchMode === 'full' && this.pendingFullItems.some(i => i.dispatchQty < i.qty))) {
-=======
         // ═══════════════════════════════════════════
         // ACCIONES DE LISTA — Con persistencia
         // ═══════════════════════════════════════════
        
         async exitFlow() {
-            console.log("Action: exitFlow triggered");
             if (this.so.length > 0) {
->>>>>>> Stashed changes
                 const action = confirm(
                     "Tienes escaneos en esta sesión.\n\n" +
                     "• Aceptar = Salir y CANCELAR la sesión actual\n" +
                     "• Cancelar = Volver al escaneo"
                 );
-<<<<<<< Updated upstream
-                if (!action) {
-                    return;
-                }
-            }
-=======
                 if (!action) return;
             }
             await this.cancelSession();
->>>>>>> Stashed changes
             this.so = [];
             this.sessionCarrierId = null;
             this.sessionCarrierName = '';
