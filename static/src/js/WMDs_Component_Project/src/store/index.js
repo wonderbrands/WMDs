@@ -604,6 +604,9 @@ export const useGeneralStore = defineStore('general_store', {
                             let moveResponse = await this.callOdoo("move_to_bin", "", moveParams);
             
                             if (moveResponse.ok) {
+                                if (confirm(`¿Deseas bloquear el bin ${binName} para que ya no reciba más productos?`)) {
+                                    await this.callOdoo("block_bin", "", { bin: binName });
+                                }
                                 this.mandatory_uncompleted.doneMandatory();
                                 const isManager = this.role && (this.role.role === 'WMDs Manager' || (this.role.permissions && this.role.permissions.includes('WMDs Manager')));
                                 if (!isManager) {

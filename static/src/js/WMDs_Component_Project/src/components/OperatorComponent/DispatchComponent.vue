@@ -276,7 +276,6 @@ export default {
     },
     async mounted() {
         console.log("Action: DispatchComponent mounted");
-        localStorage.removeItem("mandatory_uncompleted");
 
         await this.recoverSession();
 

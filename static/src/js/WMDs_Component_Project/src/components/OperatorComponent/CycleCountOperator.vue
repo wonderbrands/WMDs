@@ -60,7 +60,7 @@
             </div>
 
             <!-- Step: Scan Product / Location Overview -->
-            <div v-if="step === 'product'" class="step-container">
+            <div v-if="step === 'product' && current_location.id" class="step-container">
                 
                 <div class="action-bar-top" v-if="current_location.id">
                     <Button 

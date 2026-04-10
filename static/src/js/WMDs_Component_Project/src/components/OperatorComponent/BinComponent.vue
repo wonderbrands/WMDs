@@ -160,7 +160,6 @@ export default {
     },
     mounted() {
         console.log("Action: Component mounted");
-        localStorage.removeItem("mandatory_uncompleted");
         setTimeout(() => {
             this.ready = true;
             console.log("Action: Component ready state set to true");

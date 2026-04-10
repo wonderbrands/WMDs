@@ -41,6 +41,7 @@
                         :key="scannerKey"
                         :onScan="handleScan"
                         :instructions="stepInstruction"
+                        :hideInstructions="true"
                     />
                 </div>
                 
@@ -248,11 +249,15 @@ export default {
         },
         groupedLines() {
             const groups = {};
-            // Sort lines by location name first to ensure alphabetical order of groups
+            // Sort lines by the last part of the location name (e.g., WH/Stock/A -> A)
             const sortedLines = [...(this.operationData.lines || [])].sort((a, b) => {
-                const locA = a.location_name || '';
-                const locB = b.location_name || '';
-                return locA.localeCompare(locB);
+                const partA = (a.location_name || '').split('/').filter(Boolean).pop()?.trim() || '';
+                const partB = (b.location_name || '').split('/').filter(Boolean).pop()?.trim() || '';
+                
+                if (partA === partB) {
+                    return (a.location_name || '').localeCompare(b.location_name || '');
+                }
+                return partA.localeCompare(partB, undefined, { numeric: true, sensitivity: 'base' });
             });
 
             sortedLines.forEach(line => {
@@ -276,6 +281,19 @@ export default {
                     operator_email: this.store.role.email
                 });
                 if (res.status === 'ok') {
+                    // Sort lines by the last part of the location path (e.g., WH/Stock/A -> A)
+                    if (res.lines) {
+                        res.lines.sort((a, b) => {
+                            const partA = (a.location_name || '').split('/').filter(Boolean).pop()?.trim() || '';
+                            const partB = (b.location_name || '').split('/').filter(Boolean).pop()?.trim() || '';
+                            
+                            if (partA === partB) {
+                                return (a.location_name || '').localeCompare(b.location_name || '');
+                            }
+                            return partA.localeCompare(partB, undefined, { numeric: true, sensitivity: 'base' });
+                        });
+                    }
+
                     const currentLineId = this.currentLine?.id;
                     this.operationData = res;
                     
@@ -300,7 +318,7 @@ export default {
                         if (res.pick_type === 'sale') {
                             this.localConfig.backorder = false;
                             this.localConfig.buttons_to_add = false;
-                        } else if (res.pick_type === 'full') {
+                        } else if (res.pick_type === 'full' || res.pick_type === 'wholesale') {
                             this.localConfig.backorder = true;
                             this.localConfig.buttons_to_add = true;
                         }
