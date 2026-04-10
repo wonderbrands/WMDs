@@ -91,46 +91,47 @@
                         <Button label="ESTABLECER UBICACIÓN DESTINO" icon="fa fa-map-marker" class="p-button-info w-full" @click="currentStep = 'location_dest'" />
                     </div>
                 </div>
-            </div>
 
-            <!-- Product List Area (Always present) -->
-            <div class="list-section">
-                <div class="list-header-sticky">
-                    <i class="fa fa-list-ul"></i> Lista de Productos
-                </div>
-                <div v-for="(group, locationName) in groupedLines" :key="locationName" class="picking-group">
-                    <div class="picking-header">
-                        <i class="fa fa-map-marker"></i> {{ locationName }}
+                <div class="list-section">
+                    <div class="list-header-sticky">
+                        <i class="fa fa-list-ul"></i> Lista de Productos
                     </div>
-                    <DataTable :value="group" class="p-datatable-sm clickable-rows" @row-click="(event) => selectLine(event.data)">
-                        <Column header="Producto">
-                            <template #body="slotProps">
-                                <div class="flex align-items-center gap-2 product-row-container" 
-                                     :class="{'highlight-location': slotProps.data.location_name === scannedLocationSrc || slotProps.data.location_barcode === scannedLocationSrc, 'line-selected': currentLine?.id === slotProps.data.id}">
-                                    <img :src="slotProps.data.image_url" style="width: 35px; border-radius: 4px;" />
-                                    <div class="flex flex-column flex-1">
-                                        <div class="flex justify-content-between align-items-start">
-                                            <span class="font-bold text-xs">{{ slotProps.data.product_name }}</span>
-                                            <span v-if="slotProps.data.location_name === scannedLocationSrc" class="location-badge-small">MISMA UBICACIÓN</span>
-                                        </div>
-                                        <div class="flex justify-content-between align-items-center mt-1">
-                                            <small class="text-secondary" style="font-size: 0.7rem;">{{ slotProps.data.sku }}</small>
-                                            <small class="text-info font-bold" style="font-size: 0.65rem;">{{ slotProps.data.picking_name }}</small>
+                    <div v-for="(group, locationName) in groupedLines" :key="locationName" class="picking-group">
+                        <div class="picking-header">
+                            <i class="fa fa-map-marker"></i> {{ locationName }}
+                        </div>
+                        <DataTable :value="group" class="p-datatable-sm clickable-rows" @row-click="(event) => selectLine(event.data)">
+                            <Column header="Producto">
+                                <template #body="slotProps">
+                                    <div class="flex align-items-center gap-2 product-row-container" 
+                                        :class="{'highlight-location': slotProps.data.location_name === scannedLocationSrc || slotProps.data.location_barcode === scannedLocationSrc, 'line-selected': currentLine?.id === slotProps.data.id}">
+                                        <img :src="slotProps.data.image_url" style="width: 35px; border-radius: 4px;" />
+                                        <div class="flex flex-column flex-1">
+                                            <div class="flex justify-content-between align-items-start">
+                                                <span class="font-bold text-xs">{{ slotProps.data.product_name }}</span>
+                                                <span v-if="slotProps.data.location_name === scannedLocationSrc" class="location-badge-small">MISMA UBICACIÓN</span>
+                                            </div>
+                                            <div class="flex justify-content-between align-items-center mt-1">
+                                                <small class="text-secondary" style="font-size: 0.7rem;">{{ slotProps.data.sku }}</small>
+                                                <small class="text-info font-bold" style="font-size: 0.65rem;">{{ slotProps.data.picking_name }}</small>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </template>
-                        </Column>
-                        <Column header="Progreso" style="width: 80px">
-                            <template #body="slotProps">
-                                <span :class="{'text-success font-bold': slotProps.data.picked >= slotProps.data.qty_demand}" class="text-xs">
-                                    {{ slotProps.data.picked }} / {{ slotProps.data.qty_demand }}
-                                </span>
-                            </template>
-                        </Column>
-                    </DataTable>
+                                </template>
+                            </Column>
+                            <Column header="Progreso" style="width: 80px">
+                                <template #body="slotProps">
+                                    <span :class="{'text-success font-bold': slotProps.data.picked >= slotProps.data.qty_demand}" class="text-xs">
+                                        {{ slotProps.data.picked }} / {{ slotProps.data.qty_demand }}
+                                    </span>
+                                </template>
+                            </Column>
+                        </DataTable>
+                    </div>
                 </div>
             </div>
+
+
         </div>
 
         <!-- Footer / Validate -->
