@@ -34,9 +34,9 @@
 
         <Message v-if="!camera_init && error && reader === 'camera'" class="error-msg" severity="error">{{ error }}</Message>
         
-        <div class="message-container">
+        <div class="message-container" v-if="!hideInstructions">
             <Message v-if="instructions && (camera_init || reader === 'laser')" class="instruction-msg" severity="info">
-                {{ scan_lockout ? 'Please wait...' : instructions }}
+                {{ scan_lockout ? 'Procesando...' : instructions }}
             </Message>
         </div>
     </div>
@@ -72,6 +72,7 @@ export default {
     props: {
         context: String,
         instructions: String,
+        hideInstructions: { type: Boolean, default: false },
         can_close: { type: Boolean, default: false },
         onScan: Function,
         extra_data: Object
@@ -267,13 +268,14 @@ export default {
 
 <style scoped>
 .scanner-wrapper {
-    padding: 1em;
+    padding: 0.5rem;
     width: 100%;
+    height: 100%;
     display: flex;
     flex-direction: column; 
     position: relative;
     box-sizing: border-box;
-    overflow-y: visible;
+    overflow: hidden;
 }
 
 .pull-to-refresh-indicator {
@@ -288,7 +290,7 @@ export default {
     overflow: hidden;
     background: rgba(59, 130, 246, 0.1);
     color: #3B82F6;
-    z-index: 1000;
+    z-index: 1001;
     transition: height 0.1s ease;
     font-size: 0.8rem;
     font-weight: bold;
@@ -301,19 +303,21 @@ export default {
 
 .controls-overlay {
     position: absolute;
-    top: 10px;
-    right: 10px;
+    top: 5px;
+    right: 5px;
     z-index: 100;
     display: flex;
-    gap: 10px;
+    gap: 8px;
 }
 
 .camera-container {
     width: 100%;
-    height: 250px;
+    flex: 1;
+    min-height: 120px;
     position: relative;
     border-radius: 8px;
     overflow: hidden;
+    background: #000;
 }
 
 .qr-video {
@@ -329,9 +333,21 @@ export default {
 
 .laser-container {
     width: 100%;
+    flex: 1;
     display: flex;
     flex-direction: column;
     justify-content: center;
+    align-items: center;
+    background: #e2e8f0;
+    border-radius: 8px;
+    min-height: 80px;
+}
+
+.laser-container::after {
+    content: "ESCANER LASER LISTO";
+    font-weight: 800;
+    color: #475569;
+    font-size: 0.8rem;
 }
 
 .hidden-input {
@@ -344,19 +360,20 @@ export default {
 
 .error-msg {
     width: 100%;
-    margin-top: 10px;
+    margin-top: 5px;
 }
 
 .message-container {
     width: 100%;
-    display: flex;
-    align-items: center; 
-    justify-content: center;
-    margin-top: 10px;
+    margin-top: 5px;
 }
 
 .instruction-msg {
     width: 100%;
     margin: 0;
+}
+
+:deep(.p-message-wrapper) {
+    padding: 0.5rem !important;
 }
 </style>

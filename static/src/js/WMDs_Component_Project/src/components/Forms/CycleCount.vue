@@ -623,6 +623,12 @@ export default {
             };
             let res = await this.store.callOdoo("create_full_cycle_count", "", payload);
             if (res.ok) {
+                this.$toast.add({ 
+                    severity: 'success', 
+                    summary: 'Conteo Cíclico Creado', 
+                    detail: `Conteo cíclico ${res.name} creado con éxito`, 
+                    life: 5000 
+                });
                 this.store.closeModal(true);
             } else {
                 this.$toast.add({ severity: 'error', summary: 'Error al Generar', detail: (res.error || 'Error desconocido'), life: 5000 });

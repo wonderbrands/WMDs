@@ -175,11 +175,27 @@ export default {
 }
 
 #app {
-  height: 100vh;
-  width: 100vw;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   margin: 0px;
   padding: 0px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+#wmds-app {
+    height: 100%;
+    position: relative;
+    width: 100%;
+    overflow: hidden;
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
 }
 
 :root {

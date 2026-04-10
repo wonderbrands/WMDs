@@ -209,10 +209,8 @@ export default {
             return result;
         }
     },
-    async mounted() {
-        console.log("Action: BinComponent mounted");
-        localStorage.removeItem("mandatory_uncompleted");
-        await this.fetchCarrierList();
+    mounted() {
+        console.log("Action: Component mounted");
         setTimeout(() => {
             this.ready = true;
             this.loadingCarriers = false;
