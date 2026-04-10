@@ -209,12 +209,13 @@ export default {
             return result;
         }
     },
-    mounted() {
-        console.log("Action: Component mounted");
+    async mounted() {
+        console.log("Action: BinComponent mounted");
+        localStorage.removeItem("mandatory_uncompleted");
+        await this.fetchCarrierList();
         setTimeout(() => {
             this.ready = true;
             this.loadingCarriers = false;
-            console.log("Action: Component ready state set to true");
         }, 500);
     },
     methods: {
