@@ -125,7 +125,7 @@ export default {
         manager_screen: 'ManagerComponent',
         operator_screen: 'OperatorComponent'
       }
-      return screens[this.store.current_screen]
+      return screens[this.store.current_screen] || this.store.current_screen;
     }
   },
   beforeMount() {

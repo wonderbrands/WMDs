@@ -862,14 +862,13 @@ export default {
                     "• Cancelar = Volver al escaneo"
                 );
                 if (!action) return;
-            
-            await this.cancelSession();
+                await this.cancelSession();
+            }
             this.so = [];
             this.sessionCarrierId = null;
             this.sessionCarrierName = '';
             this.selectedCarrierId = null;
             this.store.mandatory_uncompleted.doneMandatory();
-        }
         },
 
         async clearAllOrders() {

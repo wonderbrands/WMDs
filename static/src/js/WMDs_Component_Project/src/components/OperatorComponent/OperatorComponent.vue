@@ -16,20 +16,20 @@
         <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
         
         <div class="cards-grid">
-            <Card v-for="task in filteredTasks" :key="task.id" class="task-card" @click="toggleTree(task.id)">
-                <template #title  @click="toggleTree(task.id)">{{ task.title }}</template> 
-                <template #subtitle  @click="toggleTree(task.id)">{{ task.description }}</template>
+            <Card v-for="task in filteredTasks" :key="task.id" class="task-card" @click="handleTaskClick(task)">
+                <template #title>{{ task.title }}</template> 
+                <template #subtitle>{{ task.description }}</template>
 
-                <template #content v-if="task.assigned.length > 0 && !task.view"  @click="toggleTree(task.id)">
+                <template #content v-if="task.assigned.length > 0 && !task.view">
                     <span class="pending-badge">
                         {{ task.assigned[0].children.length }} pendientes
                     </span>
                 </template>
-                <template #content v-else-if="task.assigned.length === 0 && !task.view"  @click="toggleTree(task.id)">
+                <template #content v-else-if="task.assigned.length === 0 && !task.view">
                     <span class="pending-badge">Sin pendientes</span>
                 </template>
 
-                <template #footer  @click="toggleTree(task.id)">
+                <template #footer>
                     <Tree
                         v-if="hasChildren(task)"
                         :value="task.assigned"
@@ -40,7 +40,7 @@
                         @click.stop
                         class="full-width"
                     />
-                    <div v-else-if="task.view" class="custom-view-btn" @click.stop="createView(task)"  @click="toggleTree(task.id)">
+                    <div v-else-if="task.view" class="custom-view-btn" @click.stop="createView(task)">
                         {{ task.label }}
                     </div>
                     <div v-else class="empty-tasks">
@@ -224,6 +224,13 @@ export default {
                 window.location.href = url;
             }
         },
+        handleTaskClick(task) {
+            if (task.view) {
+                this.createView(task);
+            } else {
+                this.toggleTree(task.id);
+            }
+        },
         createView(task){
             // Log task start for view
             this.store.callOdoo("log_task_start", "", {
@@ -231,19 +238,15 @@ export default {
                 task_title: task.title
             });
 
-            // If it's a simple view/scanner that shouldn't be blocking across sessions
-            // we set it as the current screen instead of a mandatory uncompleted task
-            if (task.view === 'BarcodeScannerComponent') {
-                // For the specific case of the scanner, we pass the props through the store
-                this.store.mandatory_uncompleted.component_props = {
-                    context: task.context,
-                    instructions: task.instructions,
-                    extra_data: task,
-                    can_close: true // Allow closing the scanner to go back
-                };
-            }
-            
-            this.store.setCurrentScreen(task.view);
+            this.store.mandatory_uncompleted.component = task.view;
+            this.store.mandatory_uncompleted.component_props = {
+                context: task.context,
+                instructions: task.instructions,
+                extra_data: task,
+                can_close: true
+            };
+            this.store.mandatory_uncompleted.user = this.store.role.email;
+            this.store.mandatory_uncompleted.loadToStorage();
         }
     }
 };
