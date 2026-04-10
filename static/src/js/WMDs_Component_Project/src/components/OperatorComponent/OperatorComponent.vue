@@ -247,9 +247,9 @@ export default {
 .task-container {
     overflow-y: auto; 
     padding: 1em; 
-    padding-bottom: 15rem;
+    padding-bottom: 5rem;
     width: 100%; 
-    height: 100vh; 
+    height: 100%; 
     display: flex; 
     flex-direction: column;
     position: relative;

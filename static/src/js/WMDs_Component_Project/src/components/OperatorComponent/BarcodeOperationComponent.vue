@@ -42,6 +42,7 @@
                         :onScan="handleScan"
                         :instructions="stepInstruction"
                         :hideInstructions="true"
+                        :disableFocus="isManualInputFocused"
                     />
                 </div>
                 
@@ -72,7 +73,16 @@
                     <!-- Manual Input Area -->
                     <div class="manual-input-area mt-3" v-if="localConfig.stock_input_add">
                         <div class="flex gap-2">
-                            <InputNumber v-model="manualQty" :min="0" class="flex-1" placeholder="Cant. piezas" showButtons buttonLayout="horizontal" />
+                            <InputNumber 
+                                v-model="manualQty" 
+                                :min="0" 
+                                class="flex-1" 
+                                placeholder="Cant. piezas" 
+                                showButtons 
+                                buttonLayout="horizontal" 
+                                @focus="isManualInputFocused = true"
+                                @blur="isManualInputFocused = false"
+                            />
                             <Button label="ESTABLECER" icon="fa fa-check" class="p-button-primary" @click="incrementTo(manualQty)" :disabled="manualQty <= 0" />
                         </div>
                     </div>
@@ -199,6 +209,7 @@ export default {
             localConfig: { ...this.config },
             showBackorderDialog: false,
             manualQty: 0,
+            isManualInputFocused: false,
             // Pull to refresh state
             startY: 0,
             pullDistance: 0,
@@ -532,7 +543,13 @@ export default {
             }
         },
         async validateOperation() {
+            console.log("Validate clicked", this.missingLines.length);
+            if (this.$refs.mainScroll) {
+                this.$refs.mainScroll.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
             const incomplete = this.missingLines.length > 0;
+            console.log("Incomplete:", incomplete);
 
             if (incomplete) {
                 if (!this.localConfig.backorder) {
@@ -639,7 +656,8 @@ export default {
         },
         // Pull to refresh handlers
         handleTouchStart(e) {
-            if (this.$el.scrollTop === 0) {
+            const scrollEl = this.$refs.mainScroll;
+            if (scrollEl && scrollEl.scrollTop === 0) {
                 this.startY = e.touches[0].pageY;
                 this.pulling = true;
             }
@@ -669,15 +687,14 @@ export default {
 
 <style scoped>
 .barcode-operation-container {
-    overflow-y: auto; 
     width: 100%; 
-    height: 100vh; 
+    height: 100%;
     display: flex; 
     flex-direction: column;
     position: relative;
-    overscroll-behavior-y: contain;
     background: #f8f9fa;
-    padding-bottom: 15rem;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 .pull-to-refresh-indicator {
@@ -736,7 +753,8 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    flex-shrink: 0;
+    flex: 1;
+    overflow-y: auto;
 }
 
 .scanner-section { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -808,24 +826,27 @@ export default {
 
 .op-footer {
     background: #fff;
-    padding: 0.75rem 1rem;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
     border-top: 1px solid #dee2e6;
     flex-shrink: 0;
+    box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+    z-index: 10;
 }
 
 .progress-overall {
-    margin-bottom: 0.75rem;
+    margin-bottom: 1rem;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 4px;
-    font-size: 0.75rem;
+    gap: 6px;
+    font-size: 0.8rem;
     font-weight: bold;
+    color: #475569;
 }
 
-.progress-bar-bg { width: 100%; height: 6px; background: #e9ecef; border-radius: 3px; overflow: hidden; }
-.progress-bar-fill { height: 100%; background: #2ecc71; transition: width 0.3s ease; }
-.validate-btn { width: 100%; height: 50px; font-size: 1rem; font-weight: 800; }
+.progress-bar-bg { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+.progress-bar-fill { height: 100%; background: #22c55e; transition: width 0.3s ease; }
+.validate-btn { width: 100%; height: 55px; font-size: 1.1rem; font-weight: 800; border-radius: 12px; }
 
 :deep(.clickable-rows .p-datatable-tbody > tr) { cursor: pointer; }
 :deep(.p-datatable .p-datatable-tbody > tr > td) { padding: 0.2rem 0.5rem; }

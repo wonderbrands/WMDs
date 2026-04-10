@@ -21,7 +21,7 @@
             <div class="laser-line" :class="{ 'laser-locked': scan_lockout }"></div>
         </div>
 
-        <div v-if="reader === 'laser'" class="laser-container">
+        <div v-if="reader === 'laser'" class="laser-container" :class="{ 'focus-disabled': disableFocus }">
             <input 
                 ref="laserInput"
                 type="text" 
@@ -31,13 +31,16 @@
                 class="hidden-input"
                 inputmode="none"
             >
+            <div v-if="disableFocus" class="focus-warning">
+                <i class="fa fa-keyboard-o"></i> MODO ESCRITURA ACTIVO
+            </div>
         </div>
 
         <Message v-if="!camera_init && error && reader === 'camera'" class="error-msg" severity="error">{{ error }}</Message>
         
         <div class="message-container" v-if="!hideInstructions">
-            <Message v-if="instructions && (camera_init || reader === 'laser')" class="instruction-msg" severity="info">
-                {{ scan_lockout ? 'Procesando...' : instructions }}
+            <Message v-if="instructions && (camera_init || reader === 'laser')" class="instruction-msg" :severity="disableFocus ? 'warn' : 'info'">
+                {{ disableFocus ? 'Escaneo pausado por teclado' : (scan_lockout ? 'Procesando...' : instructions) }}
             </Message>
         </div>
     </div>
@@ -77,7 +80,8 @@ export default {
         hideInstructions: { type: Boolean, default: false },
         can_close: { type: Boolean, default: false },
         onScan: Function,
-        extra_data: Object
+        extra_data: Object,
+        disableFocus: { type: Boolean, default: false }
     },
     mounted() {
         console.log("mounted");
@@ -97,6 +101,7 @@ export default {
     },
     methods: {
         handleGlobalKeydown(e) {
+            if (this.disableFocus) return;
             console.log("handleGlobalKeydown", e.key);
             if (this.reader === 'laser' && document.activeElement !== this.$refs.laserInput) {
                 this.focusLaserInput();
@@ -179,12 +184,14 @@ export default {
             this.camera_init = false;
         },
         focusLaserInput() {
+            if (this.disableFocus) return;
             console.log("focusLaserInput");
             if (this.reader === 'laser' && this.$refs.laserInput) {
                 this.$refs.laserInput.focus();
             }
         },
         keepFocus() {
+            if (this.disableFocus) return;
             console.log("keepFocus");
             if (this.reader === 'laser') {
                 setTimeout(() => {
@@ -382,13 +389,33 @@ export default {
     background: #e2e8f0;
     border-radius: 8px;
     min-height: 80px;
+    transition: background 0.3s ease;
 }
 
-.laser-container::after {
+.laser-container:not(.focus-disabled)::after {
     content: "ESCANER LASER LISTO";
     font-weight: 800;
     color: #475569;
     font-size: 0.8rem;
+}
+
+.focus-disabled {
+    background: #ffedd5;
+    border: 2px dashed #f97316;
+}
+
+.focus-warning {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    color: #c2410c;
+    font-weight: 900;
+    font-size: 0.8rem;
+}
+
+.focus-warning i {
+    font-size: 1.5rem;
 }
 
 .hidden-input {
