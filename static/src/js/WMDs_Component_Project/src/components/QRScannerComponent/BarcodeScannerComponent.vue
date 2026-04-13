@@ -11,8 +11,11 @@
             <span>{{ refreshing ? 'Actualizando...' : 'Tire para actualizar' }}</span>
         </div>
         <div class="controls-overlay">
-            <ButtonCamera @click="setReader('camera')" class="control-btn" />
-            <ButtonScanner @click="setReader('laser')" class="control-btn" />
+            <div class="switch-container">
+                <i class="fa fa-barcode" :class="{ 'active-icon': !isCameraMode }"></i>
+                <ToggleSwitch v-model="isCameraMode" @change="onToggleChange" class="tiny-switch" />
+                <i class="fa fa-camera" :class="{ 'active-icon': isCameraMode }"></i>
+            </div>
             <Button v-if="can_close" @click="closeScanner" label="&#10006;" class="control-btn close-btn" />
         </div>
 
@@ -49,9 +52,8 @@
 <script>
 import Button from 'primevue/button';
 import Message from 'primevue/message';
+import ToggleSwitch from 'primevue/toggleswitch';
 import { useGeneralStore } from "../../store/index"
-import ButtonCamera from '../ResuableComponentIcons/ButtonCamera.vue';
-import ButtonScanner from '../ResuableComponentIcons/ButtonScanner.vue';
 
 export default {
     name: "BarcodeScannerComponent", 
@@ -62,6 +64,7 @@ export default {
             error: null,
             is_scanning: false,
             reader: "laser",
+            isCameraMode: false,
             laser_input: "",
             scan_lockout: false,
             inputTimeout: null,
@@ -159,9 +162,13 @@ export default {
                 }
             });
         },
+        onToggleChange() {
+            this.setReader(this.isCameraMode ? 'camera' : 'laser');
+        },
         setReader(newReader) {
             console.log("setReader", newReader);
             this.reader = newReader;
+            this.isCameraMode = newReader === 'camera';
             this.scan_lockout = false;
             
             if (newReader === 'camera') {
@@ -286,7 +293,7 @@ export default {
             this.pullDistance = 0;
         }
     },
-    components: { Button, Message, ButtonCamera, ButtonScanner }
+    components: { Button, Message, ToggleSwitch }
 }
 </script>
 
@@ -331,7 +338,32 @@ export default {
     right: 5px;
     z-index: 100;
     display: flex;
-    gap: 8px;
+    align-items: center;
+    gap: 12px;
+}
+
+.switch-container {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255, 255, 255, 0.8);
+    padding: 2px 6px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.switch-container i {
+    font-size: 0.7rem;
+    color: #94a3b8;
+    transition: color 0.2s;
+}
+
+.switch-container i.active-icon {
+    color: #3b82f6;
+}
+
+:deep(.tiny-switch) {
+    transform: scale(0.6);
 }
 
 .camera-container {
