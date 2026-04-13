@@ -978,6 +978,7 @@ export default {
     overflow-y: auto;
     position: relative;
     overscroll-behavior-y: contain;
+    background: #fff;
 }
 
 .pull-to-refresh-indicator {
@@ -1007,8 +1008,6 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    height: 100%;
-    overflow: hidden;
 }
 
 .scanner-col {
@@ -1019,7 +1018,6 @@ export default {
 
 .scanner-wrapper {
     flex: 1;
-    overflow: hidden;
     position: relative;
 }
 
