@@ -40,7 +40,7 @@
 
 <style scoped>
 .role_picker {
-    height: 100vh;
+    height: calc(100vh - var(--o-we-toolbar-height, 46px));
     width: 100vw;
     display: flex;
     flex-direction: column;

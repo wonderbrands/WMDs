@@ -104,7 +104,7 @@
                         <label>Cantidad Contada</label>
                         <div class="qty-input-wrapper">
                             <Button label="-" @click="quantity > 0 ? quantity-- : 0" class="p-button-outlined qty-btn" />
-                            <InputNumber v-model="quantity" :min="0" class="qty-input" autofocus />
+                            <InputNumber v-model="quantity" :min="0" class="qty-input" autofocus :readonly="current_product.theoretical_qty === 0" />
                             <Button label="+" @click="quantity++" class="p-button-outlined qty-btn" />
                         </div>
                         <div class="form-actions">
@@ -196,7 +196,7 @@ export default {
             scannerKey: 0,
             step: 'product', // product, quantity
             current_location: { id: null, name: '' },
-            current_product: { id: null, name: '', sku: '' },
+            current_product: { id: null, name: '', sku: '', theoretical_qty: null },
             quantity: 0,
             session_log: [],
             waveId: null,
@@ -272,14 +272,16 @@ export default {
         async handleProductScan(data) {
             try {
                 let res = await this.store.callOdoo("validate_cycle_count_product", "", {
-                    barcode: data
+                    barcode: data,
+                    location_id: this.current_location.id
                 });
 
                 if (res.ok) {
                     this.current_product = {
                         id: res.product_id,
                         name: res.product_name,
-                        sku: res.product_sku
+                        sku: res.product_sku,
+                        theoretical_qty: res.theoretical_qty
                     };
                     this.quantity = 1;
                     this.step = 'quantity';
@@ -401,7 +403,7 @@ export default {
                         qty: this.quantity
                     });
 
-                    this.current_product = { id: null, name: '', sku: '' };
+                    this.current_product = { id: null, name: '', sku: '', theoretical_qty: null };
                     this.quantity = 0;
                     this.step = 'product';
                     this.scannerKey++;
@@ -478,7 +480,7 @@ export default {
 .cycle-count-operator-container {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: calc(100vh - var(--o-we-toolbar-height, 46px));
     background: #f4f7f6;
     overflow-y: auto;
     position: relative;

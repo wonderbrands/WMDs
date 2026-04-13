@@ -221,11 +221,11 @@ export default {
     },
     computed: {
         operationTypeTitle() {
-            if (this.operationData.is_pful) return 'Resurtido Full (Pick)';
-            if (this.operationData.is_dful) return 'Resurtido Full (Despacho)';
+            if (this.operationData.is_pful) return 'Resurtido Fulfillment (Pick)';
+            if (this.operationData.is_dful) return 'Resurtido Fulfillment (Despacho)';
             
             if (this.res_model === 'stock.picking.batch') {
-                const subType = this.operationData.pick_type === 'sale' ? ' - Pedidos' : (this.operationData.pick_type === 'full' ? ' - Full' : '');
+                const subType = this.operationData.pick_type === 'sale' ? ' - Pedidos' : (this.operationData.pick_type === 'full' ? ' - Fulfillment' : '');
                 return 'Plan de Pickeo' + subType;
             }
             return 'Operación de Almacén';

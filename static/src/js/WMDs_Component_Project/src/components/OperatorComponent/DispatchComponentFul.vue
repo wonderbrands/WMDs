@@ -22,7 +22,7 @@
 
             <div class="log-col">
                 <div class="log-header">
-                    <span class="log-title">Despacho Fulfilment</span>
+                    <span class="log-title">Despacho Fulfillment</span>
                 </div>
                 
                 <div class="log-list">
@@ -142,7 +142,7 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    min-height: 100%;
+    height: calc(100vh - var(--o-we-toolbar-height, 46px));
     padding: 10px;
     box-sizing: border-box;
     overflow-y: auto;
@@ -153,10 +153,11 @@ export default {
     flex-direction: column;
     gap: 1rem;
     height: 100%;
+    overflow: hidden;
 }
 
 .scanner-col {
-    height: 40%;
+    flex: 0 0 auto;
     display: flex;
     gap: 10px;
 }
@@ -168,7 +169,7 @@ export default {
 }
 
 .buttons-col {
-    height: 10%;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -177,14 +178,13 @@ export default {
 }
 
 .log-col {
-    height: 50%;
-    display: flex;
-    flex-direction: column;
+    flex: 1;
     background: #2c3e50;
     border-radius: 8px;
     padding: 15px;
     color: #ecf0f1;
-    overflow: hidden;
+    overflow-y: auto;
+    min-height: 50vh;
 }
 
 .log-header {
@@ -199,8 +199,6 @@ export default {
 }
 
 .log-list {
-    flex: 1;
-    overflow-y: auto;
     background: #34495e;
     border-radius: 4px;
     padding: 10px;

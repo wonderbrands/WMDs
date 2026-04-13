@@ -326,7 +326,7 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
             case "batch_type":
                 return [
                     { id: 'sale', name: 'Pedido' },
-                    { id: 'full', name: 'Full' }
+                    { id: 'full', name: 'Fulfillment' }
                 ]
             
             case "check_pack_assigned":
@@ -425,8 +425,8 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             validate_dock: {url: '/wmds/v2/engine/post/validate_dock', method: 'POST'},
             move_bin_to_dock: {url: '/wmds/v2/engine/post/move_bin_to_dock', method: 'POST'},
             block_bin: {url: '/wmds/v2/engine/post/block_bin', method: 'POST'},
-            pack: {url: '/wmds/v2/engine/get/pack', method: 'POST'},
-            assign_pack: {url: '/wmds/v2/engine/post/pick_assign_operator', method: 'POST'},
+            get_available_bins: {url: '/wmds/v2/engine/get/available_bins', method: 'POST'},
+            pack: {url: '/wmds/v2/engine/get/pack', method: 'POST'},            assign_pack: {url: '/wmds/v2/engine/post/pick_assign_operator', method: 'POST'},
             dispatch_orders: {url: '/wmds/v2/engine/post/dispatch_packet', method: 'POST'},
             batch_pick: {url: '/wmds/v2/engine/get/batch_pick', method: 'POST'},
             batch_details: {url: '/wmds/v2/engine/get/batch_details', method: 'POST'},
@@ -478,6 +478,10 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             print_dispatch_sheet: {url: '/wmds/v2/engine/post/print_dispatch_sheet', method: 'POST'},
             get_carrier_list: {url: '/wmds/v2/engine/post/get_carrier_list', method: 'POST'},
             validate_ei_carrier: {url: '/wmds/v2/engine/post/validate_ei_carrier', method: 'POST'},
+            get_active_bins: {url: '/wmds/v2/engine/get/active_bins', method: 'POST'},
+            get_active_docks: {url: '/wmds/v2/engine/get/active_docks', method: 'POST'},
+            get_available_docks: {url: '/wmds/v2/engine/get/available_docks', method: 'POST'},
+            get_dock_contents: {url: '/wmds/v2/engine/get/dock_contents', method: 'POST'},
         };
     }
 
@@ -540,7 +544,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             case "batch_type":
                 return [
                     { id: 'sale', name: 'Pedido' },
-                    { id: 'full', name: 'Full' }
+                    { id: 'full', name: 'Fulfillment' }
                 ];
             default:
                 fetchParams = params;

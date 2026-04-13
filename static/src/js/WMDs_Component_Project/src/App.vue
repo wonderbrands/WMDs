@@ -68,28 +68,13 @@ export default {
         try {
             this.store.loading = true;
             await this.store.role.getUserFromServer(data);
-            if (this.store.role.is_identified) {
-                this.checkAndRestoreState();
+            if (this.store.role.is_identified && !this.store.current_screen) {
+                this.store.setCurrentScreen('role_picker');
             }
         } catch (e) {
             this.$toast.add({ severity: 'error', summary: 'Error de Autenticación', detail: 'No se pudo identificar al usuario. Verifique el código QR.', life: 4000 });
         } finally {
             this.store.loading = false;
-        }
-    },
-    checkAndRestoreState() {
-        const savedState = this.store.loadStateFromLocalStorage();
-        if (savedState) {
-            if (confirm("Se salió de la app, ¿desea reanudar lo que estaba haciendo?")) {
-                this.store.applySavedState(savedState);
-            } else {
-                this.store.clearStateFromLocalStorage();
-                if (!this.store.current_screen) {
-                    this.store.setCurrentScreen('role_picker');
-                }
-            }
-        } else if (!this.store.current_screen) {
-            this.store.setCurrentScreen('role_picker');
         }
     },
     restorePersistedUser(){
@@ -150,10 +135,8 @@ export default {
         } finally {
             this.store.loading = false;
         }
-    }
-    
-    if (this.store.role.is_identified && !this.store.current_screen) {
-      this.checkAndRestoreState();
+    } else if (!this.store.current_screen) {
+        this.store.setCurrentScreen('role_picker');
     }
   },
   watch: {

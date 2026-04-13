@@ -118,6 +118,7 @@ export const useGeneralStore = defineStore('general_store', {
                         {name: "origin", label: "Pedido"},
                         {name: "name", label: "Nombre"},
                         {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
+                        {name: "bin_id", label: "BIN", non_blocked_field: true, source: "get_available_bins"},
                         {name: "scheduled_date", label: "Fecha"},
                         {name: "state", label: "Estado"},
                         {name: "wmds_status", label: "Estado WMDS"}
@@ -163,6 +164,7 @@ export const useGeneralStore = defineStore('general_store', {
                         {name: "id", label: "ID"},
                         {name: "name", label: "Referencia"},
                         {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
+                        {name: "bin_id", label: "BIN", non_blocked_field: true, source: "get_available_bins"},
                         {name: "scheduled_date", label: "Fecha Programada"},
                         {name: "state", label: "Estado"}
                     ],
@@ -211,6 +213,7 @@ export const useGeneralStore = defineStore('general_store', {
                 {name: "origin", label: "Pedido"},
                 {name: "name", label: "Nombre"},
                 {name: "operator", label: "Mesa de empaque", non_blocked_field: true, source: "operadores"},
+                {name: "bin_id", label: "BIN", non_blocked_field: true, source: "get_available_bins"},
                 {name: "scheduled_date", label: "Fecha"},
                 {name: "state", label: "Estado"},
                 {name: "wmds_status", label: "Estado WMDS"}
@@ -286,6 +289,11 @@ export const useGeneralStore = defineStore('general_store', {
                 on_save_actions: []
             }
         },
+        manual_dispatch: {
+            title: "Despacho Manual",
+            description: "Flujo manual de BIN -> DOCK -> Despacho para Managers",
+            value: "manual_dispatch"
+        }
       },
       main_manager_screen: null,
       odoo_middleware: OdooManagerMiddleware()
@@ -310,47 +318,6 @@ export const useGeneralStore = defineStore('general_store', {
     },
     triggerRefresh() {
         this.refreshKey++;
-    },
-    saveStateToLocalStorage() {
-        if (!this.role.is_identified) return;
-        
-        const stateToSave = {
-            current_role: this.current_role,
-            current_screen: this.current_screen,
-            main_manager_screen_value: this.main_manager_screen?.value,
-            modal_open: this.modal_open,
-            modal_context: this.modal_context,
-            form_context: this.form_context,
-            // role is already handled by sessionStorage in App.vue, but we might want email for validation
-            user_email: this.role.email
-        };
-        localStorage.setItem("wmds_app_state", JSON.stringify(stateToSave));
-    },
-    loadStateFromLocalStorage() {
-        const saved = localStorage.getItem("wmds_app_state");
-        if (!saved) return null;
-        try {
-            const parsed = JSON.parse(saved);
-            if (parsed.user_email !== this.role.email) return null;
-            return parsed;
-        } catch (e) {
-            console.error("Error loading state:", e);
-            return null;
-        }
-    },
-    applySavedState(state) {
-        if (!state) return;
-        this.current_role = state.current_role;
-        this.current_screen = state.current_screen;
-        if (state.main_manager_screen_value) {
-            this.setMainManagerScreen(state.main_manager_screen_value);
-        }
-        this.modal_open = state.modal_open;
-        this.modal_context = state.modal_context;
-        this.form_context = state.form_context;
-    },
-    clearStateFromLocalStorage() {
-        localStorage.removeItem("wmds_app_state");
     },
     async callOdoo(context, term, params) {
         this.loading = true;
@@ -389,8 +356,7 @@ export const useGeneralStore = defineStore('general_store', {
         this.loading = true
         this.current_screen = newScreen
         this.loading = false
-        this.saveStateToLocalStorage()
-    },
+},
     currentScreenLoaded() {
         this.loading = false
     },
@@ -398,13 +364,11 @@ export const useGeneralStore = defineStore('general_store', {
         this.modal_open = true
         this.modal_context = context
         this.form_context = form_context
-        this.saveStateToLocalStorage()
-    },
+},
     closeModal() {
         this.modal_open = false
         this.modal_context = null
-        this.saveStateToLocalStorage()
-    },
+},
     setMainManagerScreen(newScreen) {
         if(!Object.keys(this.available_main_manager_screens).includes(newScreen) ||
             this.available_main_manager_screens[newScreen].children){
@@ -420,8 +384,7 @@ export const useGeneralStore = defineStore('general_store', {
         }else{
             this.main_manager_screen = this.available_main_manager_screens[newScreen]
         }
-        this.saveStateToLocalStorage()
-    },
+},
     async executeBeforeMount() {
         const props = this.mandatory_uncompleted.component_props;
         if (props && props.before_mount) {
@@ -451,7 +414,6 @@ export const useGeneralStore = defineStore('general_store', {
                         }
                     };
                     this.mandatory_uncompleted.user = this.role.email;
-                    this.mandatory_uncompleted.loadToStorage();
                 } else {
                     this.toast.add({ 
                         severity: 'error', 
@@ -607,6 +569,16 @@ export const useGeneralStore = defineStore('general_store', {
                     });
     
                     if (response.valid) {
+                        // Validar que el BIN no tenga pedidos
+                        if (response.has_ecommerce) {
+                            this.toast.add({ 
+                                severity: 'error', 
+                                summary: 'BIN con pedidos', 
+                                detail: 'Este BIN ya contiene pedidos y no se pueden mezclar con productos de fulfillment.', 
+                                life: 5000 
+                            });
+                            return;
+                        }
                         try {
                             const moveParams = {
                                 bin: binName,
@@ -701,7 +673,6 @@ export const useGeneralStore = defineStore('general_store', {
                     }
                 };
                 this.mandatory_uncompleted.user = this.role.email;
-                this.mandatory_uncompleted.loadToStorage();
             }
         };
 

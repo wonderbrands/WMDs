@@ -42,7 +42,7 @@
 
 <style scoped>
 .manager_screen {
-    height: 100vh;
+    height: calc(100vh - var(--o-we-toolbar-height, 46px));
     width: 100vw;
     display: flex;
     flex-direction: row;
@@ -56,7 +56,7 @@
 
 .main_manager_screen_container {
     width: 75vw;
-    height: 100vh;
+    height: calc(100vh - var(--o-we-toolbar-height, 46px));
     display: flex;
     flex-direction: column-reverse;
     align-items: center;

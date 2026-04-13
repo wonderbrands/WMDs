@@ -211,7 +211,6 @@ export default {
     },
     async mounted() {
         console.log("Action: BinComponent mounted");
-        localStorage.removeItem("mandatory_uncompleted");
         await this.fetchCarrierList();
         setTimeout(() => {
             this.ready = true;
@@ -276,6 +275,17 @@ export default {
                 });
 
                 if (response.valid) {
+                    // Si estamos moviendo pedidos (so.length > 0), el BIN no debe tener productos de Fulfillment
+                    if (this.so.length > 0 && response.has_full) {
+                        this.$toast.add({ 
+                            severity: 'error', 
+                            summary: 'BIN con Fulfillment', 
+                            detail: 'Este BIN ya contiene productos de Fulfillment y no se pueden mezclar con pedidos.', 
+                            life: 5000 
+                        });
+                        return;
+                    }
+
                     if (this.so.length > 0) {
                         this.targetBin = binName;
                         this.showConfirmation = true;
@@ -366,7 +376,7 @@ export default {
 .test-flow-container {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: calc(100vh - var(--o-we-toolbar-height, 46px));
     padding: 10px;
     box-sizing: border-box;
     overflow-y: auto;
@@ -474,13 +484,12 @@ export default {
 
 .log-col {
     flex: 1;
-    display: flex;
-    flex-direction: column;
     background: #2c3e50;
     border-radius: 8px;
     padding: 15px;
     color: #ecf0f1;
-    min-height: 300px;
+    min-height: 50vh;
+    overflow-y: auto;
 }
 
 .log-header {
@@ -547,8 +556,6 @@ export default {
 }
 
 .log-list {
-    flex: 1;
-    overflow-y: auto;
     background: #34495e;
     border-radius: 4px;
     padding: 10px;

@@ -6,16 +6,18 @@ import pytz
 
 _logger = logging.getLogger(__name__)
 
-def convert_value_in_label(map_cols, value, key):
+def convert_value_in_label(map_cols, value, key, return_severity=False):
     if not value:
-        return ""
+        return "" if not return_severity else None
 
     for col in map_cols:
         if col.get('field') == key and col.get('type') == 'selectable':
             for option in col.get('options', []):
                 if option['value'] == value:
+                    if return_severity:
+                        return option.get('severity', 'secondary')
                     return option['label']
-    return value
+    return value if not return_severity else None
 
 class CycleCount(http.Controller):
 
@@ -46,8 +48,13 @@ class CycleCount(http.Controller):
             counts = model.search(domain, order=order, limit=limit, offset=offset)
             total_count = model.search_count(domain)
 
-            state_options = [{'value': s[0], 'label': s[1]} for s in model._fields['state'].selection]
-            default_state = next((opt['value'] for opt in state_options if opt['value'] == 'in_progress'), None)
+            state_options = [
+                {'value': 'created', 'label': 'Borrador', 'severity': 'secondary'},
+                {'value': 'in_progress', 'label': 'En Progreso', 'severity': 'info'},
+                {'value': 'finalized', 'label': 'Finalizado', 'severity': 'success'},
+                {'value': 'cancelled', 'label': 'Cancelado', 'severity': 'danger'}
+            ]
+            default_state = 'in_progress'
 
             map_cols = [
                 {"field": "id", "name": "ID"},
@@ -70,7 +77,10 @@ class CycleCount(http.Controller):
                     "notes": count.notes or '',
                     "create_date": count.create_date.strftime('%Y-%m-%d %H:%M') if count.create_date else '',
                     "create_uid": count.create_uid.name if count.create_uid else '',
-                    "state": convert_value_in_label(map_cols, count.state, "state")
+                    "state": {
+                        "label": convert_value_in_label(map_cols, count.state, "state"),
+                        "severity": convert_value_in_label(map_cols, count.state, "state", return_severity=True)
+                    }
                 })
 
             return {
@@ -732,18 +742,28 @@ class CycleCount(http.Controller):
     @http.route('/wmds/v2/engine/get/cycle_count_logs', type='json', auth='user', methods=['POST'])
     def get_cycle_count_logs(self, **kw):
         try:
+            import pytz
             count_id = kw.get('count_id')
+            client_tz = kw.get('tz') or request.env.user.tz or 'UTC'
+            
             if not count_id:
                 return {'ok': False, 'error': 'Se requiere ID de ciclo.'}
 
             logs = request.env['wmds.log'].sudo().search([('cycle_count', '=', count_id)], order='date desc')
 
-            data = [{
-                'id': log.id,
-                'log': log.log,
-                'user': log.user.name if log.user else '---',
-                'date': fields.Datetime.to_string(log.date),
-            } for log in logs]
+            tz = pytz.timezone(client_tz)
+            data = []
+            for log in logs:
+                # Convert UTC date to client timezone
+                utc_date = log.date.replace(tzinfo=pytz.utc)
+                local_date = utc_date.astimezone(tz)
+                
+                data.append({
+                    'id': log.id,
+                    'log': log.log,
+                    'user': log.user.name if log.user else '---',
+                    'date': local_date.strftime('%Y-%m-%d %H:%M:%S'),
+                })
 
             return {'ok': True, 'data': data}
         except Exception as e:
@@ -918,7 +938,7 @@ class CycleCount(http.Controller):
             [
                 ('operator_id.login', '=', operator),
                 ("state", "in", ["draft", "ongoing"])
-            ]
+            ], order='id desc', limit=5
         )
 
         if not waves:
@@ -990,6 +1010,7 @@ class CycleCount(http.Controller):
     def validate_cycle_count_product(self, **kw):
         try:
             barcode = kw.get('barcode')
+            location_id = kw.get('location_id')
             if not barcode:
                 return {'ok': False, 'error': 'Se requiere código de barras.'}
             
@@ -1000,11 +1021,20 @@ class CycleCount(http.Controller):
             if not product:
                 return {'ok': False, 'error': 'Producto no encontrado.'}
             
+            theoretical_qty = 0
+            if location_id:
+                quant = request.env['stock.quant'].sudo().search([
+                    ('product_id', '=', product.id),
+                    ('location_id', '=', int(location_id))
+                ], limit=1)
+                theoretical_qty = quant.quantity if quant else 0
+
             return {
                 'ok': True,
                 'product_id': product.id,
                 'product_name': product.display_name,
-                'product_sku': product.default_code
+                'product_sku': product.default_code,
+                'theoretical_qty': theoretical_qty
             }
         except Exception as e:
             return {'ok': False, 'error': str(e)}

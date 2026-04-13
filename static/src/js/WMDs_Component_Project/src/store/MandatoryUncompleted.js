@@ -1,53 +1,27 @@
-export default class MandatoryUncompleted{
-    constructor(kw = {}){
-        const defaults = {
-            screen : null,
-            component: null,
-            component_props: {},
-            data: {},
-            user: null,
-            logged: false
-        }
-        
-        Object.assign(this, {...defaults, ...kw})
+import { reactive } from 'vue'
+
+export default class MandatoryUncompleted {
+    constructor() {
+        this.screen = null
+        this.component = null
+        this.component_props = {}
+        this.user = null
+        this.is_done = false
     }
 
-    loadToStorage(){
-        localStorage.setItem("mandatory_uncompleted",
-            JSON.stringify({
-                screen: this.screen,
-                component: this.component,
-                component_props: this.component_props,
-                data: this.data,
-                user: this.user
-            })
-        )
+    loadToStorage() {
+        // No longer using localStorage for persistence
     }
 
-    loadFromStorage(logged){
-        let parsed = {}
-        let mandatory = localStorage.getItem("mandatory_uncompleted")
-        if(!mandatory){
-            return null
-        }
-        let json_mandatory = JSON.parse(mandatory)
-        Object.assign(parsed, json_mandatory)
-        if (logged.email == parsed.user){
-            Object.assign(this, parsed)
-            this.logged = true
-        } 
+    loadFromStorage(user) {
+        // No longer using localStorage for persistence
     }
-    
-    doneMandatory(){
-        localStorage.removeItem("mandatory_uncompleted")
-        const defaults = {
-            screen : null,
-            component: null,
-            component_props: {},
-            data: {},
-            user: null,
-            logged: false
-        }
-        Object.assign(this, {...defaults})
+
+    doneMandatory() {
+        this.is_done = true
+        this.screen = null
+        this.component = null
+        this.component_props = {}
+        this.user = null
     }
 }

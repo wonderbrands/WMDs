@@ -938,7 +938,8 @@ export default {
 
         // Pull to refresh handlers
         handleTouchStart(e) {
-            if (this.$el.scrollTop === 0) {
+            const logCol = this.$el.querySelector('.log-col');
+            if (logCol && logCol.scrollTop === 0) {
                 this.startY = e.touches[0].pageY;
                 this.pulling = true;
             }
@@ -971,7 +972,7 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    min-height: 100%;
+    height: calc(100vh - var(--o-we-toolbar-height, 46px));
     padding: 10px;
     box-sizing: border-box;
     overflow-y: auto;
@@ -1006,11 +1007,12 @@ export default {
     display: flex;
     flex-direction: column;
     gap: 1rem;
-    height: calc(100% - 50px);
+    height: 100%;
+    overflow: hidden;
 }
 
 .scanner-col {
-    height: 30%;
+    flex: 0 0 auto;
     display: flex;
     gap: 10px;
 }
@@ -1037,7 +1039,7 @@ export default {
 }
 
 .buttons-col {
-    height: 10%;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -1046,14 +1048,13 @@ export default {
 }
 
 .log-col {
-    height: 60%;
-    display: flex;
-    flex-direction: column;
+    flex: 1;
     background: #2c3e50;
     border-radius: 8px;
     padding: 15px;
     color: #ecf0f1;
-    overflow: hidden;
+    overflow-y: auto;
+    min-height: 50vh;
 }
 
 .log-header {
@@ -1198,8 +1199,6 @@ export default {
 
 /* ── Log List ── */
 .log-list {
-    flex: 1;
-    overflow-y: auto;
     background: #34495e;
     border-radius: 4px;
     padding: 10px;

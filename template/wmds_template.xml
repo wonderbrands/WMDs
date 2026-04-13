@@ -5,7 +5,7 @@
                 <t t-set="head">
                     <t t-call-assets="web.assets_frontend"/>
                 </t>
-                <div id="wmds-root" style="width: 100vw; height: 100vh; margin: 0; padding: 0; overflow: hidden;"></div>
+                <div id="wmds-root" style="width: 100vw; height: calc(100vh - var(--o-we-toolbar-height, 46px)); margin: 0; padding: 0; overflow: hidden;"></div>
             </t>
         </template>
     </data>

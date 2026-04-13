@@ -1,4 +1,4 @@
-from odoo import http
+from odoo import http, fields
 from odoo.http import request
 import traceback
 import logging
@@ -127,7 +127,20 @@ class DockNBin(http.Controller):
 
             operator_name = operator_orm.name if operator_orm else "Desconocido"
 
+            # Validar mezcla de tipos (Full vs Ecommerce)
+            has_ei = request.env["sale.order.ei"].sudo().search_count([
+                ('bin_id', '=', bin_storage.id),
+                ('on_bin', '=', True)
+            ]) > 0
+            
+            has_moves = request.env["stock.move"].sudo().search_count([
+                ('bin_id', '=', bin_storage.id),
+                ('on_bin', '=', True)
+            ]) > 0
+
             if batch_id or pick_id:
+                if has_ei:
+                    return {'error': 'El BIN ya contiene pedidos. No se pueden mezclar con fulfillment.'}
                 # Caso Full o Picking específico: Procesar por ID
                 if batch_id:
                     batch = request.env['stock.picking.batch'].sudo().browse(batch_id)
@@ -171,6 +184,8 @@ class DockNBin(http.Controller):
                 return {"ok": True, "count": len(moves)}
 
             if orders:
+                if has_moves:
+                    return {'error': 'El BIN ya contiene productos de fulfillment. No se pueden mezclar con pedidos.'}
                 # Caso Ecommerce/Picks: Procesar por etiquetas EI
                 for so_custom_name in orders:
                     _logger.info(f"Procesando etiqueta: {so_custom_name}")
@@ -261,36 +276,25 @@ class DockNBin(http.Controller):
             if purpose == "in" and bin_storage.state == 'blocked':
                 return {'error': f'El BIN {bin_name} ya está ocupado', 'valid': False}
             
-            if purpose == "out" and bin_storage.state == 'available':
-                return {'error': f'El BIN {bin_name} está vacío', 'valid': False}
-
             ei_tags = request.env["sale.order.ei"].sudo().search([
                 ('bin_id', '=', bin_storage.id),
                 ('on_bin', '=', True)
             ])
 
-            moves = request.env["stock.move"].sudo().search([
-                ('bin_id', '=', bin_storage.id),
-                ('on_bin', '=', True)
-            ])
+            if purpose == "out" and not ei_tags:
+                return {'error': f'El BIN {bin_name} está vacío (o solo contiene Full)', 'valid': False}
 
             packages = [tag.display_name_custom for tag in ei_tags]
-            package_details = [{"name": tag.display_name_custom, "so": tag.so_id.name} for tag in ei_tags]
+            package_details = [{"name": tag.display_name_custom, "so": tag.so_id.name, "is_full": False} for tag in ei_tags]
             
-            for move in moves:
-                package_details.append({
-                    "name": move.product_id.display_name,
-                    "so": move.picking_id.origin or move.picking_id.name,
-                    "qty": move.quantity,
-                    "is_full": True
-                })
-
             return {
                 "valid": True,
                 "bin": bin_storage.name,
                 "packages": packages,
                 "package_details": package_details,
-                "total_packages": len(packages) + len(moves),
+                "total_packages": len(packages),
+                "has_full": False,
+                "has_ecommerce": len(packages) > 0,
                 "carrier_name": bin_storage.carrier_id.name if bin_storage.carrier_id else "",
             }
         except Exception as e:
@@ -350,9 +354,21 @@ class DockNBin(http.Controller):
             if dock_storage.state == 'blocked':
                 return {'error': f'El DOCK {dock_name} ya está ocupado', 'valid': False}
 
+            # Validar contenido actual del DOCK
+            has_ei = request.env["sale.order.ei"].sudo().search_count([
+                ('dock_id', '=', dock_storage.id),
+                ('on_dock', '=', True)
+            ]) > 0
+            has_moves = request.env["stock.move"].sudo().search_count([
+                ('dock_id', '=', dock_storage.id),
+                ('on_dock', '=', True)
+            ]) > 0
+
             return {
                 "valid": True,
-                "dock": dock_storage.name
+                "dock": dock_storage.name,
+                "has_ecommerce": has_ei,
+                "has_full": has_moves
             }
         except Exception as e:
             return {"error": str(e), "valid": False}
@@ -364,6 +380,7 @@ class DockNBin(http.Controller):
             bin_name = kw.get("bin")
             dock_name = kw.get("dock")
             operator_login = kw.get("operator")
+            selected_packages = kw.get("selected_packages", []) # List of {name, is_full, move_id}
 
             if not bin_name or not dock_name or not operator_login:
                 return {'error': 'Faltan datos: bin, dock u operator', 'ok': False}
@@ -374,6 +391,43 @@ class DockNBin(http.Controller):
 
             if not dock_storage or not bin_storage:
                 return {'error': 'Bin o Dock no existe', 'ok': False}
+
+            # Filter logic for partial movement
+            ei_domain = [('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]
+            move_domain = [('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]
+
+            if selected_packages:
+                ei_names = [p['name'] for p in selected_packages if not p.get('is_full')]
+                move_ids = [p['move_id'] for p in selected_packages if p.get('is_full')]
+                
+                if ei_names:
+                    ei_domain.append(('display_name_custom', 'in', ei_names))
+                else:
+                    ei_domain.append(('id', '=', 0)) # None
+
+                if move_ids:
+                    move_domain.append(('id', 'in', move_ids))
+                else:
+                    move_domain.append(('id', '=', 0)) # None
+
+            # Validar mezcla en el DOCK
+            # Solo validar si se va a mover algo de ese tipo
+            moving_ei = request.env["sale.order.ei"].sudo().search_count(ei_domain) > 0
+            moving_moves = request.env["stock.move"].sudo().search_count(move_domain) > 0
+
+            dock_has_ei = request.env["sale.order.ei"].sudo().search_count([
+                ('dock_id', '=', dock_storage.id),
+                ('on_dock', '=', True)
+            ]) > 0
+            dock_has_moves = request.env["stock.move"].sudo().search_count([
+                ('dock_id', '=', dock_storage.id),
+                ('on_dock', '=', True)
+            ]) > 0
+
+            if moving_ei and dock_has_moves:
+                return {'error': 'El DOCK ya contiene productos de fulfillment. No se pueden mezclar con pedidos.', 'ok': False}
+            if moving_moves and dock_has_ei:
+                return {'error': 'El DOCK ya contiene pedidos. No se pueden mezclar con fulfillment.', 'ok': False}
 
             dock_log = request.env["dock.log"].sudo().search([
                 ('dock_id', '=', dock_storage.id), 
@@ -389,10 +443,7 @@ class DockNBin(http.Controller):
             operator_name = operator_orm.name if operator_orm else "Desconocido"
 
             # Mover EI Tags
-            ei_tags = request.env["sale.order.ei"].sudo().search([
-                ('bin_id', '=', bin_storage.id),
-                ('on_bin', '=', True)
-            ])
+            ei_tags = request.env["sale.order.ei"].sudo().search(ei_domain)
 
             for tag in ei_tags:
                 tag.on_bin = False
@@ -431,10 +482,7 @@ class DockNBin(http.Controller):
                         })
 
             # Mover Stock Moves
-            moves = request.env["stock.move"].sudo().search([
-                ('bin_id', '=', bin_storage.id),
-                ('on_bin', '=', True)
-            ])
+            moves = request.env["stock.move"].sudo().search(move_domain)
 
             processed_pickings = request.env['stock.picking']
             processed_batches = request.env['stock.picking.batch']
@@ -475,14 +523,115 @@ class DockNBin(http.Controller):
                     "user": operator_orm.id if operator_orm else False,
                 })
 
-            # Limpiar carrier del BIN al vaciarlo
-            bin_storage.write({
-                'state': 'available',
-                'carrier_id': False,
-            })
+            # Verificar si el BIN quedó vacío para liberarlo
+            has_remaining = request.env["sale.order.ei"].sudo().search_count([('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]) > 0 or \
+                            request.env["stock.move"].sudo().search_count([('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]) > 0
+            
+            if not has_remaining:
+                bin_storage.write({
+                    'state': 'available',
+                    'carrier_id': False,
+                })
 
             return {"ok": True, "moved_packages": len(ei_tags) + len(moves)}
 
         except Exception as e:
             request.env.cr.rollback()
             return {"error": str(e), "ok": False}
+
+    @http.route('/wmds/v2/engine/get/active_bins', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_active_bins(self, **kw):
+        try:
+            # Return any bin that has items, regardless of state
+            bins = request.env["bin.storage"].sudo().search([])
+            res = []
+            for b in bins:
+                # Contar qué tiene
+                move_count = request.env["stock.move"].sudo().search_count([('bin_id', '=', b.id), ('on_bin', '=', True)])
+                # Si tiene CUALQUIER move (Full), omitimos este BIN por completo de WMDS screen
+                if move_count > 0:
+                    continue
+
+                ei_count = request.env["sale.order.ei"].sudo().search_count([('bin_id', '=', b.id), ('on_bin', '=', True)])
+                if ei_count > 0:
+                    res.append({
+                        "id": b.id,
+                        "name": b.name,
+                        "has_ecommerce": True,
+                        "has_full": False,
+                        "total_items": ei_count,
+                        "carrier_name": b.carrier_id.name if b.carrier_id else "Sin carrier"
+                    })
+            return res
+        except Exception as e:
+            return {"error": str(e)}
+
+    @http.route('/wmds/v2/engine/get/active_docks', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_active_docks(self, **kw):
+        try:
+            docks = request.env["dock.storage"].sudo().search([])
+            res = []
+            for d in docks:
+                move_count = request.env["stock.move"].sudo().search_count([('dock_id', '=', d.id), ('on_dock', '=', True)])
+                # Si tiene CUALQUIER move (Full), omitimos este DOCK por completo de WMDS screen
+                if move_count > 0:
+                    continue
+
+                ei_count = request.env["sale.order.ei"].sudo().search_count([('dock_id', '=', d.id), ('on_dock', '=', True)])
+                if ei_count > 0:
+                    res.append({
+                        "id": d.id,
+                        "name": d.name,
+                        "has_ecommerce": True,
+                        "has_full": False,
+                        "total_items": ei_count
+                    })
+            return res
+        except Exception as e:
+            return {"error": str(e)}
+
+    @http.route('/wmds/v2/engine/get/available_docks', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_available_docks(self, **kw):
+        try:
+            docks = request.env["dock.storage"].sudo().search([('state', '=', 'available')])
+            return [{"id": d.id, "name": d.name} for d in docks]
+        except Exception as e:
+            return {"error": str(e)}
+
+    @http.route('/wmds/v2/engine/get/available_bins', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_available_bins(self, **kw):
+        try:
+            # We can optionally filter by carrier if provided
+            carrier_id = kw.get('carrier_id')
+            domain = [('state', '=', 'available')]
+            if carrier_id:
+                domain = ['|', ('carrier_id', '=', int(carrier_id)), ('carrier_id', '=', False), ('state', '=', 'available')]
+            
+            bins = request.env["bin.storage"].sudo().search(domain)
+            return [{"id": b.id, "name": b.name} for b in bins]
+        except Exception as e:
+            return {"error": str(e)}
+
+    @http.route('/wmds/v2/engine/get/dock_contents', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_dock_contents(self, **kw):
+        try:
+            dock_name = kw.get("dock")
+            dock = request.env["dock.storage"].sudo().search([('name', '=', dock_name)], limit=1)
+            if not dock:
+                return {"error": "Dock no encontrado"}
+            
+            ei_tags = request.env["sale.order.ei"].sudo().search([
+                ('dock_id', '=', dock.id),
+                ('on_dock', '=', True)
+            ])
+
+            package_details = [{"name": tag.display_name_custom, "so": tag.so_id.name, "is_full": False} for tag in ei_tags]
+            
+            return {
+                "dock": dock.name,
+                "package_details": package_details,
+                "has_ecommerce": len(ei_tags) > 0,
+                "has_full": False
+            }
+        except Exception as e:
+            return {"error": str(e)}

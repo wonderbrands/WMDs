@@ -16,8 +16,18 @@
         <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
         
         <div class="cards-grid">
-            <Card v-for="task in filteredTasks" :key="task.id" class="task-card" @click="handleTaskClick(task)">
-                <template #title>{{ task.title }}</template> 
+            <Card 
+                v-for="task in filteredTasks" 
+                :key="task.id" 
+                :class="['task-card', { 'card-expanded': expandedKeys[task.id + '-root'] }]" 
+                @click="handleTaskClick(task)"
+            >
+                <template #title>
+                    <div class="card-header-flex">
+                        <span>{{ task.title }}</span>
+                        <i v-if="hasChildren(task)" :class="['fa', expandedKeys[task.id + '-root'] ? 'fa-chevron-up' : 'fa-chevron-down', 'state-icon']"></i>
+                    </div>
+                </template> 
                 <template #subtitle>{{ task.description }}</template>
 
                 <template #content v-if="task.assigned.length > 0 && !task.view">
@@ -30,17 +40,22 @@
                 </template>
 
                 <template #footer>
-                    <Tree
-                        v-if="hasChildren(task)"
-                        :value="task.assigned"
-                        selectionMode="single"
-                        v-model:selectionKeys="current_task[task.id]"
-                        v-model:expandedKeys="expandedKeys"
-                        @node-select="(node) => openTask(node.pick, task.id, node.key)"
-                        @click.stop
-                        class="full-width"
-                    />
-                    <div v-else-if="task.view" class="custom-view-btn" @click.stop="createView(task)">
+                    <div v-if="hasChildren(task)">
+                        <Tree
+                            v-show="expandedKeys[task.id + '-root']"
+                            :value="task.assigned"
+                            selectionMode="single"
+                            v-model:selectionKeys="current_task[task.id]"
+                            v-model:expandedKeys="expandedKeys"
+                            @node-select="(node) => openTask(node.pick, task.id, node.key)"
+                            @click.stop
+                            class="full-width"
+                        />
+                        <div v-if="!expandedKeys[task.id + '-root']" class="expand-hint">
+                            <i class="fa fa-hand-pointer-o"></i> Toca para ver detalle
+                        </div>
+                    </div>
+                    <div v-else-if="task.view" class="custom-view-btn">
                         {{ task.label }}
                     </div>
                     <div v-else class="empty-tasks">
@@ -174,11 +189,13 @@ export default {
         },
         toggleTree(taskId) {
             const rootKey = `${taskId}-root`;
-            if (this.expandedKeys[rootKey]) {
-                delete this.expandedKeys[rootKey];
+            const newExpanded = { ...this.expandedKeys };
+            if (newExpanded[rootKey]) {
+                delete newExpanded[rootKey];
             } else {
-                this.expandedKeys[rootKey] = true;
+                newExpanded[rootKey] = true;
             }
+            this.expandedKeys = newExpanded;
         },
         hasChildren(task) {
             return task.assigned?.[0]?.children?.length > 0;
@@ -227,7 +244,7 @@ export default {
         handleTaskClick(task) {
             if (task.view) {
                 this.createView(task);
-            } else {
+            } else if (this.hasChildren(task)) {
                 this.toggleTree(task.id);
             }
         },
@@ -300,13 +317,40 @@ export default {
     gap: 20px;
     padding: 20px;
 }
+.card-header-flex {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.state-icon {
+    font-size: 0.9rem;
+    color: #94a3b8;
+    transition: transform 0.2s;
+}
 
 .task-card {
     width: 25%;
     min-width: 280px;
     cursor: pointer;
-    transition: box-shadow 0.2s;
+    transition: all 0.3s ease;
     margin: 1em;
+}
+
+.card-expanded {
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2) !important;
+    border-left: 4px solid #3B82F6;
+}
+
+.expand-hint {
+    text-align: center;
+    font-size: 0.8rem;
+    color: #3B82F6;
+    padding: 10px;
+    background: #f8fafc;
+    border-radius: 4px;
+    border: 1px dashed #cbd5e1;
 }
 
 .task-card:hover {

@@ -147,6 +147,32 @@ export default {
                 });
 
                 if (response.valid) {
+                    // Validar mezcla en el DOCK según lo que hay en el BIN origen
+                    const binHasEcommerce = this.packageDetails.some(p => !p.is_full);
+                    const binHasFull = this.packageDetails.some(p => p.is_full);
+
+                    if (binHasEcommerce && response.has_full) {
+                        this.$toast.add({ 
+                            severity: 'error', 
+                            summary: 'DOCK con Fulfillment', 
+                            detail: 'El DOCK ya contiene productos de Fulfillment y no se pueden mezclar con pedidos.', 
+                            life: 5000 
+                        });
+                        this.scannerKey++;
+                        return;
+                    }
+                    
+                    if (binHasFull && response.has_ecommerce) {
+                        this.$toast.add({ 
+                            severity: 'error', 
+                            summary: 'DOCK con pedidos', 
+                            detail: 'El DOCK ya contiene pedidos y no se pueden mezclar con productos de Fulfillment.', 
+                            life: 5000 
+                        });
+                        this.scannerKey++;
+                        return;
+                    }
+
                     this.targetDock = dockName;
                     this.showDockConfirmation = true;
                     console.log("Action: Showing confirmation screen for dock:", this.targetDock);
@@ -253,7 +279,7 @@ export default {
 .test-flow-container {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: calc(100vh - var(--o-we-toolbar-height, 46px));
     padding: 10px;
     box-sizing: border-box;
     overflow-y: auto;
@@ -350,13 +376,12 @@ export default {
 
 .log-col {
     flex: 1;
-    display: flex;
-    flex-direction: column;
     background: #2c3e50;
     border-radius: 8px;
     padding: 15px;
     color: #ecf0f1;
-    min-height: 300px;
+    min-height: 50vh;
+    overflow-y: auto;
 }
 
 .log-header {
@@ -372,14 +397,18 @@ export default {
     flex: 1;
     display: flex;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     align-items: center;
     gap: 20px;
+    overflow: hidden;
+    width: 100%;
 }
 
 .empty-status {
     text-align: center;
     color: #7f8c8d;
+    margin-top: auto;
+    margin-bottom: auto;
 }
 
 .status-icon {
@@ -390,6 +419,12 @@ export default {
 
 .active-status {
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    flex: 1;
+    overflow: hidden;
 }
 
 .bin-scanned {
@@ -416,14 +451,13 @@ export default {
 }
 
 .package-list-dock {
-    max-height: 150px;
-    overflow-y: auto;
     background: #34495e;
     border-radius: 4px;
     padding: 8px;
     margin-bottom: 15px;
     width: 100%;
     text-align: left;
+    min-height: 100px;
 }
 
 .package-item-dock {

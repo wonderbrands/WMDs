@@ -665,7 +665,11 @@ export default {
             }
         },
         async showLogsReport() {
-            const res = await this.store.callOdoo("get_cycle_count_logs", "", { count_id: this.modalData.id });
+            const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const res = await this.store.callOdoo("get_cycle_count_logs", "", { 
+                count_id: this.modalData.id,
+                tz: clientTimeZone
+            });
             if (res.ok) {
                 this.logData = res.data;
                 this.detailView = 'logs';

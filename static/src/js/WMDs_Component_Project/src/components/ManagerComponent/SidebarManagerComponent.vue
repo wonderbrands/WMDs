@@ -82,7 +82,7 @@
 
 <style scoped>
 .sidebar_manager {
-    height: 100vh;
+    height: calc(100vh - var(--o-we-toolbar-height, 46px));
     width: 25vw;
     min-width: 217px;
     background-color: #F9FAFB;

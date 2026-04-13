@@ -10,7 +10,7 @@ class BinCartStorage(models.Model):
 
     name = fields.Char(string="Nombre de BIN", required=True)
     ei = fields.One2many("sale.order.ei", "bin_id", string="Paquetes en BIN")
-    moves = fields.One2many("stock.move", "bin_id", string="Productos de full en BIN")
+    moves = fields.One2many("stock.move", "bin_id", string="Productos de Fulfillment en BIN")
     state = fields.Selection([
         ('available', 'Disponible'),
         ('blocked', 'Bloqueado')
@@ -65,7 +65,7 @@ class DockStorage(models.Model):
 
     name = fields.Char(string="Nombre de DOCK", required=True)
     ei = fields.One2many("sale.order.ei", "dock_id", string="Paquetes en DOCK")
-    moves = fields.One2many("stock.move", "dock_id", string="Productos de full en DOCK")
+    moves = fields.One2many("stock.move", "dock_id", string="Productos de Fulfillment en DOCK")
     state = fields.Selection([
         ('available', 'Disponible'),
         ('blocked', 'Bloqueado')

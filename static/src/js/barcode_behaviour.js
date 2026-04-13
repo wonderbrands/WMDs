@@ -248,43 +248,9 @@ patch(BarcodeModel.prototype, {
         const isBatchFull = isBatch && this.record && this.record.pick_type === "full";
 
         if (isBatchSale) {
-            localStorage.setItem("mandatory_uncompleted",
-                JSON.stringify({
-                    screen: null,
-                    component: "BarcodeScannerComponent",
-                    component_props: {
-                        context: "assign_pack_for_operator",
-                        instructions: "Escanea la linea de empaque para asignar el Pack",
-                        can_close: false,
-                        before_mount: "check_pack_assigned",
-                        extra_data: {
-                            pick_id: record.id,
-                            is_batch: isBatch,
-                            operation_type: "Pack"
-                        }
-                    },
-                    user: user
-                })
-            );
+            // No longer using localStorage for persistence
         } else if (isBatchFull) {
-            localStorage.setItem("mandatory_uncompleted",
-                JSON.stringify({
-                    screen: null,
-                    component: "BarcodeScannerComponent",
-                    component_props: {
-                        context: "assign_pack_for_operator",
-                        instructions: "Escanea la linea de empaque para asignar el Pack",
-                        can_close: false,
-                        before_mount: "check_pack_assigned",
-                        extra_data: {
-                            pick_id: record.id,
-                            is_batch: isBatch,
-                            operation_type: "Pack"
-                        }
-                    },
-                    user: user
-                })
-            );
+            // No longer using localStorage for persistence
         }
 
         try {

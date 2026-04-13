@@ -60,6 +60,44 @@ class SOWMDS(models.Model):
                                 'log': f"Orden de venta {record.name} cancelada - {msg_state}",
                                 'user': self.env.user.id,
                             })
+                        
+                        # Sacar paquetes de BIN/DOCK al cancelar
+                        ei_tags = self.env['sale.order.ei'].sudo().search([
+                            ('so_id', '=', record.id),
+                            '|', ('on_bin', '=', True), ('on_dock', '=', True)
+                        ])
+                        
+                        bins_to_check = self.env['bin.storage']
+                        for tag in ei_tags:
+                            loc_info = "desconocido"
+                            if tag.on_bin and tag.bin_id:
+                                loc_info = f"BIN {tag.bin_id.name}"
+                                bins_to_check |= tag.bin_id
+                            elif tag.on_dock and tag.dock_id:
+                                loc_info = f"DOCK {tag.dock_id.name}"
+                            
+                            tag.write({
+                                'on_bin': False,
+                                'bin_id': False,
+                                'on_dock': False,
+                                'dock_id': False
+                            })
+
+                            self.env['wmds.log'].sudo().create({
+                                'sale': record.id,
+                                'log': f"Paquete {tag.display_name_custom} removido automáticamente de {loc_info} por cancelación.",
+                                'user': self.env.user.id,
+                            })
+                        
+                        # Verificar si los BINS quedaron vacíos para liberarlos
+                        for bin_record in bins_to_check:
+                            has_remaining = self.env["sale.order.ei"].sudo().search_count([('bin_id', '=', bin_record.id), ('on_bin', '=', True)]) > 0 or \
+                                            self.env["stock.move"].sudo().search_count([('bin_id', '=', bin_record.id), ('on_bin', '=', True)]) > 0
+                            if not has_remaining:
+                                bin_record.write({
+                                    'state': 'available',
+                                    'carrier_id': False,
+                                })
 
         res = super(SOWMDS, self).write(vals)
 

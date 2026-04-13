@@ -48,12 +48,12 @@
           :key="col.field"
           :field="col.field"
           :header="col.name"
-          :sortable="true"
+          :sortable="col.sortable !== false"
           :showFilterMenu="false"
         >
           <template #filter>
             <Select
-              v-if="col.type === 'selectable'"
+              v-if="col.type === 'selectable' && col.filterable !== false"
               v-model="filters[col.field]"
               :options="col.options"
               optionLabel="label"
@@ -65,17 +65,23 @@
             />
 
             <InputText
-              v-else
+              v-else-if="col.filterable !== false"
               v-model="filters[col.field]"
               type="text"
               placeholder="Buscar..."
               class="p-column-filter"
               @input="onFilterChange"
             />
+            
+            <div v-else style="height: 38px;"></div>
           </template>
 
           <template #body="slotProps">
-            <span v-if="col.type === 'one2many'">
+            <Tag v-if="col.type === 'selectable'" 
+                 :severity="getSeverity(slotProps.data[col.field])" 
+                 :value="getLabel(slotProps.data[col.field])" />
+
+            <span v-else-if="col.type === 'one2many'">
               {{ slotProps.data[col.field]?.name || '' }}
             </span>
              <span v-else-if="col.type === 'date' || col.field.includes('date')">
@@ -98,6 +104,7 @@ import Column from "primevue/column";
 import InputText from "primevue/inputtext";
 import Select from "primevue/select";
 import Button from "primevue/button"
+import Tag from "primevue/tag"
 
 export default {
   name: "ListView",
@@ -107,7 +114,8 @@ export default {
     Column,
     InputText,
     Select, 
-    Button
+    Button,
+    Tag
   },
 
   data() {
@@ -132,6 +140,14 @@ export default {
   },
 
   methods: {
+    getSeverity(val) {
+      if (val && typeof val === 'object' && val.severity) return val.severity;
+      return 'secondary';
+    },
+    getLabel(val) {
+      if (val && typeof val === 'object' && val.label) return val.label;
+      return val || '';
+    },
     cycleCountCreate(event, modal){
       event.data = event.data || {};
       

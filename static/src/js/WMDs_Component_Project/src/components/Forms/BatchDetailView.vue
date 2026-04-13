@@ -4,6 +4,25 @@
             <h1 class="text-2xl font-bold">Plan de Pickeo: {{ batch_data.name }}</h1>
         </div>
 
+        <!-- BIN ASSIGNMENT (For all types when in progress or done) -->
+        <div class="operator-assignment mb-4" v-if="['full', 'wholesale', 'sale'].includes(batch_data.pick_type) && ['in_progress', 'done'].includes(batch_data.state)">
+            <div class="operator-field">
+                <label class="block font-medium mb-2">BIN de destino</label>
+                <div class="flex gap-2">
+                    <Select v-model="selected_bin" 
+                        :options="available_bins" 
+                        optionLabel="name" 
+                        dataKey="id"
+                        placeholder="Seleccionar BIN" 
+                        class="w-full"
+                        filter
+                    />
+                    <Button label="Asignar BIN" icon="fa fa-archive" severity="success" @click="assignBinToBatch" :disabled="!selected_bin || (batch_data.bin && selected_bin.id === batch_data.bin.id)" />
+                </div>
+            </div>
+        </div>
+
+        <!-- PACKER ASSIGNMENT (Only for sale and done) -->
         <div class="operator-assignment mb-4" v-if="batch_data.pick_type === 'sale' && batch_data.state === 'done'">
             <div class="operator-field">
                 <label class="block font-medium mb-2">Mesa de empaque</label>
@@ -22,6 +41,7 @@
             </div>
         </div>
 
+        <!-- OPERATOR ASSIGNMENT -->
         <div class="operator-assignment mb-4">
             <div class="operator-field">
                 <label class="block font-medium mb-2">Operador Asignado</label>
@@ -35,7 +55,7 @@
                         filter
                         @filter="onFilterOperators"
                     />
-                    <Button label="Reasignar" icon="fa fa-user" severity="info" @click="reassignOperator" :disabled="!selected_operator || selected_operator.id === batch_data.operator?.id || (batch_data.state !== 'draft' && batch_data.state !== 'in_progress')" />
+                    <Button label="Reasignar" icon="fa fa-user" severity="info" @click="reassignOperator" :disabled="!selected_operator || selected_operator.id === (batch_data.operator ? batch_data.operator.id : null) || (batch_data.state !== 'draft' && batch_data.state !== 'in_progress')" />
                 </div>
             </div>
         </div>
@@ -108,8 +128,10 @@ export default {
             store: useGeneralStore(),
             batch_data: null,
             operators: [],
+            available_bins: [],
             selected_operator: null,
             selected_packer: null,
+            selected_bin: null,
             debounceTimeout: null,
             products: {}
         }
@@ -134,6 +156,12 @@ export default {
                         this.operators.push(result.packer);
                     }
                 }
+                if (result.bin) {
+                    this.selected_bin = result.bin;
+                    if (!this.available_bins.some(b => b.id === result.bin.id)) {
+                        this.available_bins.push(result.bin);
+                    }
+                }
                 
                 // Fetch products for all picks in parallel
                 const productPromises = result.picks.map(async (pick) => {
@@ -148,6 +176,10 @@ export default {
         async loadOperators(term = "*") {
             const results = await this.store.callOdoo("operadores", term);
             this.operators = results || [];
+        },
+        async loadBins() {
+            const results = await this.store.callOdoo("get_available_bins", "", {});
+            this.available_bins = results || [];
         },
         onFilterOperators(event) {
             clearTimeout(this.debounceTimeout);
@@ -184,11 +216,27 @@ export default {
                 this.store.toast.add({ severity: 'success', summary: 'Asignado', detail: 'Mesa de empaque asignada exitosamente a todos los pedidos.', life: 3000 });
                 await this.loadBatchData();
             }
+        },
+        async assignBinToBatch() {
+            if (!this.selected_bin) return;
+            
+            const payload = {
+                id: this.batch_data.id,
+                is_batch: true,
+                bin_id: { id: this.selected_bin.id }
+            };
+            
+            const result = await this.store.callOdoo("assign_pick", "", payload);
+            if (!result.error) {
+                this.store.toast.add({ severity: 'success', summary: 'Asignado', detail: 'BIN asignado exitosamente al lote.', life: 3000 });
+                await this.loadBatchData();
+            }
         }
     },
     async mounted() {
         await this.loadBatchData();
         await this.loadOperators();
+        await this.loadBins();
     }
 }
 </script>

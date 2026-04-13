@@ -47,6 +47,7 @@ class StockWMDS(models.Model):
     _inherit = 'stock.picking'
 
     operator = fields.Many2one('res.users', 'Operator')
+    bin_id = fields.Many2one('bin.storage', string='BIN')
     wmds_status = fields.Many2one('wmds.stock.status', 'WMDS Status')
     wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log')
     marketplace_location = fields.Many2one("stock.location", string="Ubicación del marketplace")
@@ -157,6 +158,22 @@ class StockWMDS(models.Model):
                     'user': self.env.user.id,
                 })
 
+        if 'bin_id' in vals:
+            for record in self:
+                new_bin_id = vals.get('bin_id')
+                if new_bin_id:
+                    bin_record = self.env['bin.storage'].sudo().browse(new_bin_id)
+                    # Propagate to moves
+                    record.move_ids.write({
+                        'bin_id': new_bin_id,
+                        'on_bin': True
+                    })
+                    self.env['wmds.log'].sudo().create({
+                        'pick': record.id,
+                        'log': f"BIN asignado manualmente: {bin_record.name}",
+                        'user': self.env.user.id,
+                    })
+
         return super(StockWMDS, self).write(vals)
 
     def _get_stock_barcode_data(self):
@@ -215,6 +232,7 @@ class BatchWMDS(models.Model):
     _inherit = 'stock.picking.batch'
 
     operator = fields.Many2one('res.users', 'Operator')
+    bin_id = fields.Many2one('bin.storage', string='BIN')
     wmds_log = fields.One2many('wmds.log', 'batch_pick', string='WMDS Log')
     pick_type = fields.Selection(selection = [
         ('sale', 'Pedido'), 
@@ -324,6 +342,23 @@ class BatchWMDS(models.Model):
                     'log': msg,
                     'user': self.env.user.id,
                 })
+
+        if 'bin_id' in vals:
+            for record in self:
+                new_bin_id = vals.get('bin_id')
+                if new_bin_id:
+                    bin_record = self.env['bin.storage'].sudo().browse(new_bin_id)
+                    # Propagate to pickings and moves
+                    record.picking_ids.write({'bin_id': new_bin_id})
+                    record.picking_ids.mapped('move_ids').write({
+                        'bin_id': new_bin_id,
+                        'on_bin': True
+                    })
+                    self.env['wmds.log'].sudo().create({
+                        'batch_pick': record.id,
+                        'log': f"BIN asignado manualmente al lote: {bin_record.name}",
+                        'user': self.env.user.id,
+                    })
 
         return super(BatchWMDS, self).write(vals)
 

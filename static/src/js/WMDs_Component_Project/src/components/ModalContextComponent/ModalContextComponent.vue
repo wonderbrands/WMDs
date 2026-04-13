@@ -89,7 +89,7 @@
     top: 0;
     left: 0;
     width: 100vw;
-    height: 100vh;
+    height: calc(100vh - var(--o-we-toolbar-height, 46px));
     background-color: rgba(0, 0, 0, 0.6);
     display: flex;
     justify-content: center;

@@ -6,15 +6,18 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def convert_value_in_label(map_cols, value, key):
+def convert_value_in_label(map_cols, value, key, return_severity=False):
     if not value:
-        return ""
+        return "" if not return_severity else None
 
-    for pick_state in map_cols:
-        if pick_state['field'] == key:
-            for state_translate in pick_state['options']:
-                if state_translate['value'] == value:
-                    return state_translate['label']
+    for col in map_cols:
+        if col.get('field') == key:
+            for opt in col.get('options', []):
+                if opt['value'] == value:
+                    if return_severity:
+                        return opt.get('severity', 'secondary')
+                    return opt['label']
+    return value if not return_severity else None
 
 
 class GetPicks(http.Controller):
@@ -44,7 +47,7 @@ class GetPicks(http.Controller):
                 for key, value in kw.items():
                     col_domain.append((key, "ilike", value))
 
-            fields_to_read = ["id", "name", "origin", "operator", "scheduled_date", "state", "wmds_status"]
+            fields_to_read = ["id", "name", "origin", "operator", "bin_id", "scheduled_date", "state", "wmds_status"]
             
             picks_raw = request.env['stock.picking'].sudo().search_read(
                 col_domain,
@@ -60,19 +63,20 @@ class GetPicks(http.Controller):
                 {"name": "ID", "field": "id"},
                 {"name": "Nombre", "field": "name"},
                 {"name": "SO", "field": "origin"},
-                {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True},
+                {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True, "source": "operadores"},
+                {"name": "BIN", "field": "bin_id", "type": "one2many", "non_blocked_field": True, "source": "get_available_bins"},
                 {"name": "Fecha", "field": "scheduled_date"},
                 {
                     "name": "Estado",
                     "field": "state",
                     "type": "selectable",
                     "options": [
-                        {"value": "draft", "label": "Borrador"},
-                        {"value": "waiting", "label": "En espera de otra operación"},
-                        {"value": "assigned", "label": "Disponible", "default": True},
-                        {"value": "confirmed", "label": "En espera"},
-                        {"value": "done", "label": "Hecho"},
-                        {"value": "cancel", "label": "Cancelado"},
+                        {"value": "draft", "label": "Borrador", "severity": "secondary"},
+                        {"value": "waiting", "label": "En espera de otra operación", "severity": "warning"},
+                        {"value": "assigned", "label": "Disponible", "default": True, "severity": "info"},
+                        {"value": "confirmed", "label": "En espera", "severity": "info"},
+                        {"value": "done", "label": "Hecho", "severity": "success"},
+                        {"value": "cancel", "label": "Cancelado", "severity": "danger"},
                     ]
                 },
                 {
@@ -80,10 +84,10 @@ class GetPicks(http.Controller):
                     "field": "wmds_status",
                     "type": "selectable",
                     "options": [
-                        { "label": "No asignado", "value": "not_assigned", "default": True }, 
-                        { "label": "No iniciado", "value": "not_started" },
-                        { "label": "En progreso", "value": "in_progress" },
-                        { "label": "Completado", "value": "completed" },
+                        { "label": "No asignado", "value": "not_assigned", "default": True, "severity": "secondary" }, 
+                        { "label": "No iniciado", "value": "not_started", "severity": "warning" },
+                        { "label": "En progreso", "value": "in_progress", "severity": "info" },
+                        { "label": "Completado", "value": "completed", "severity": "success" },
                     ]
                 }
             ]
@@ -100,14 +104,29 @@ class GetPicks(http.Controller):
                         "email": user.login
                     }
                 
+                bin_data = None
+                if p.get('bin_id'):
+                    bin_id, bin_name = p['bin_id']
+                    bin_data = {
+                        "name": bin_name,
+                        "id": bin_id
+                    }
+                
                 data.append({
                     "id": p['id'],
                     "name": p['name'],
                     "origin": p['origin'],
                     "operator": operator_data,
+                    "bin_id": bin_data,
                     "scheduled_date": p['scheduled_date'],
-                    "state": convert_value_in_label(map_cols, p['state'], "state"),
-                    "wmds_status": convert_value_in_label(map_cols, p['wmds_status'], "wmds_status")
+                    "state": {
+                        "label": convert_value_in_label(map_cols, p['state'], "state"),
+                        "severity": convert_value_in_label(map_cols, p['state'], "state", return_severity=True)
+                    },
+                    "wmds_status": {
+                        "label": convert_value_in_label(map_cols, p['wmds_status'], "wmds_status"),
+                        "severity": convert_value_in_label(map_cols, p['wmds_status'], "wmds_status", return_severity=True)
+                    }
                 })
 
             return {
@@ -232,14 +251,69 @@ class GetPicks(http.Controller):
                 else:
                     target_pickings = base_pick
 
+            bin_data = kw.get('bin_id')
+            bin_record = None
+            if bin_data:
+                bin_record = request.env['bin.storage'].sudo().search([('id', '=', bin_data["id"])], limit=1)
+
             for picking in target_pickings:
-                picking.operator = operator_record.id if operator_record else (operator["id"] if operator else False)
+                if operator_record or (operator and not operator_mail):
+                    picking.operator = operator_record.id if operator_record else operator["id"]
+                
+                if bin_record:
+                    picking.bin_id = bin_record.id
+                    # Propagate to moves (essential for Full/Wholesale)
+                    picking.move_ids.write({
+                        'bin_id': bin_record.id,
+                        'on_bin': True,
+                        'on_dock': False,
+                        'dock_id': False
+                    })
+                    # Also update EI tags for ecommerce
+                    if picking.sale_id:
+                        ei_tags = request.env['sale.order.ei'].sudo().search([
+                            ('so_id', '=', picking.sale_id.id),
+                            ('dispatched', '=', False)
+                        ])
+                        ei_tags.write({
+                            'bin_id': bin_record.id,
+                            'on_bin': True,
+                            'on_dock': False,
+                            'dock_id': False
+                        })
+
                 if operation_type == "Pack" and operator_record:
                     request.env["wmds.log"].sudo().create({
                         'user': request.env.user.id,
                         'log': f"Se ha asignado el Pack {picking.name} a la mesa {operator_record.name}",
                         'pick': picking.id
                     })
+
+            if batch_record:
+                if operator_record:
+                    batch_record.operator = operator_record.id
+                if bin_record:
+                    batch_record.bin_id = bin_record.id
+                    # Update all moves in the batch
+                    batch_record.picking_ids.mapped('move_ids').write({
+                        'bin_id': bin_record.id,
+                        'on_bin': True,
+                        'on_dock': False,
+                        'dock_id': False
+                    })
+                    # Update EI tags for all pickings in batch
+                    so_ids = batch_record.picking_ids.mapped('sale_id.id')
+                    if so_ids:
+                        ei_tags = request.env['sale.order.ei'].sudo().search([
+                            ('so_id', 'in', so_ids),
+                            ('dispatched', '=', False)
+                        ])
+                        ei_tags.write({
+                            'bin_id': bin_record.id,
+                            'on_bin': True,
+                            'on_dock': False,
+                            'dock_id': False
+                        })
 
             if batch_record and operation_type == "Pack" and operator_record:
                 request.env["wmds.log"].sudo().create({
@@ -278,7 +352,7 @@ class GetPicks(http.Controller):
                 for key, value in kw.items():
                     col_domain.append((key, "ilike", value))
 
-            fields_to_read = ["id", "name", "origin", "operator", "scheduled_date", "state", "wmds_status"]
+            fields_to_read = ["id", "name", "origin", "operator", "bin_id", "scheduled_date", "state", "wmds_status"]
             
             picks_raw = request.env['stock.picking'].sudo().search_read(
                 col_domain,
@@ -294,19 +368,20 @@ class GetPicks(http.Controller):
                 {"name": "ID", "field": "id"},
                 {"name": "Nombre", "field": "name"},
                 {"name": "SO", "field": "origin"},
-                {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True},
+                {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True, "source": "operadores"},
+                {"name": "BIN", "field": "bin_id", "type": "one2many", "non_blocked_field": True, "source": "get_available_bins"},
                 {"name": "Fecha", "field": "scheduled_date"},
                 {
                     "name": "Estado",
                     "field": "state",
                     "type": "selectable",
                     "options": [
-                        {"value": "draft", "label": "Borrador"},
-                        {"value": "waiting", "label": "En espera de otra operación"},
-                        {"value": "assigned", "label": "Disponible", "default": True},
-                        {"value": "confirmed", "label": "En espera"},
-                        {"value": "done", "label": "Hecho"},
-                        {"value": "cancel", "label": "Cancelado"},
+                        {"value": "draft", "label": "Borrador", "severity": "secondary"},
+                        {"value": "waiting", "label": "En espera de otra operación", "severity": "warning"},
+                        {"value": "assigned", "label": "Disponible", "default": True, "severity": "info"},
+                        {"value": "confirmed", "label": "En espera", "severity": "info"},
+                        {"value": "done", "label": "Hecho", "severity": "success"},
+                        {"value": "cancel", "label": "Cancelado", "severity": "danger"},
                     ]
                 },
                 {
@@ -314,10 +389,10 @@ class GetPicks(http.Controller):
                     "field": "wmds_status",
                     "type": "selectable",
                     "options": [
-                        { "label": "No asignado", "value": "not_assigned", "default": True }, 
-                        { "label": "No iniciado", "value": "not_started" },
-                        { "label": "En progreso", "value": "in_progress" },
-                        { "label": "Completado", "value": "completed" },
+                        { "label": "No asignado", "value": "not_assigned", "default": True, "severity": "secondary" }, 
+                        { "label": "No iniciado", "value": "not_started", "severity": "warning" },
+                        { "label": "En progreso", "value": "in_progress", "severity": "info" },
+                        { "label": "Completado", "value": "completed", "severity": "success" },
                     ]
                 }
             ]
@@ -334,14 +409,29 @@ class GetPicks(http.Controller):
                         "email": user.login
                     }
                 
+                bin_data = None
+                if p.get('bin_id'):
+                    bin_id, bin_name = p['bin_id']
+                    bin_data = {
+                        "name": bin_name,
+                        "id": bin_id
+                    }
+                
                 data.append({
                     "id": p['id'],
                     "name": p['name'],
                     "origin": p['origin'],
                     "operator": operator_data,
+                    "bin_id": bin_data,
                     "scheduled_date": p['scheduled_date'],
-                    "state": convert_value_in_label(map_cols, p['state'], "state"),
-                    "wmds_status": convert_value_in_label(map_cols, p['wmds_status'], "wmds_status")
+                    "state": {
+                        "label": convert_value_in_label(map_cols, p['state'], "state"),
+                        "severity": convert_value_in_label(map_cols, p['state'], "state", return_severity=True)
+                    },
+                    "wmds_status": {
+                        "label": convert_value_in_label(map_cols, p['wmds_status'], "wmds_status"),
+                        "severity": convert_value_in_label(map_cols, p['wmds_status'], "wmds_status", return_severity=True)
+                    }
                 })
 
             return {
@@ -403,6 +493,7 @@ class GetPicks(http.Controller):
                 "pick_type": batch.pick_type,
                 "state": batch.state,
                 "operator": {"id": batch.operator.id, "name": batch.operator.name} if batch.operator else None,
+                "bin": {"id": batch.bin_id.id, "name": batch.bin_id.name} if batch.bin_id else None,
                 "packer": packer_data,
                 "picks": picks_data,
                 "logs": logs_data
@@ -491,10 +582,17 @@ class GetPicks(http.Controller):
                 "cur_page": kw.get('page', 1),
                 "per_page": kw.get('per_page', 30),
                 "sort_by": kw.get('sort_by'),
-                "sort_order": kw.get('sort_order'),
+                "sort_order": kw.get('sort_order', 'desc'),
             }
 
-            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order', 'tz']:
+            # Validar campos de ordenamiento que existen en el modelo
+            valid_sort_fields = ['id', 'name', 'pick_type', 'operator', 'scheduled_date', 'state']
+            if parsed_params['sort_by'] and parsed_params['sort_by'] not in valid_sort_fields:
+                parsed_params['sort_by'] = 'id'
+                parsed_params['sort_order'] = 'desc'
+
+            # Eliminar parámetros de control y campos virtuales que no están en el modelo para el filtrado
+            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order', 'tz', 'picks', 'so_list']:
                 if popped_param in kw:
                     kw.pop(popped_param)
 
@@ -517,36 +615,69 @@ class GetPicks(http.Controller):
             map_cols = [
                 {"name": "ID", "field": "id"},
                 {"name": "Referencia", "field": "name"},
-                {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True},
+                {
+                    "name": "Tipo", 
+                    "field": "pick_type", 
+                    "type": "selectable",
+                    "options": [
+                        {"value": "sale", "label": "Pedido", "severity": "info"},
+                        {"value": "full", "label": "Fulfillment", "severity": "warning"},
+                        {"value": "mix", "label": "Mixto", "severity": "secondary"},
+                        {"value": "wholesale", "label": "Mayoreo", "severity": "contrast"}
+                    ]
+                },
+                {"name": "Picks", "field": "picks", "sortable": False, "filterable": False},
+                {"name": "Pedidos SO", "field": "so_list", "sortable": False, "filterable": False},
+                {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True, "source": "operadores"},
+                {"name": "BIN", "field": "bin_id", "type": "one2many", "non_blocked_field": True, "source": "get_available_bins"},
                 {"name": "Fecha Programada", "field": "scheduled_date"},
                 {
                     "name": "Estado",
                     "field": "state",
                     "type": "selectable",
                     "options": [
-                        {"value": "draft", "label": "Borrador"},
-                        {"value": "in_progress", "label": "En progreso", "default": True},
-                        {"value": "done", "label": "Hecho"},
-                        {"value": "cancel", "label": "Cancelado"}
+                        {"value": "draft", "label": "Borrador", "severity": "secondary"},
+                        {"value": "in_progress", "label": "En progreso", "default": True, "severity": "info"},
+                        {"value": "done", "label": "Hecho", "severity": "success"},
+                        {"value": "cancel", "label": "Cancelado", "severity": "danger"}
                     ]
                 }
             ]
 
+            data = []
+            for b in batches:
+                # Obtener picks y SOs únicos
+                picks = ", ".join(list(dict.fromkeys(b.picking_ids.mapped('name'))))
+                so_list = ", ".join(list(dict.fromkeys(filter(None, b.picking_ids.mapped('origin')))))
+
+                data.append({
+                    "id": b.id,
+                    "name": b.name,
+                    "pick_type": {
+                        "label": convert_value_in_label(map_cols, b.pick_type, "pick_type"),
+                        "severity": convert_value_in_label(map_cols, b.pick_type, "pick_type", return_severity=True)
+                    },
+                    "picks": picks,
+                    "so_list": so_list,
+                    "operator": None if not b.operator else {
+                        "name": b.operator.name,
+                        "id": b.operator.id,
+                        "email": b.operator.login
+                    },
+                    "bin_id": None if not b.bin_id else {
+                        "name": b.bin_id.name,
+                        "id": b.bin_id.id
+                    },
+                    "scheduled_date": b.scheduled_date,
+                    "state": {
+                        "label": convert_value_in_label(map_cols, b.state, "state"),
+                        "severity": convert_value_in_label(map_cols, b.state, "state", return_severity=True)
+                    }
+                })
+
             return {
                 "map_cols": map_cols,
-                "data": [
-                    {
-                        "id": b.id,
-                        "name": b.name,
-                        "operator": None if not b.operator else {
-                            "name": b.operator.name,
-                            "id": b.operator.id,
-                            "email": b.operator.login
-                        },
-                        "scheduled_date": b.scheduled_date,
-                        "state": convert_value_in_label(map_cols, b.state, "state")
-                    } for b in batches
-                ],
+                "data": data,
                 "total_count": total
             }
 
