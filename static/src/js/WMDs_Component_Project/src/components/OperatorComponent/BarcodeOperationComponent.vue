@@ -5,13 +5,11 @@
         @touchmove="handleTouchMove"
         @touchend="handleTouchEnd"
     >
-        <!-- Pull to refresh indicator -->
         <div v-if="pulling" class="pull-to-refresh-indicator" :style="{ height: pullDistance + 'px', opacity: pullDistance / 100 }">
             <i class="fa fa-refresh" :class="{ 'fa-spin': refreshing }"></i>
             <span>{{ refreshing ? 'Actualizando...' : 'Tire para actualizar' }}</span>
         </div>
 
-        <!-- Header -->
         <div class="op-header">
             <div class="op-info">
                 <span class="op-name">{{ operationData?.name || 'Cargando...' }}</span>
@@ -166,6 +164,25 @@
                 </div>
             </div>
         </Dialog>
+
+        <!-- Stock Warning Dialog -->
+        <Dialog v-model:visible="showStockWarningDialog" header="Ubicación con Existencias" modal :style="{ width: '90vw', maxWidth: '500px' }">
+            <div class="p-3">
+                <p class="mb-4">Las siguientes ubicaciones destino ya tienen producto:</p>
+                <div class="mb-4">
+                    <div v-for="loc in locationsWithStock" :key="loc" class="py-2 border-bottom-1 border-eee">
+                        <i class="fa fa-map-marker text-warning mr-2"></i>
+                        <span class="font-bold">{{ loc }}</span>
+                    </div>
+                </div>
+                <p class="mb-4 text-warning font-bold">¿Seguro deseas ingresarlos aquí?</p>
+
+                <div class="flex flex-column gap-3">
+                    <Button label="SÍ, PROCEDER" icon="fa fa-check" class="p-button-warning w-full" @click="processValidationAfterWarning" :loading="loading" />
+                    <Button label="CANCELAR" icon="fa fa-times" class="p-button-text p-button-secondary w-full" @click="showStockWarningDialog = false" />
+                </div>
+            </div>
+        </Dialog>
     </div>
 </template>
 
@@ -187,13 +204,15 @@ export default {
         config: {
             type: Object,
             default: () => ({
+                task_id: 'pick',
                 buttons_to_add: true,
                 buttons_to_subtract: true,
                 stock_input_add: false,
                 extra_products: false,
                 backorder: true,
                 scan_source: false,
-                scan_dest: false
+                scan_dest: false,
+                check_empty_dest_location: false
             })
         }
     },
@@ -209,6 +228,8 @@ export default {
             loading: false,
             localConfig: { ...this.config },
             showBackorderDialog: false,
+            showStockWarningDialog: false,
+            locationsWithStock: [],
             manualQty: 0,
             isManualInputFocused: false,
             // Pull to refresh state
@@ -311,7 +332,7 @@ export default {
                     
                     if (currentLineId) {
                         this.currentLine = this.operationData.lines.find(l => l.id === currentLineId) || null;
-                    } else if (this.operationData.lines.length > 0) {
+                    } else if (!this.currentLine && this.operationData.lines.length > 0) {
                         // Set first incomplete line as current if none selected
                         this.currentLine = this.operationData.lines.find(l => l.picked < l.qty_demand) || this.operationData.lines[0];
                     }
@@ -371,45 +392,39 @@ export default {
             } else if (this.currentStep === 'location_dest') {
                 if (!this.currentLine) return;
                 
-                if (this.localConfig.any_dest) {
-                    this.loading = true;
-                    try {
-                        const res = await this.store.callOdoo("process_dest_location_scan", "", {
-                            line_id: this.currentLine.id,
-                            barcode: barcode,
-                            operator_email: this.store.role.email
-                        });
+                this.loading = true;
+                try {
+                    const res = await this.store.callOdoo("process_dest_location_scan", "", {
+                        line_id: this.currentLine.id,
+                        barcode: barcode,
+                        operator_email: this.store.role.email
+                    });
 
-                        if (res.status === 'ok') {
-                            this.scannedLocationDest = barcode;
-                            this.currentLine.location_dest_name = res.new_location_name;
-                            this.currentLine.location_dest_id = res.new_location_id;
-
-                            if (this.localConfig.scan_source) {
-                                this.currentStep = 'location_src';
-                            } else {
-                                this.currentStep = 'product';
-                            }
-                            this.$toast.add({ severity: 'info', summary: 'Ubicación Destino', detail: res.new_location_name, life: 2000 });
-                        } else {
-                            this.$toast.add({ severity: 'error', summary: 'Ubicación Destino Inválida', detail: res.message, life: 4000 });
-                        }
-                    } finally {
-                        this.loading = false;
-                    }
-                } else {
-                    const isValid = this.currentLine.location_dest_name === barcode || this.currentLine.location_dest_barcode === barcode || this.currentLine.location_dest_id.toString() === barcode;
-                    if (isValid) {
+                    if (res.status === 'ok') {
                         this.scannedLocationDest = barcode;
+                        this.currentLine.location_dest_name = res.new_location_name;
+                        this.currentLine.location_dest_id = res.new_location_id;
+
                         if (this.localConfig.scan_source) {
                             this.currentStep = 'location_src';
                         } else {
                             this.currentStep = 'product';
                         }
-                        this.$toast.add({ severity: 'info', summary: 'Ubicación Destino', detail: barcode, life: 2000 });
+                        this.$toast.add({ severity: 'info', summary: 'Ubicación Destino', detail: res.new_location_name, life: 2000 });
+                        
+                        if (res.vobo_message) {
+                            this.$toast.add({ 
+                                severity: res.vobo_message.includes('NO') ? 'warn' : 'success', 
+                                summary: 'Vo.Bo COMEX', 
+                                detail: res.vobo_message, 
+                                life: 4000 
+                            });
+                        }
                     } else {
-                        this.$toast.add({ severity: 'error', summary: 'Ubicación Destino Incorrecta', detail: `Debe ser el destino asignado: ${this.currentLine.location_dest_name}`, life: 3000 });
+                        this.$toast.add({ severity: 'error', summary: 'Ubicación Destino Inválida', detail: res.message, life: 4000 });
                     }
+                } finally {
+                    this.loading = false;
                 }
             }
             this.scannerKey++;
@@ -549,6 +564,17 @@ export default {
                 this.$refs.mainScroll.scrollTo({ top: 0, behavior: 'smooth' });
             }
 
+            if (this.localConfig.check_empty_dest_location) {
+                const hasStock = await this.rackDestinyHasProducts();
+                if (hasStock) {
+                    this.showStockWarningDialog = true;
+                    return;
+                }
+            }
+
+            await this.checkBackorderAndProcess();
+        },
+        async checkBackorderAndProcess() {
             const incomplete = this.missingLines.length > 0;
             console.log("Incomplete:", incomplete);
 
@@ -567,9 +593,14 @@ export default {
                 await this.processValidation();
             }
         },
+        async processValidationAfterWarning() {
+            this.showStockWarningDialog = false;
+            await this.checkBackorderAndProcess();
+        },
         async processValidation() {
             this.loading = true;
             this.showBackorderDialog = false;
+            this.showStockWarningDialog = false;
             try {
                 const res = await this.store.callOdoo("validate_operation", "", {
                     res_id: this.res_id,
@@ -651,10 +682,6 @@ export default {
             } else {
                 this.currentStep = 'product';
             }
-
-            if (this.$refs.mainScroll) {
-                this.$refs.mainScroll.scrollTo({ top: 0, behavior: 'smooth' });
-            }
         },
         exitFlow() {
             this.store.mandatory_uncompleted.doneMandatory();
@@ -685,6 +712,26 @@ export default {
             }
             this.pulling = false;
             this.pullDistance = 0;
+        },
+        async rackDestinyHasProducts() {
+            this.loading = true;
+            try {
+                const res = await this.store.callOdoo("check_locations_have_stock", "", {
+                    res_id: this.res_id,
+                    res_model: this.res_model
+                });
+
+                if (res.status === 'ok' && res.has_stock) {
+                    this.locationsWithStock = res.locations;
+                    return true;
+                }
+                return false;
+            } catch (e) {
+                console.error("Error checking stock:", e);
+                return false;
+            } finally {
+                this.loading = false;
+            }
         }
     }
 }
@@ -763,7 +810,7 @@ export default {
 }
 
 .scanner-section { display: flex; flex-direction: column; gap: 0.75rem; }
-.scanner-box { height: 200px; border-radius: 8px; overflow: hidden; }
+.scanner-box { height: 75px; border-radius: 8px; overflow: hidden; }
 
 .instruction-banner {
     padding: 0.75rem;

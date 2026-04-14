@@ -464,6 +464,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_operation_data: {url: '/wmds/v2/barcode/get_operation_data', method: 'POST'},
             process_scan: {url: '/wmds/v2/barcode/process_scan', method: 'POST'},
             process_dest_location_scan: {url: '/wmds/v2/barcode/process_dest_location_scan', method: 'POST'},
+            check_locations_have_stock: {url: '/wmds/v2/barcode/check_locations_have_stock', method: 'POST'},
             validate_operation: {url: '/wmds/v2/barcode/validate_operation', method: 'POST'},
             log_task_start: {url: '/wmds/v2/barcode/log_task_start', method: 'POST'},
 
