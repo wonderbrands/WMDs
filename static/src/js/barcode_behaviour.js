@@ -134,6 +134,9 @@ patch(BarcodeModel.prototype, {
                 return;
             }
 
+            //Delay
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
             try {
                 const etiquetaAction = await this.orm.call(
                     'stock.picking',
