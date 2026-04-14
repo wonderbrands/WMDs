@@ -635,7 +635,7 @@ class CycleCount(http.Controller):
             # Registrar en el log de WMDS
             manager_name = request.env.user.name
             product_name = product.display_name
-            log_msg = f"Manager {manager_name} ajustó el producto {product_name} de {old_qty} unidades a {new_qty} unidades basado en {reason} en la ubicación {loc_name}"
+            log_msg = f"AJUSTE DE INVENTARIO - Producto: {product_name} | Ubicación: {loc_name} | Cant. Anterior: {old_qty} | Cant. Nueva: {new_qty} | Motivo: {reason} | Manager: {manager_name}"
             
             request.env['wmds.log'].sudo().create({
                 'cycle_count': count.id if count else False,

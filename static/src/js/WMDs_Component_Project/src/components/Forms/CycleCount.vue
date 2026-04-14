@@ -171,7 +171,12 @@
                                 </div>
                                 <div v-else-if="slotProps.data.state === 'done'" class="flex-row gap-small">
                                     <span class="text-green-500 font-bold"><i class="fa fa-check-circle"></i> Lista</span>
-                                    <Button label="Reabrir" icon="fa fa-refresh" class="p-button-text p-button-sm" @click.stop="reopenWavePrompt(slotProps.data)" v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'" />
+                                    <!--<Button label="Reabrir" 
+                                    icon="fa fa-refresh" 
+                                    class="p-button-text p-button-sm" 
+                                    @click.stop="reopenWavePrompt(slotProps.data)" 
+                                    v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'" 
+                                    />-->
                                 </div>
                                 <span v-else-if="slotProps.data.state === 'cancelled'" class="text-red-500 font-bold"><i class="fa fa-ban"></i> Cancelada</span>
                                 <span v-else-if="cycleCountState === 'finalized' || cycleCountState === 'cancelled'" class="text-secondary italic">Sin acciones</span>

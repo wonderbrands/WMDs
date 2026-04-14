@@ -237,7 +237,7 @@ class BarcodeController(http.Controller):
 
             # Find the scanned location
             scanned_location = request.env['stock.location'].sudo().search([
-                '|', '|', ('barcode', '=', barcode), ('name', '=', barcode), ('id', '=', barcode if str(barcode).isdigit() else 0)
+                ('barcode', '=', barcode)
             ], limit=1)
 
             if not scanned_location:
@@ -246,22 +246,117 @@ class BarcodeController(http.Controller):
             original_dest = line.location_dest_id
             # Hierarchy check: Accept any valid location as requested
             is_valid = True 
+            vobo_message = ""
+
+            # Lógica de COMEX para Rackeos
+            picking = line.picking_id or (line.batch_id.picking_ids[0] if line.batch_id and line.batch_id.picking_ids else False)
+            logger.info(f"COMEX Check: picking={picking.name if picking else 'None'}, picking_type={picking.picking_type_id.name if picking else 'None'}, origin={picking.origin if picking else 'None'}")
+            
+            if picking and picking.picking_type_id.name == 'Rackeos':
+                # Intentar encontrar la PO. A veces el origin tiene prefijos o múltiples referencias.
+                origin = picking.origin or ''
+                # Buscar cualquier secuencia que parezca una PO (típicamente empieza con P o PO)
+                # O simplemente usar la lógica original pero más flexible
+                clean_origin = origin.replace('COMEX: ', '').strip()
+                
+                # Intentar búsqueda exacta primero
+                po = request.env['purchase.order'].sudo().search([('name', '=', clean_origin)], limit=1)
+                
+                # Si no, intentar buscar por partes si el origin es compuesto
+                if not po and clean_origin:
+                    # Si el origin contiene comas o espacios, intentar con la primera parte
+                    first_part = clean_origin.split(',')[0].split(' ')[0].strip()
+                    po = request.env['purchase.order'].sudo().search([('name', '=', first_part)], limit=1)
+                
+                logger.info(f"COMEX Check: origin='{origin}', clean_origin='{clean_origin}', PO found={po.name if po else 'None'}, check_commertial={po.check_commertial if po else 'N/A'}")
+                
+                if po:
+                    dest_name = scanned_location.complete_name
+                    logger.info(f"COMEX Check: dest_name='{dest_name}', check_commertial={po.check_commertial}")
+                    if not po.check_commertial:
+                        vobo_message = "La compra NO tiene visto bueno COMEX. "
+                        if 'Stock' in dest_name or 'Almacenaje' in dest_name:
+                            new_dest_name = dest_name.replace('Stock/Almacenaje', 'Cuarentena').replace('Stock', 'Cuarentena')
+                            logger.info(f"COMEX Check: Attempting redirect to '{new_dest_name}'")
+                            quarantine_loc = request.env['stock.location'].sudo().search([('complete_name', '=', new_dest_name)], limit=1)
+                            if quarantine_loc:
+                                scanned_location = quarantine_loc
+                                vobo_message += "Redirigiendo a CUARENTENA."
+                            else:
+                                vobo_message += "Ubicación destino forzada a CUARENTENA (ubicación equivalente no encontrada)."
+                    else:
+                        vobo_message = "La compra TIENE visto bueno COMEX. "
+                        if 'Cuarentena' in dest_name:
+                            new_dest_name = dest_name.replace('Cuarentena', 'Stock/Almacenaje')
+                            logger.info(f"COMEX Check: Attempting redirect to '{new_dest_name}'")
+                            storage_loc = request.env['stock.location'].sudo().search([('complete_name', '=', new_dest_name)], limit=1)
+                            if storage_loc:
+                                scanned_location = storage_loc
+                                vobo_message += "Redirigiendo a ALMACENAJE."
+                            else:
+                                vobo_message += "Manteniendo ubicación de Cuarentena (equivalente de almacenaje no encontrado)."
+                        else:
+                            vobo_message += "Ubicación ESTÁNDAR aceptada."
+                    
+                    logger.info(f"COMEX Check: Final location ID={scanned_location.id}, name={scanned_location.complete_name}")
+                else:
+                    logger.info(f"COMEX Check: PO not found for origin '{clean_origin}'")
 
             if is_valid:
                 old_dest_name = original_dest.display_name
                 line.write({'location_dest_id': scanned_location.id})
                 
+                # Sincronizar también el move_id
+                if line.move_id:
+                    line.move_id.write({'location_dest_id': scanned_location.id})
+                
                 msg = f"Ubicación de destino cambiada para {line.product_id.display_name}: de {old_dest_name} a {scanned_location.display_name} (Cambio manual por escaneo)"
+                if vobo_message:
+                    msg += f" - COMEX: {vobo_message}"
+                
                 self._create_log(line.picking_id or line.batch_id, msg, 'stock.picking' if line.picking_id else 'stock.picking.batch', operator_email)
                 
                 return {
                     "status": "ok", 
                     "new_location_name": scanned_location.display_name,
-                    "new_location_id": scanned_location.id
+                    "new_location_id": scanned_location.id,
+                    "vobo_message": vobo_message
                 }
             else:
                 return {"status": "error", "message": f"La ubicación {scanned_location.display_name} no es válida. Debe ser {original_dest.display_name} o una de sus hijas."}
 
+        except Exception as e:
+            logger.error(traceback.format_exc())
+            return {"status": "error", "message": str(e)}
+
+    @http.route('/wmds/v2/barcode/check_locations_have_stock', type='json', auth='user', methods=['POST'], csrf=True)
+    def check_locations_have_stock(self, **kw):
+        try:
+            res_id = kw.get('res_id')
+            res_model = kw.get('res_model')
+            location_ids = kw.get('location_ids', [])
+            
+            if res_id and res_model:
+                record = self._get_record(res_id, res_model)
+                # Obtenemos las líneas que tienen picks realizados
+                lines = record.move_line_ids.filtered(lambda l: l.wmds_picked_qty > 0)
+                location_ids = list(set(location_ids + lines.mapped('location_dest_id').ids))
+            
+            if not location_ids:
+                return {"status": "ok", "has_stock": False, "locations": []}
+            
+            quants = request.env['stock.quant'].sudo().search([
+                ('location_id', 'in', [int(id) for id in location_ids]),
+                ('quantity', '>', 0)
+            ])
+            
+            locations_with_stock = list(set(quants.mapped('location_id.display_name')))
+            
+            return {
+                "status": "ok",
+                "has_stock": bool(locations_with_stock),
+                "locations": locations_with_stock
+            }
         except Exception as e:
             logger.error(traceback.format_exc())
             return {"status": "error", "message": str(e)}
