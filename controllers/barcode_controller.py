@@ -170,6 +170,11 @@ class BarcodeController(http.Controller):
             # Update picked
             line.wmds_picked_qty += increment
             
+            # Log the pick action with source location
+            action_desc = "escaneó" if not kw.get('increment') else ("incrementó" if increment > 0 else "decrementó")
+            msg = f"Operador {action_desc} {abs(increment)} unidad(es) de {line.product_id.display_name} desde {line.location_id.display_name}"
+            self._create_log(record, msg, res_model, operator_email)
+            
             return {
                 "status": "ok",
                 "line_id": line.id,
@@ -230,6 +235,7 @@ class BarcodeController(http.Controller):
             line_id = kw.get('line_id')
             barcode = kw.get('barcode')
             operator_email = kw.get('operator_email')
+            check_empty = kw.get('check_empty', False)
 
             line = request.env['stock.move.line'].sudo().browse(int(line_id))
             if not line.exists():
@@ -242,6 +248,14 @@ class BarcodeController(http.Controller):
 
             if not scanned_location:
                 return {"status": "error", "message": "Ubicación no encontrada."}
+
+            if check_empty:
+                quants = request.env['stock.quant'].sudo().search([
+                    ('location_id', '=', scanned_location.id),
+                    ('quantity', '>', 0)
+                ], limit=1)
+                if quants:
+                    return {"status": "error", "message": f"La ubicación {scanned_location.display_name} ya contiene productos. Elija una vacía."}
 
             original_dest = line.location_dest_id
             # Hierarchy check: Accept any valid location as requested

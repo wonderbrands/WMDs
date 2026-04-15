@@ -169,3 +169,31 @@ class BatchPickController(http.Controller):
             'batch_id': new_batch.id,
             'state': new_batch.state
         }
+
+    @http.route('/wmds/v2/engine/post/cancel_batch', type='json', auth='user', methods=['POST'], csrf=True)
+    def cancel_batch(self, **kw):
+        batch_id = kw.get("id")
+        if not batch_id:
+            return {'error': True, 'error_msg': "Es necesario pasar un ID de lote."}
+
+        try:
+            batch = request.env['stock.picking.batch'].sudo().browse(int(batch_id))
+            if not batch.exists():
+                return {'error': True, 'error_msg': "El lote no existe."}
+
+            # Reset picked qty in all move lines
+            batch.move_line_ids.sudo().write({'wmds_picked_qty': 0.0})
+            
+            # Cancel the batch in Odoo
+            batch.action_cancel()
+
+            request.env['wmds.log'].sudo().create({
+                'batch_pick': batch.id,
+                'user': request.env.user.id,
+                'log': "Plan de pickeo cancelado manualmente por el manager. Cantidades recolectadas reiniciadas."
+            })
+
+            return {'status': "ok", 'message': "Plan de pickeo cancelado exitosamente."}
+
+        except Exception as e:
+            return {'error': True, 'error_msg': f"Error de sistema al cancelar batch: {str(e)}"}

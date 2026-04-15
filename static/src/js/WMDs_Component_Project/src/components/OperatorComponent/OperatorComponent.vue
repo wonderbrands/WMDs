@@ -13,7 +13,13 @@
             <i class="fa fa-refresh" :class="{ 'fa-spin': refreshing }"></i>
             <span>{{ refreshing ? 'Actualizando...' : 'Tire para actualizar' }}</span>
         </div>
-        <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
+        <div class="welcome-section">
+            <h3 class="welcome-header">Bienvenido {{ store.role.user }}</h3>
+            <div v-if="store.role.packer_barcode_image" class="operator-barcode">
+                <img :src="'data:image/png;base64,' + store.role.packer_barcode_image" alt="My Barcode" />
+                <span class="barcode-text">{{ store.role.packer_uuid }}</span>
+            </div>
+        </div>
         
         <div class="cards-grid">
             <Card 
@@ -308,8 +314,39 @@ export default {
     font-size: 1.2rem;
 }
 
+.welcome-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 1rem;
+    margin-bottom: 1rem;
+}
+
 .welcome-header { 
-    margin: 1em; 
+    margin: 0; 
+}
+
+.operator-barcode {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: white;
+    padding: 10px;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.operator-barcode img {
+    height: 60px;
+    width: auto;
+    object-fit: contain;
+}
+
+.barcode-text {
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #475569;
+    margin-top: 4px;
 }
 
 .cards-grid {

@@ -7,6 +7,7 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='login']" position="after">
                 <field name="qr_image" widget="image" string="QR Code WMDS"/>
+                <field name="packer_uuid" widget="barcode" invisible="not packer_uuid" groups="wmds.role_wmds_packer"/>
             </xpath>
         </field>
     </record>

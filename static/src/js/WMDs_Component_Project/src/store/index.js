@@ -165,7 +165,7 @@ export const useGeneralStore = defineStore('general_store', {
                         {name: "name", label: "Referencia"},
                         {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
                         {name: "bin_id", label: "BIN", non_blocked_field: true, source: "get_available_bins"},
-                        {name: "scheduled_date", label: "Fecha Programada"},
+                        {name: "create_date", label: "Fecha Creación"},
                         {name: "state", label: "Estado"}
                     ],
                     create_by_aggregate: {
@@ -282,6 +282,7 @@ export const useGeneralStore = defineStore('general_store', {
                 { name: "id", label: "ID" },
                 { name: "name", label: "Nombre", non_blocked_field: true, type: "text" },
                 { name: "login", label: "Correo", non_blocked_field: true, type: "text" },
+                { name: "packer_uuid", label: "Packer UUID", non_blocked_field: false, type: "text" },
                 { name: "role_ids", label: "Roles", non_blocked_field: true, type: "multiselect", source: "operator_roles" },
             ],
             form_config: {
@@ -523,12 +524,18 @@ export const useGeneralStore = defineStore('general_store', {
                 }
             },
             'assign_pack_for_operator': async (qr, extra) => {
-                const operatorEmail = JSON.parse(qr).email;
+                let operatorEmailOrUuid;
+                try {
+                    const parsed = JSON.parse(qr);
+                    operatorEmailOrUuid = parsed.email || qr;
+                } catch (e) {
+                    operatorEmailOrUuid = qr;
+                }
 
                 const operatorPermissions = await this.callOdoo(
                     'get_user_role_permissions',
                     '',
-                    { email: operatorEmail }
+                    { email: operatorEmailOrUuid }
                 );
 
                 if (!operatorPermissions.permissions || !operatorPermissions.permissions.includes('WMDs Operator - Packer')) {
@@ -554,7 +561,7 @@ export const useGeneralStore = defineStore('general_store', {
                         id: extra.pick_id,
                         is_batch: extra.is_batch,
                         operation_type: "Pack",
-                        operator_mail: operatorEmail
+                        operator_mail: operatorPermissions.login
                     }
                 )
                 this.mandatory_uncompleted.doneMandatory()

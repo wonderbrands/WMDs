@@ -39,38 +39,61 @@ class UserAccess(http.Controller):
 
     @http.route('/wmds/v2/engine/get/valid_user', type='json', auth='user', methods=['POST'], csrf=True)
     def get_valid_user(self, **kw):
-        email = kw.get('email')
-        if not email:
+        email_or_uuid = kw.get('email')
+        logger.info(f"WMDS login attempt with: {email_or_uuid}")
+        if not email_or_uuid:
             return {
                 'error': 'Bad request',
                 'message': 'Missing required field: email'
             }
-        user = request.env['res.users'].sudo().search([('login', '=', email)], limit=1)
+        
+        user = request.env['res.users'].sudo().search([
+            '|', 
+            ('login', '=', email_or_uuid), 
+            ('packer_uuid', '=', email_or_uuid)
+        ], limit=1)
+
         if not user:
+            logger.warning(f"WMDS login: User not found for {email_or_uuid}")
             return {
                 'error': 'Not found',
                 'message': 'User not found'
             }
-        if user.has_group('wmds.group_wmds_operator') or  user.has_group('wmds.group_wmds_manager'):
+            
+        is_operator = user.has_group('wmds.group_wmds_operator')
+        is_manager = user.has_group('wmds.group_wmds_manager')
+        
+        logger.info(f"WMDS login: User {user.login} found. is_operator: {is_operator}, is_manager: {is_manager}")
+
+        if is_operator or is_manager:
             return {
                 "name": user.name,
-                "login": user.login
+                "login": user.login,
+                "packer_uuid": user.packer_uuid,
+                "packer_barcode_image": user.packer_barcode_image if user.packer_barcode_image else False
             }
 
+        logger.warning(f"WMDS login: User {user.login} has no access groups.")
         return {
                 'error': 'User has no access',
-                'message': 'User has no permission to access  WMDS app'
+                'message': 'User has no permission to access WMDS app'
             }
 
     @http.route('/wmds/v2/engine/get/user_role_permissions', type='json', auth='user', methods=['POST'], csrf=True)
     def get_user_role_permissions(self, **kw):
-        email = kw.get('email')
-        if not email:
+        email_or_uuid = kw.get('email')
+        if not email_or_uuid:
             return {
                 'error': 'Bad request',
                 'message': 'Missing required field: email'
             }
-        user = request.env['res.users'].sudo().search([('login', '=', email)], limit=1)
+        
+        user = request.env['res.users'].sudo().search([
+            '|', 
+            ('login', '=', email_or_uuid), 
+            ('packer_uuid', '=', email_or_uuid)
+        ], limit=1)
+        
         if not user:
             return {
                 'error': 'Not found',
@@ -85,7 +108,9 @@ class UserAccess(http.Controller):
         return {
             "name": user.name,
             "login": user.login,
-            "permissions": groups
+            "permissions": groups,
+            "packer_uuid": user.packer_uuid,
+            "packer_barcode_image": user.packer_barcode_image if user.packer_barcode_image else False
         }
 
     @http.route('/wmds/v2/engine/post/skip_log_if_manager', type='json', auth='user', methods=['POST'], csrf=True)

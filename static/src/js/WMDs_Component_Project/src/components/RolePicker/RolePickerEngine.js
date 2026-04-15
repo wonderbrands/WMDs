@@ -5,6 +5,8 @@ class RolePickerEngineDefinition {
         this.role = null
         this.permissions = null
         this.is_identified = false
+        this.packer_uuid = null
+        this.packer_barcode_image = null
     }
 
     async getRole() {
@@ -56,18 +58,23 @@ class RolePickerProd extends RolePickerEngineDefinition {
 
     async getUserFromServer(qrContent) {
         let tryEmail = null;
+        if (!qrContent) {
+            throw new Error("Contenido de escaneo vacío.");
+        }
+
         try {
             const qrContentJson = JSON.parse(qrContent);
-            tryEmail = qrContentJson.email;
+            tryEmail = qrContentJson.email || qrContentJson.login || qrContent;
         } catch (e) {
-            // If it's not JSON, it might be a plain barcode login
-            tryEmail = qrContent;
+            // If it's not JSON, it is a plain barcode login (UUID)
+            tryEmail = qrContent.trim();
         }
 
         if (!tryEmail) {
             throw new Error("No se pudo extraer la identificación del escaneo.");
         }
 
+        console.log("Attempting login with identifier:", tryEmail);
         try {
             const response = await fetch('/wmds/v2/engine/get/valid_user', {
                 method: 'POST',
@@ -83,6 +90,8 @@ class RolePickerProd extends RolePickerEngineDefinition {
             } 
             this.user = data.result.name
             this.email = data.result.login
+            this.packer_uuid = data.result.packer_uuid
+            this.packer_barcode_image = data.result.packer_barcode_image
             this.is_identified = true
             this.persistSessionInStorage()
         } catch (error) {
@@ -122,6 +131,8 @@ class RolePickerProd extends RolePickerEngineDefinition {
             })   
             const result = await response.json()
             this.permissions = result.result.permissions
+            this.packer_uuid = result.result.packer_uuid
+            this.packer_barcode_image = result.result.packer_barcode_image
             this.persistSessionInStorage()
         } catch (error) {
             console.error(error);
@@ -137,6 +148,8 @@ class RolePickerProd extends RolePickerEngineDefinition {
                 "permissions": this.permissions,
                 "role": this.role,
                 "is_identified": this.is_identified,
+                "packer_uuid": this.packer_uuid,
+                "packer_barcode_image": this.packer_barcode_image,
                 "logged_at": new Date()
             }))
     }
@@ -147,6 +160,14 @@ class RolePickerProd extends RolePickerEngineDefinition {
         if (!itemStr) return false;
         try {
             const loggedUser = JSON.parse(itemStr);
+            this.user = loggedUser.user;
+            this.email = loggedUser.email;
+            this.permissions = loggedUser.permissions;
+            this.role = loggedUser.role;
+            this.is_identified = loggedUser.is_identified;
+            this.packer_uuid = loggedUser.packer_uuid;
+            this.packer_barcode_image = loggedUser.packer_barcode_image;
+            
             const loggedAt = new Date(loggedUser.logged_at);
             const now = new Date();
             const twelveHoursMs = 12 * 60 * 60 * 1000;
@@ -168,6 +189,8 @@ class RolePickerProd extends RolePickerEngineDefinition {
         this.role = null
         this.permissions = null
         this.is_identified = false
+        this.packer_uuid = null
+        this.packer_barcode_image = null
     }
 }
 

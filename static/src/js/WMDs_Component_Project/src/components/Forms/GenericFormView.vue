@@ -74,10 +74,23 @@
                 
             </div>
 
-            <div v-if="form_data.qr_image" style="margin-top: 1rem; margin-bottom: 1.5rem; text-align: center; display: flex; justify-content: center;">
+            <div v-if="form_data.qr_image" style="margin-top: 1rem; margin-bottom: 1rem; text-align: center; display: flex; justify-content: center;">
                 <img :src="'data:image/png;base64,' + form_data.qr_image" alt="QR Code" style="width: 150px; height: 150px; border: 1px solid #ddd; border-radius: 8px; padding: 5px; background: white;" />
             </div>
-            
+
+
+            <!-- If base64 exists, use it. If not, fallback to direct Odoo barcode URL -->
+            <img v-if="form_data.packer_barcode_image" 
+                :src="'data:image/svg+xml;base64,' + form_data.packer_barcode_image" 
+                alt="Barcode (Base64)" 
+                class="barcode-img" />
+
+            <img v-else 
+                :src="'/report/barcode/?barcode_type=Code128&value=' + form_data.packer_uuid + '&width=600&height=150&humanreadable=0'" 
+                alt="Barcode (Odoo Route)" 
+                class="barcode-img" />
+
+                    
             <div v-if="extra_data" class="extra-data-container">
                 <h5>{{ extra_data.title }}</h5>
                 <DataTable v-if="extra_data.data"
@@ -319,6 +332,7 @@
                 const frontendCols = this.store.main_manager_screen.map_columns || [];
                 
                 this.form_data = { ...this.store.form_context.data };
+                console.log("Form data loaded:", this.form_data);
                 delete this.form_data.map_cols;
                 
                 // 1. Initial columns from config
@@ -333,7 +347,7 @@
                 // 2. Add remaining fields from form_data as blocked
                 const mappedFields = new Set(this.merged_cols.map(c => c.field));
                 Object.keys(this.form_data).forEach(key => {
-                    if (!mappedFields.has(key) && !['id', 'qr_image'].includes(key) && !key.startsWith('_')) {
+                    if (!mappedFields.has(key) && !['id', 'qr_image', 'packer_barcode_image', 'packer_uuid'].includes(key) && !key.startsWith('_')) {
                         this.merged_cols.push({
                             field: key,
                             label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
@@ -474,6 +488,48 @@
     right: 2vw;
     bottom: 2vh;
     z-index: 5;
+}
+
+.barcode-display-section {
+    width: 100%;
+    margin: 2rem 0;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #f8fafc;
+    padding: 1.5rem;
+    border: 2px dashed #cbd5e1;
+    border-radius: 12px;
+}
+
+.section-label {
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 0.75rem;
+}
+
+.barcode-img {
+    width: 100%;
+    max-width: 450px;
+    height: auto;
+    max-height: 150px;
+    object-fit: contain;
+    background: white;
+    padding: 15px;
+    border-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.barcode-uuid {
+    margin-top: 1rem;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #1e293b;
+    letter-spacing: 2px;
 }
 
 .extra-data-container {

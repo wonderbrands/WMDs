@@ -1,8 +1,29 @@
 <template>
     <div class="batch_detail_view" v-if="batch_data">
-        <div class="title_section mb-4">
+        <div class="title_section mb-4 flex justify-content-between align-items-center">
             <h1 class="text-2xl font-bold">Plan de Pickeo: {{ batch_data.name }}</h1>
+            <Button v-if="batch_data.state !== 'cancel' && batch_data.state !== 'done'" 
+                label="Cancelar Plan" 
+                icon="fa fa-trash" 
+                severity="danger" 
+                @click="showCancelDialog = true" 
+            />
         </div>
+
+        <!-- Cancel Confirmation Dialog -->
+        <Dialog v-model:visible="showCancelDialog" header="Confirmar Cancelación" modal :style="{ width: '450px' }">
+            <div class="confirmation-content flex align-items-center gap-3 p-3">
+                <i class="fa fa-exclamation-triangle text-red-500" style="font-size: 2rem"></i>
+                <div>
+                    <p class="font-bold mb-2">¿Está seguro de cancelar este plan de pickeo?</p>
+                    <p class="text-sm text-700">Esto regresará el producto a su ubicación en sistema de los traslados que ya se hayan completado, verifique que sus operadores dejen el producto donde estaba.</p>
+                </div>
+            </div>
+            <template #footer>
+                <Button label="No, mantener" icon="fa fa-times" @click="showCancelDialog = false" class="p-button-text" />
+                <Button label="Sí, cancelar plan" icon="fa fa-check" severity="danger" @click="confirmCancelBatch" :loading="cancelling" />
+            </template>
+        </Dialog>
 
         <!-- BIN ASSIGNMENT (For all types when in progress or done) -->
         <div class="operator-assignment mb-4" v-if="['full', 'wholesale', 'sale'].includes(batch_data.pick_type) && ['in_progress', 'done'].includes(batch_data.state)">
@@ -118,11 +139,12 @@ import Button from 'primevue/button';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Timeline from 'primevue/timeline';
+import Dialog from 'primevue/dialog';
 import { useGeneralStore } from "../../store/index";
 
 export default {
     name: "BatchDetailView",
-    components: { Select, Button, DataTable, Column, Timeline },
+    components: { Select, Button, DataTable, Column, Timeline, Dialog },
     data() {
         return {
             store: useGeneralStore(),
@@ -133,7 +155,9 @@ export default {
             selected_packer: null,
             selected_bin: null,
             debounceTimeout: null,
-            products: {}
+            products: {},
+            showCancelDialog: false,
+            cancelling: false
         }
     },
     methods: {
@@ -230,6 +254,21 @@ export default {
             if (!result.error) {
                 this.store.toast.add({ severity: 'success', summary: 'Asignado', detail: 'BIN asignado exitosamente al lote.', life: 3000 });
                 await this.loadBatchData();
+            }
+        },
+        async confirmCancelBatch() {
+            this.cancelling = true;
+            try {
+                const result = await this.store.callOdoo("cancel_batch", "", { id: this.batch_data.id });
+                if (!result.error) {
+                    this.store.toast.add({ severity: 'success', summary: 'Cancelado', detail: result.message, life: 3000 });
+                    this.showCancelDialog = false;
+                    await this.loadBatchData();
+                } else {
+                    this.store.toast.add({ severity: 'error', summary: 'Error', detail: result.error_msg, life: 5000 });
+                }
+            } finally {
+                this.cancelling = false;
             }
         }
     },

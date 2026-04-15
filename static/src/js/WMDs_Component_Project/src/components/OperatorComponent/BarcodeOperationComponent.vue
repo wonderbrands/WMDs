@@ -54,7 +54,13 @@
                                 <span class="line-progress">{{ currentLine.picked }} / {{ currentLine.qty_demand }}</span>
                                 <small class="text-secondary" v-if="res_model === 'stock.picking.batch'">{{ currentLine.picking_name }}</small>
                             </div>
-                            <small class="text-info font-bold">{{ currentLine.location_name }} → {{ currentLine.location_dest_name }}</small>
+                            <small class="text-info font-bold">
+                                {{ currentLine.location_name }} → 
+                                <span :class="{'text-warning': localConfig.scan_dest && !scannedLineIds.includes(currentLine.id)}">
+                                    {{ currentLine.location_dest_name }}
+                                    <template v-if="localConfig.scan_dest && !scannedLineIds.includes(currentLine.id)"> (Pendiente de escaneo)</template>
+                                </span>
+                            </small>
                         </div>
                     </div>
                     <div class="action-buttons">
@@ -139,6 +145,9 @@
                     <div class="progress-bar-fill" :style="{ width: overallProgress + '%' }"></div>
                 </div>
                 <span>{{ Math.round(overallProgress) }}% completado</span>
+                <div v-if="localConfig.scan_dest && !canValidate" class="text-warning text-xs font-bold mt-1">
+                    Faltan ubicaciones destino por escanear
+                </div>
             </div>
             <Button label="VALIDAR OPERACIÓN" icon="fa fa-check" class="p-button-success validate-btn" 
                 @click="validateOperation" 
@@ -161,25 +170,6 @@
                 <div class="flex flex-column gap-3">
                     <Button label="SÍ, CREAR BACKORDER" icon="fa fa-check" class="p-button-success w-full" @click="processValidation" :loading="loading" />
                     <Button label="CANCELAR" icon="fa fa-times" class="p-button-text p-button-secondary w-full" @click="showBackorderDialog = false" />
-                </div>
-            </div>
-        </Dialog>
-
-        <!-- Stock Warning Dialog -->
-        <Dialog v-model:visible="showStockWarningDialog" header="Ubicación con Existencias" modal :style="{ width: '90vw', maxWidth: '500px' }">
-            <div class="p-3">
-                <p class="mb-4">Las siguientes ubicaciones destino ya tienen producto:</p>
-                <div class="mb-4">
-                    <div v-for="loc in locationsWithStock" :key="loc" class="py-2 border-bottom-1 border-eee">
-                        <i class="fa fa-map-marker text-warning mr-2"></i>
-                        <span class="font-bold">{{ loc }}</span>
-                    </div>
-                </div>
-                <p class="mb-4 text-warning font-bold">¿Seguro deseas ingresarlos aquí?</p>
-
-                <div class="flex flex-column gap-3">
-                    <Button label="SÍ, PROCEDER" icon="fa fa-check" class="p-button-warning w-full" @click="processValidationAfterWarning" :loading="loading" />
-                    <Button label="CANCELAR" icon="fa fa-times" class="p-button-text p-button-secondary w-full" @click="showStockWarningDialog = false" />
                 </div>
             </div>
         </Dialog>
@@ -224,12 +214,11 @@ export default {
             currentLine: null,
             scannedLocationSrc: null,
             scannedLocationDest: null,
+            scannedLineIds: [],
             scannerKey: 0,
             loading: false,
             localConfig: { ...this.config },
             showBackorderDialog: false,
-            showStockWarningDialog: false,
-            locationsWithStock: [],
             manualQty: 0,
             isManualInputFocused: false,
             // Pull to refresh state
@@ -275,7 +264,18 @@ export default {
             return (this.totalPickedCount / this.totalDemandCount) * 100;
         },
         canValidate() {
-            return (this.operationData.lines || []).some(l => l.picked > 0);
+            const hasPicked = (this.operationData.lines || []).some(l => l.picked > 0);
+            if (!hasPicked) return false;
+            
+            if (this.localConfig.scan_dest) {
+                // All picked lines must be scanned for destination
+                const allScanned = (this.operationData.lines || [])
+                    .filter(l => l.picked > 0)
+                    .every(l => this.scannedLineIds.includes(l.id));
+                return allScanned;
+            }
+            
+            return true;
         },
         missingLines() {
             return (this.operationData.lines || []).filter(l => l.picked < l.qty_demand);
@@ -325,6 +325,19 @@ export default {
                             }
                             return partA.localeCompare(partB, undefined, { numeric: true, sensitivity: 'base' });
                         });
+
+                        // Ignore default destination ID if scan_dest is on to force re-selection/validation
+                        if (this.localConfig.scan_dest) {
+                            res.lines.forEach(l => {
+                                if (!this.scannedLineIds.includes(l.id)) {
+                                    // We keep the name from Odoo but clear ID if we want to force backend validation 
+                                    // or just keep it as a suggestion. The request says "muestra la que diga en stock move".
+                                    // If we clear l.location_dest_id, backend calls might fail if they expect it.
+                                    // However, the original code set it to null.
+                                    l.location_dest_id = null;
+                                }
+                            });
+                        }
                     }
 
                     const currentLineId = this.currentLine?.id;
@@ -397,11 +410,15 @@ export default {
                     const res = await this.store.callOdoo("process_dest_location_scan", "", {
                         line_id: this.currentLine.id,
                         barcode: barcode,
-                        operator_email: this.store.role.email
+                        operator_email: this.store.role.email,
+                        check_empty: this.localConfig.check_empty_dest_location
                     });
 
                     if (res.status === 'ok') {
                         this.scannedLocationDest = barcode;
+                        if (!this.scannedLineIds.includes(this.currentLine.id)) {
+                            this.scannedLineIds.push(this.currentLine.id);
+                        }
                         this.currentLine.location_dest_name = res.new_location_name;
                         this.currentLine.location_dest_id = res.new_location_id;
 
@@ -564,14 +581,6 @@ export default {
                 this.$refs.mainScroll.scrollTo({ top: 0, behavior: 'smooth' });
             }
 
-            if (this.localConfig.check_empty_dest_location) {
-                const hasStock = await this.rackDestinyHasProducts();
-                if (hasStock) {
-                    this.showStockWarningDialog = true;
-                    return;
-                }
-            }
-
             await this.checkBackorderAndProcess();
         },
         async checkBackorderAndProcess() {
@@ -593,14 +602,9 @@ export default {
                 await this.processValidation();
             }
         },
-        async processValidationAfterWarning() {
-            this.showStockWarningDialog = false;
-            await this.checkBackorderAndProcess();
-        },
         async processValidation() {
             this.loading = true;
             this.showBackorderDialog = false;
-            this.showStockWarningDialog = false;
             try {
                 const res = await this.store.callOdoo("validate_operation", "", {
                     res_id: this.res_id,
@@ -712,26 +716,6 @@ export default {
             }
             this.pulling = false;
             this.pullDistance = 0;
-        },
-        async rackDestinyHasProducts() {
-            this.loading = true;
-            try {
-                const res = await this.store.callOdoo("check_locations_have_stock", "", {
-                    res_id: this.res_id,
-                    res_model: this.res_model
-                });
-
-                if (res.status === 'ok' && res.has_stock) {
-                    this.locationsWithStock = res.locations;
-                    return true;
-                }
-                return false;
-            } catch (e) {
-                console.error("Error checking stock:", e);
-                return false;
-            } finally {
-                this.loading = false;
-            }
         }
     }
 }

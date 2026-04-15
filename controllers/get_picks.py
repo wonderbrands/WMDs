@@ -237,7 +237,7 @@ class GetPicks(http.Controller):
                     so_ids = batch_record.picking_ids.mapped('sale_id.id')
                     target_pickings = request.env['stock.picking'].sudo().search([
                         ('sale_id', 'in', so_ids),
-                        ('picking_type_id.name', '=', 'Pack'),
+                        ('picking_type_id.name', 'ilike', 'Pack'),
                         ('state', '!=', 'cancel')
                     ])
             else:
@@ -245,7 +245,7 @@ class GetPicks(http.Controller):
                 if operation_type == "Pack" and base_pick.sale_id:
                     target_pickings = request.env['stock.picking'].sudo().search([
                         ('sale_id', '=', base_pick.sale_id.id),
-                        ('picking_type_id.name', '=', 'Pack'),
+                        ('picking_type_id.name', 'ilike', 'Pack'),
                         ('state', '!=', 'cancel')
                     ])
                 else:
@@ -347,7 +347,7 @@ class GetPicks(http.Controller):
                 if popped_param in kw.keys():
                     kw.pop(popped_param)
 
-            col_domain = [("picking_type_id.name", "=", "Pack")]
+            col_domain = [("picking_type_id.name", "ilike", "Pack")]
             if len(list(kw.keys()))>0:
                 for key, value in kw.items():
                     col_domain.append((key, "ilike", value))
@@ -480,8 +480,7 @@ class GetPicks(http.Controller):
             if so_ids:
                 pack_pick = request.env['stock.picking'].sudo().search([
                     ('sale_id', 'in', so_ids),
-                    ('picking_type_id.name', '=', 'Pack'),
-                    ('state', '!=', 'cancel'),
+                    ('picking_type_id.name', 'ilike', 'Pack'),                    ('state', '!=', 'cancel'),
                     ('operator', '!=', False)
                 ], limit=1)
                 if pack_pick:
@@ -514,8 +513,7 @@ class GetPicks(http.Controller):
             is_batch = kw.get('is_batch')
             
             domain = [
-                ('picking_type_id.name', '=', 'Pack'),
-                ('state', '!=', 'cancel'),
+                ('picking_type_id.name', 'ilike', 'Pack'),                ('state', '!=', 'cancel'),
                 ('operator', '!=', False)
             ]
             
@@ -586,20 +584,25 @@ class GetPicks(http.Controller):
             }
 
             # Validar campos de ordenamiento que existen en el modelo
-            valid_sort_fields = ['id', 'name', 'pick_type', 'operator', 'scheduled_date', 'state']
+            valid_sort_fields = ['id', 'name', 'pick_type', 'operator', 'scheduled_date', 'create_date', 'state']
             if parsed_params['sort_by'] and parsed_params['sort_by'] not in valid_sort_fields:
                 parsed_params['sort_by'] = 'id'
                 parsed_params['sort_order'] = 'desc'
 
             # Eliminar parámetros de control y campos virtuales que no están en el modelo para el filtrado
-            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order', 'tz', 'picks', 'so_list']:
+            for popped_param in ['page', 'per_page', 'sort_by', 'sort_order', 'tz']:
                 if popped_param in kw:
                     kw.pop(popped_param)
 
             col_domain = []
             if len(kw) > 0:
                 for key, value in kw.items():
-                    col_domain.append((key, "ilike", value))
+                    if key == "picks":
+                        col_domain.append(("picking_ids.name", "ilike", value))
+                    elif key == "so_list":
+                        col_domain.append(("picking_ids.origin", "ilike", value))
+                    else:
+                        col_domain.append((key, "ilike", value))
 
             offset_val = (parsed_params['cur_page'] - 1) * parsed_params['per_page'] if parsed_params['cur_page'] and parsed_params['per_page'] else 0
             order_val = f"{parsed_params['sort_by']} {parsed_params['sort_order']}" if parsed_params['sort_by'] and parsed_params['sort_order'] else 'id desc'
@@ -626,11 +629,11 @@ class GetPicks(http.Controller):
                         {"value": "wholesale", "label": "Mayoreo", "severity": "contrast"}
                     ]
                 },
-                {"name": "Picks", "field": "picks", "sortable": False, "filterable": False},
-                {"name": "Pedidos SO", "field": "so_list", "sortable": False, "filterable": False},
+                {"name": "Picks", "field": "picks", "sortable": False, "filterable": True},
+                {"name": "Pedidos SO", "field": "so_list", "sortable": False, "filterable": True},
                 {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True, "source": "operadores"},
                 {"name": "BIN", "field": "bin_id", "type": "one2many", "non_blocked_field": True, "source": "get_available_bins"},
-                {"name": "Fecha Programada", "field": "scheduled_date"},
+                {"name": "Fecha Creación", "field": "create_date"},
                 {
                     "name": "Estado",
                     "field": "state",
@@ -669,6 +672,7 @@ class GetPicks(http.Controller):
                         "id": b.bin_id.id
                     },
                     "scheduled_date": b.scheduled_date,
+                    "create_date": b.create_date,
                     "state": {
                         "label": convert_value_in_label(map_cols, b.state, "state"),
                         "severity": convert_value_in_label(map_cols, b.state, "state", return_severity=True)

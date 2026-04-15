@@ -43,6 +43,8 @@ class AvailableOperators(http.Controller):
                     'id': user.id,
                     'name': user.name,
                     'email': user.login,
+                    'packer_uuid': user.packer_uuid,
+                    'packer_barcode_image': user.packer_barcode_image if user.packer_barcode_image else False
                 }
                 for user in users
             ]
@@ -87,23 +89,24 @@ class AvailableOperators(http.Controller):
             total = request.env['res.users'].sudo().search_count(col_domain)
 
             map_cols = [
-                { "name": "ID", "field": "id" },
-                { "name": "Nombre", "field": "name" },
-                { "name": "Correo", "field": "login" },
+               { "name": "ID", "field": "id" },
+               { "name": "Nombre", "field": "name" },
+               { "name": "Correo", "field": "login" },
+               { "name": "Packer UUID", "field": "packer_uuid" },
             ]
 
             return {
-                "map_cols": map_cols,
-                "data": [
-                    {
-                        "id": user.id,
-                        "name": user.name,
-                        "login": user.login,
-                        "role_ids": [g.id for g in user.groups_id if g.name.startswith('WMDs Operator - ')],
-                        "qr_image": user.qr_image.decode('utf-8') if isinstance(user.qr_image, bytes) else user.qr_image if user.qr_image else False
-                    } for user in users
-                ],
-                "total_count": total
+               "map_cols": map_cols,
+               "data": [
+                   {
+                       "id": user.id,
+                       "name": user.name,
+                       "login": user.login,
+                       "packer_uuid": user.packer_uuid,
+                       "role_ids": [g.id for g in user.groups_id if g.name.startswith('WMDs Operator - ')],
+                       "qr_image": user.qr_image if user.qr_image else False,
+                       "packer_barcode_image": user.packer_barcode_image if user.packer_barcode_image else False                   } for user in users
+               ],                "total_count": total
             }
         except Exception as e:
             import traceback
@@ -157,6 +160,28 @@ class AvailableOperators(http.Controller):
         except Exception as e:
             import traceback
             return { "error": f"{str(e)}\n{traceback.format_exc()}" }
+
+    @http.route(
+        '/wmds/v2/engine/post/recompute_operators_data',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def recompute_operators_data(self, **kw):
+        try:
+            operator_group = request.env.ref('wmds.group_wmds_operator')
+            users = request.env['res.users'].sudo().search([('groups_id', 'in', operator_group.id)])
+            
+            # Resetting to force recompute
+            for user in users:
+                user.packer_uuid = False
+                user._compute_packer_uuid()
+                user._compute_packer_barcode_image()
+            
+            return {"status": "ok", "count": len(users)}
+        except Exception as e:
+            return {"error": str(e)}
 
     @http.route(
         '/wmds/v2/engine/get/operator_roles',
