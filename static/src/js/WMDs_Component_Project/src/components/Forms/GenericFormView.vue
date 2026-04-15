@@ -79,16 +79,20 @@
             </div>
 
 
-            <!-- If base64 exists, use it. If not, fallback to direct Odoo barcode URL -->
-            <img v-if="form_data.packer_barcode_image" 
-                :src="'data:image/svg+xml;base64,' + form_data.packer_barcode_image" 
-                alt="Barcode (Base64)" 
-                class="barcode-img" />
+            <!-- Barcode Display Section (Only for Packers) -->
+            <div v-if="form_data.packer_uuid && form_data.is_packer" >
+                
+                <img v-if="form_data.packer_barcode_image" 
+                    :src="'data:image/svg+xml;base64,' + form_data.packer_barcode_image" 
+                    alt="Barcode" 
+                    class="barcode-img" />
+                
+                <img v-else 
+                    :src="'/report/barcode/?barcode_type=Code128&value=' + form_data.packer_uuid + '&width=600&height=150&humanreadable=0'" 
+                    alt="Barcode Fallback" 
+                    class="barcode-img" />
 
-            <img v-else 
-                :src="'/report/barcode/?barcode_type=Code128&value=' + form_data.packer_uuid + '&width=600&height=150&humanreadable=0'" 
-                alt="Barcode (Odoo Route)" 
-                class="barcode-img" />
+            </div>
 
                     
             <div v-if="extra_data" class="extra-data-container">
@@ -347,14 +351,20 @@
                 // 2. Add remaining fields from form_data as blocked
                 const mappedFields = new Set(this.merged_cols.map(c => c.field));
                 Object.keys(this.form_data).forEach(key => {
-                    if (!mappedFields.has(key) && !['id', 'qr_image', 'packer_barcode_image', 'packer_uuid'].includes(key) && !key.startsWith('_')) {
-                        this.merged_cols.push({
-                            field: key,
-                            label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
-                            non_blocked_field: false,
-                            source: null,
-                            type: 'text'
-                        });
+                    const isPackerField = key === 'packer_uuid';
+                    const isTechnicalField = ['id', 'qr_image', 'packer_barcode_image', 'is_packer'].includes(key);
+                    
+                    // Solo agregamos si no es técnico Y (si no es campo de packer O si es packer)
+                    if (!mappedFields.has(key) && !isTechnicalField && !key.startsWith('_')) {
+                        if (!isPackerField || this.form_data.is_packer) {
+                            this.merged_cols.push({
+                                field: key,
+                                label: key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, ' '),
+                                non_blocked_field: false,
+                                source: null,
+                                type: 'text'
+                            });
+                        }
                     }
                 });
 

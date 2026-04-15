@@ -44,7 +44,8 @@ class AvailableOperators(http.Controller):
                     'name': user.name,
                     'email': user.login,
                     'packer_uuid': user.packer_uuid,
-                    'packer_barcode_image': user.packer_barcode_image if user.packer_barcode_image else False
+                    'packer_barcode_image': user.packer_barcode_image if user.packer_barcode_image else False,
+                    'is_packer': user.has_group('wmds.role_wmds_packer')
                 }
                 for user in users
             ]
@@ -105,7 +106,9 @@ class AvailableOperators(http.Controller):
                        "packer_uuid": user.packer_uuid,
                        "role_ids": [g.id for g in user.groups_id if g.name.startswith('WMDs Operator - ')],
                        "qr_image": user.qr_image if user.qr_image else False,
-                       "packer_barcode_image": user.packer_barcode_image if user.packer_barcode_image else False                   } for user in users
+                       "packer_barcode_image": user.packer_barcode_image if user.packer_barcode_image else False,
+                       "is_packer": user.has_group('wmds.role_wmds_packer')
+                   } for user in users
                ],                "total_count": total
             }
         except Exception as e:
