@@ -104,11 +104,17 @@
                         <div class="picking-header">
                             <i class="fa fa-map-marker"></i> {{ locationName }}
                         </div>
-                        <DataTable :value="group" class="p-datatable-sm clickable-rows" @row-click="(event) => selectLine(event.data)">
+                        <DataTable 
+                            :value="group" 
+                            class="p-datatable-sm clickable-rows" 
+                            @row-click="(event) => selectLine(event.data)"
+                        >
                             <Column header="Producto">
                                 <template #body="slotProps">
                                     <div class="flex align-items-center gap-2 product-row-container" 
-                                        :class="{'highlight-location': slotProps.data.location_name === scannedLocationSrc || slotProps.data.location_barcode === scannedLocationSrc, 'line-selected': currentLine?.id === slotProps.data.id}">
+                                        :class="{'highlight-location': slotProps.data.location_name === scannedLocationSrc || slotProps.data.location_barcode === scannedLocationSrc, 'line-selected': currentLine?.id === slotProps.data.id}"
+                                        @pointerdown.stop="selectLine(slotProps.data)"
+                                    >
                                         <img :src="slotProps.data.image_url" style="width: 35px; border-radius: 4px;" />
                                         <div class="flex flex-column flex-1">
                                             <div class="flex justify-content-between align-items-start">
@@ -674,9 +680,20 @@ export default {
             }
         },
         selectLine(line) {
-            this.currentLine = line;
+            // Prevent selection if we are pulling to refresh or scrolling fast
+            if (this.pullDistance > 10 || this.refreshing) return;
+
+            // Find the line by ID to ensure we use the correct reactive reference
+            const targetLine = this.operationData.lines.find(l => l.id === line.id);
+            if (!targetLine) return;
+
+            // Avoid re-selecting the same line if already selected
+            if (this.currentLine?.id === targetLine.id) return;
+
+            this.currentLine = targetLine;
             this.manualQty = 0;
-            const isComplete = line.picked >= line.qty_demand;
+            
+            const isComplete = targetLine.picked >= targetLine.qty_demand;
             const allowPartial = this.localConfig.backorder;
             
             if ((isComplete || allowPartial) && this.localConfig.scan_dest) {
@@ -686,6 +703,13 @@ export default {
             } else {
                 this.currentStep = 'product';
             }
+
+            this.$toast.add({ 
+                severity: 'info', 
+                summary: 'Producto seleccionado', 
+                detail: targetLine.product_name, 
+                life: 1000 
+            });
         },
         exitFlow() {
             this.store.mandatory_uncompleted.doneMandatory();

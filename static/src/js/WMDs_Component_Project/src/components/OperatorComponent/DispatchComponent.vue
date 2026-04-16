@@ -63,15 +63,21 @@
                 </div>
 
                 <!-- Carrier indicator -->
-                <div class="carrier-indicator">
-                    <i class="fa fa-truck"></i> {{ sessionCarrierName }}
-                    <Button
-                        v-if="so.length === 0"
-                        icon="fa fa-pencil"
-                        class="p-button-text p-button-sm"
-                        style="color: white; margin-left: 8px; padding: 2px 6px;"
-                        @click="changeCarrier"
-                    />
+                <div class="carrier-indicator flex justify-content-between align-items-center">
+                    <div>
+                        <i class="fa fa-truck"></i> {{ sessionCarrierName }}
+                        <Button
+                            v-if="so.length === 0"
+                            icon="fa fa-pencil"
+                            class="p-button-text p-button-sm"
+                            style="color: white; margin-left: 8px; padding: 2px 6px;"
+                            @click="changeCarrier"
+                        />
+                    </div>
+                    <div class="picked-summary-badge">
+                        <i class="fa fa-shopping-basket"></i>
+                        <span>{{ so.length }}</span>
+                    </div>
                 </div>
 
                 <div class="scanner-col">
@@ -1112,7 +1118,18 @@ export default {
     border-radius: 6px;
     font-size: 0.85rem;
     font-weight: bold;
-    text-align: center;
+}
+
+.picked-summary-badge {
+    background: #111827;
+    color: #facc15;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 800;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 /* ── Session Banner ── */

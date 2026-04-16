@@ -250,12 +250,15 @@ class BarcodeController(http.Controller):
                 return {"status": "error", "message": "Ubicación no encontrada."}
 
             if check_empty:
-                quants = request.env['stock.quant'].sudo().search([
-                    ('location_id', '=', scanned_location.id),
-                    ('quantity', '>', 0)
-                ], limit=1)
-                if quants:
-                    return {"status": "error", "message": f"La ubicación {scanned_location.display_name} ya contiene productos. Elija una vacía."}
+                # Si la ubicación termina en N1, no revisamos si está vacía
+                is_n1 = scanned_location.name and scanned_location.name.endswith('N1')
+                if not is_n1:
+                    quants = request.env['stock.quant'].sudo().search([
+                        ('location_id', '=', scanned_location.id),
+                        ('quantity', '>', 0)
+                    ], limit=1)
+                    if quants:
+                        return {"status": "error", "message": f"La ubicación {scanned_location.display_name} ya contiene productos. Elija una vacía."}
 
             original_dest = line.location_dest_id
             # Hierarchy check: Accept any valid location as requested

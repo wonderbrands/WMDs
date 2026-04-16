@@ -1,5 +1,13 @@
 <template>
     <div class="test-flow-container">
+        <!-- Header con contador -->
+        <div v-if="packageCount > 0" class="dock-header-counter">
+            <span class="header-title">Traslado a DOCK</span>
+            <div class="picked-summary-badge">
+                <i class="fa fa-shopping-basket"></i>
+                <span>{{ packageCount }}</span>
+            </div>
+        </div>
         
         <div class="scanner-col">
             <div v-if="ready && !scannedBin && !showDockConfirmation" class="scanner-wrapper">
@@ -285,6 +293,33 @@ export default {
     overflow-y: auto;
     gap: 1rem;
     background: #fff;
+}
+
+.dock-header-counter {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #3498db;
+    color: white;
+    padding: 8px 15px;
+    border-radius: 8px;
+}
+
+.header-title {
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.picked-summary-badge {
+    background: #111827;
+    color: #facc15;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 800;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .scanner-col {
