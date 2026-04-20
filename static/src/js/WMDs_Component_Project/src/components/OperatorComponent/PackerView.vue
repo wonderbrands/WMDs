@@ -166,16 +166,19 @@ export default {
 
 .pack-header {
     display: flex;
+    height: 3rem;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1rem;
     border-bottom: 2px solid #f8f9fa;
     padding-bottom: 0.5rem;
+
 }
 
 .tasks-wrapper {
     flex: 1;
-    overflow-y: auto;
+    height: calc(100% - 3rem);
+    overflow-y: scroll;
     padding-right: 0.5rem;
     margin-bottom: 1rem;
 }
