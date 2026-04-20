@@ -281,23 +281,30 @@ class DockNBin(http.Controller):
                 ('on_bin', '=', True)
             ])
 
-            if purpose == "out" and not ei_tags:
-                return {'error': f'El BIN {bin_name} está vacío (o solo contiene Full)', 'valid': False}
+            moves = request.env["stock.move"].sudo().search([
+                ('bin_id', '=', bin_storage.id),
+                ('on_bin', '=', True)
+            ])
+
+            if purpose == "out" and not ei_tags and not moves:
+                return {'error': f'El BIN {bin_name} está vacío', 'valid': False}
 
             packages = [tag.display_name_custom for tag in ei_tags]
+            packages += [f"{m.product_id.display_name} ({int(m.quantity)})" for m in moves]
+
             package_details = [{"name": tag.display_name_custom, "so": tag.so_id.name, "is_full": False} for tag in ei_tags]
-            
+            package_details += [{"name": f"{m.product_id.display_name} ({int(m.quantity)})", "so": m.picking_id.name or "N/A", "is_full": True, "move_id": m.id, "qty": m.quantity} for m in moves]
+
             return {
                 "valid": True,
                 "bin": bin_storage.name,
                 "packages": packages,
                 "package_details": package_details,
                 "total_packages": len(packages),
-                "has_full": False,
-                "has_ecommerce": len(packages) > 0,
+                "has_full": len(moves) > 0,
+                "has_ecommerce": len(ei_tags) > 0,
                 "carrier_name": bin_storage.carrier_id.name if bin_storage.carrier_id else "",
-            }
-        except Exception as e:
+            }        except Exception as e:
             return {"error": str(e), "valid": False}
 
 
@@ -548,18 +555,15 @@ class DockNBin(http.Controller):
             for b in bins:
                 # Contar qué tiene
                 move_count = request.env["stock.move"].sudo().search_count([('bin_id', '=', b.id), ('on_bin', '=', True)])
-                # Si tiene CUALQUIER move (Full), omitimos este BIN por completo de WMDS screen
-                if move_count > 0:
-                    continue
-
                 ei_count = request.env["sale.order.ei"].sudo().search_count([('bin_id', '=', b.id), ('on_bin', '=', True)])
-                if ei_count > 0:
+                
+                if move_count > 0 or ei_count > 0:
                     res.append({
                         "id": b.id,
                         "name": b.name,
-                        "has_ecommerce": True,
-                        "has_full": False,
-                        "total_items": ei_count,
+                        "has_ecommerce": ei_count > 0,
+                        "has_full": move_count > 0,
+                        "total_items": ei_count + move_count,
                         "carrier_name": b.carrier_id.name if b.carrier_id else "Sin carrier"
                     })
             return res
@@ -573,18 +577,15 @@ class DockNBin(http.Controller):
             res = []
             for d in docks:
                 move_count = request.env["stock.move"].sudo().search_count([('dock_id', '=', d.id), ('on_dock', '=', True)])
-                # Si tiene CUALQUIER move (Full), omitimos este DOCK por completo de WMDS screen
-                if move_count > 0:
-                    continue
-
                 ei_count = request.env["sale.order.ei"].sudo().search_count([('dock_id', '=', d.id), ('on_dock', '=', True)])
-                if ei_count > 0:
+                
+                if move_count > 0 or ei_count > 0:
                     res.append({
                         "id": d.id,
                         "name": d.name,
-                        "has_ecommerce": True,
-                        "has_full": False,
-                        "total_items": ei_count
+                        "has_ecommerce": ei_count > 0,
+                        "has_full": move_count > 0,
+                        "total_items": ei_count + move_count
                     })
             return res
         except Exception as e:
@@ -625,13 +626,19 @@ class DockNBin(http.Controller):
                 ('on_dock', '=', True)
             ])
 
+            moves = request.env["stock.move"].sudo().search([
+                ('dock_id', '=', dock.id),
+                ('on_dock', '=', True)
+            ])
+
             package_details = [{"name": tag.display_name_custom, "so": tag.so_id.name, "is_full": False} for tag in ei_tags]
-            
+            package_details += [{"name": f"{m.product_id.display_name} ({int(m.quantity)})", "so": m.picking_id.name or "N/A", "is_full": True, "move_id": m.id, "qty": m.quantity} for m in moves]
+
             return {
                 "dock": dock.name,
                 "package_details": package_details,
                 "has_ecommerce": len(ei_tags) > 0,
-                "has_full": False
+                "has_full": len(moves) > 0
             }
         except Exception as e:
             return {"error": str(e)}
