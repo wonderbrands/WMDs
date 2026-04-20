@@ -431,6 +431,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             batch_pick: {url: '/wmds/v2/engine/get/batch_pick', method: 'POST'},
             batch_details: {url: '/wmds/v2/engine/get/batch_details', method: 'POST'},
             cancel_batch: {url: '/wmds/v2/engine/post/cancel_batch', method: 'POST'},
+            remove_picking_from_batch: {url: '/wmds/v2/engine/post/remove_picking_from_batch', method: 'POST'},
             get_locations_by_range: {url: '/wmds/v2/engine/get/locations_by_range', method: 'POST'},
             pending_full_dispatch: {url: '/wmds/v2/engine/get/pending_full_dispatch', method: 'POST'},
             dispatch_full_items: {url: '/wmds/v2/engine/post/dispatch_full_items', method: 'POST'},

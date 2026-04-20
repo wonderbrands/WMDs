@@ -392,6 +392,23 @@ class BarcodeController(http.Controller):
 
             # Identify if it is DFUL or PFUL
             pickings = record if res_model == 'stock.picking' else record.picking_ids
+
+            # Handle unstarted pickings in a batch: remove them from the batch
+            if res_model == 'stock.picking.batch':
+                for picking in list(pickings):
+                    # A picking is unstarted if ALL its lines have wmds_picked_qty == 0
+                    if all(l.wmds_picked_qty == 0 for l in picking.move_line_ids):
+                        logger.info(f"Removing unstarted picking {picking.name} from batch {record.name}")
+                        self._create_log(record, f"Pedido {picking.name} removido del plan de pickeo por no tener productos recolectados.", res_model, operator_email)
+                        # Log also on the picking itself
+                        self._create_log(picking, f"Removido del plan de pickeo {record.name} por no tener productos recolectados durante la validación.", 'stock.picking', operator_email)
+                        picking.sudo().write({'batch_id': False})
+                
+                # Refresh pickings list after removals
+                pickings = record.picking_ids
+                if not pickings:
+                     return {"status": "error", "message": "No quedan pedidos en el plan de pickeo tras remover los no iniciados."}
+
             type_names = pickings.mapped('picking_type_id.name')
             is_dful = any('Resurtido a Ful: Despacho' in name for name in type_names if name)
             is_pful = any('Resurtido a Ful: Pick' in name for name in type_names if name)

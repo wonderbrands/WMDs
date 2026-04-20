@@ -197,3 +197,57 @@ class BatchPickController(http.Controller):
 
         except Exception as e:
             return {'error': True, 'error_msg': f"Error de sistema al cancelar batch: {str(e)}"}
+
+    @http.route('/wmds/v2/engine/post/remove_picking_from_batch', type='json', auth='user', methods=['POST'], csrf=True)
+    def remove_picking_from_batch(self, **kw):
+        picking_id = kw.get("picking_id")
+        batch_id = kw.get("batch_id")
+        reason = kw.get("reason")
+
+        if not picking_id or not batch_id or not reason:
+            return {'error': True, 'error_msg': "Faltan parámetros (picking_id, batch_id o reason)."}
+
+        try:
+            batch = request.env['stock.picking.batch'].sudo().browse(int(batch_id))
+            picking = request.env['stock.picking'].sudo().browse(int(picking_id))
+
+            if not batch.exists() or not picking.exists():
+                return {'error': True, 'error_msg': "Lote o Picking no encontrado."}
+
+            if picking.batch_id.id != batch.id:
+                return {'error': True, 'error_msg': "El picking no pertenece a este lote."}
+
+            # Check if it was already being picked
+            was_picked = any(l.wmds_picked_qty > 0 for l in picking.move_line_ids)
+            if was_picked:
+                picking.move_line_ids.sudo().write({'wmds_picked_qty': 0.0})
+
+            # Log the reason before removing
+            log_msg = f"Orden {picking.name} removida del lote {batch.name}. Razón: {reason}"
+            if was_picked:
+                log_msg += ". La orden ya tenía progreso de recolección; las cantidades fueron reiniciadas en sistema."
+            
+            request.env['wmds.log'].sudo().create({
+                'pick': picking.id,
+                'batch_pick': batch.id,
+                'user': request.env.user.id,
+                'log': log_msg
+            })
+
+            # Remove picking from batch
+            picking.sudo().write({'batch_id': False})
+
+            # Check if batch is empty
+            if not batch.picking_ids:
+                batch.action_cancel()
+                request.env['wmds.log'].sudo().create({
+                    'batch_pick': batch.id,
+                    'user': request.env.user.id,
+                    'log': "Plan de pickeo cancelado automáticamente al quedarse sin órdenes."
+                })
+                return {'status': "ok", 'message': "Orden removida y lote cancelado por estar vacío.", 'batch_cancelled': True}
+
+            return {'status': "ok", 'message': "Orden removida del lote exitosamente.", 'batch_cancelled': False}
+
+        except Exception as e:
+            return {'error': True, 'error_msg': f"Error de sistema: {str(e)}"}

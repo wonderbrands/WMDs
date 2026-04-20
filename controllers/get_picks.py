@@ -152,7 +152,7 @@ class GetPicks(http.Controller):
             # Let's use search_read for moves instead
             moves_raw = request.env['stock.move'].sudo().search_read(
                 [('picking_id', '=', picking.id)],
-                fields=["id", "product_id", "product_uom_qty", "quantity", "product_uom"]
+                fields=["id", "product_id", "product_uom_qty", "quantity", "product_uom", "wmds_picked_qty"]
             )
             
             return {
@@ -163,6 +163,7 @@ class GetPicks(http.Controller):
                     {"name": "SKU", "field": "sku"},	
                     {"name": "Stock Disponible", "field": "stock_qty"},
                     {"name": "Esperado", "field": "product_uom_qty"},
+                    {"name": "Recolectado", "field": "wmds_picked_qty"},
                     {"name": "Trasladado", "field": "quantity"},
                     {"name": "U.M.", "field": "product_uom"},
                 ],
@@ -174,6 +175,7 @@ class GetPicks(http.Controller):
                         "sku": False,     # Would need more reads
                         "stock_qty": 0,   # Would need more reads
                         "product_uom_qty": m['product_uom_qty'],
+                        "wmds_picked_qty": m.get('wmds_picked_qty', 0.0),
                         "quantity": m['quantity'],
                         "product_uom": m['product_uom'][1]
                     } for m in moves_raw

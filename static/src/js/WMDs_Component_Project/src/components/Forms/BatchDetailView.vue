@@ -25,6 +25,34 @@
             </template>
         </Dialog>
 
+        <!-- Remove Picking Confirmation Dialog -->
+        <Dialog v-model:visible="showRemoveDialog" header="Remover Orden del Lote" modal :style="{ width: '450px' }">
+            <div class="flex flex-column gap-3 p-2">
+                <div class="flex align-items-center gap-3">
+                    <i class="fa fa-info-circle text-blue-500" style="font-size: 2rem"></i>
+                    <p>Está por remover la orden <b>{{ pickingToRemove?.name }}</b> del lote.</p>
+                </div>
+
+                <!-- Warning if picking has progress -->
+                <div v-if="hasPickingProgress(pickingToRemove?.id)" class="p-3 border-round bg-yellow-100 border-yellow-300 border-1 flex align-items-start gap-3">
+                    <i class="fa fa-exclamation-triangle text-yellow-700 mt-1"></i>
+                    <div>
+                        <p class="font-bold text-yellow-900 mb-1">Advertencia: Orden en progreso</p>
+                        <p class="text-sm text-yellow-800">Esta orden ya tiene productos recolectados. Al removerla, las cantidades en el sistema regresarán a su ubicación de origen. Asegúrese de que el operador devuelva físicamente el producto.</p>
+                    </div>
+                </div>
+
+                <div class="flex flex-column gap-2">
+                    <label for="reason" class="font-bold">Razón de remoción</label>
+                    <textarea v-model="removalReason" rows="3" class="p-inputtext p-component w-full" placeholder="Ingrese el motivo por el cual se remueve esta orden..."></textarea>
+                </div>
+            </div>
+            <template #footer>
+                <Button label="Cancelar" icon="fa fa-times" @click="showRemoveDialog = false" class="p-button-text" />
+                <Button label="Remover Orden" icon="fa fa-trash" severity="danger" @click="confirmRemovePicking" :loading="removing" :disabled="!removalReason || removalReason.trim().length < 5" />
+            </template>
+        </Dialog>
+
         <!-- BIN ASSIGNMENT (For all types when in progress or done) -->
         <div class="operator-assignment mb-4" v-if="['full', 'wholesale', 'sale'].includes(batch_data.pick_type) && ['in_progress', 'done'].includes(batch_data.state)">
             <div class="operator-field">
@@ -89,8 +117,17 @@
                 <div class="picks-container overflow-y-auto" style="max-height: 65vh;">
                     <div v-for="pick in batch_data.picks" :key="pick.id" class="mb-4 p-3 surface-100 border-round shadow-1">
                         <div class="flex justify-content-between align-items-center mb-2">
-                            <span class="font-bold text-blue-700">{{ pick.name }}</span>
-                            <span class="text-sm text-gray-600">Pedido: {{ pick.origin }}</span>
+                            <div class="flex flex-column">
+                                <span class="font-bold text-blue-700 text-lg">{{ pick.name }}</span>
+                                <span class="text-sm text-gray-600">Pedido: {{ pick.origin }}</span>
+                            </div>
+                            <Button icon="fa fa-minus-circle" 
+                                severity="danger" 
+                                class="p-button-rounded p-button-text" 
+                                v-tooltip="'Remover del lote'"
+                                @click="requestRemovePicking(pick)"
+                                v-if="batch_data.state !== 'cancel' && batch_data.state !== 'done'"
+                            />
                         </div>
                         
                         <DataTable :value="products[pick.id]" v-if="products[pick.id]" class="p-datatable-sm shadow-1 border-round overflow-hidden">
@@ -157,7 +194,11 @@ export default {
             debounceTimeout: null,
             products: {},
             showCancelDialog: false,
-            cancelling: false
+            cancelling: false,
+            showRemoveDialog: false,
+            removalReason: "",
+            pickingToRemove: null,
+            removing: false
         }
     },
     methods: {
@@ -269,6 +310,38 @@ export default {
                 }
             } finally {
                 this.cancelling = false;
+            }
+        },
+        hasPickingProgress(pickId) {
+            if (!pickId || !this.products[pickId]) return false;
+            return this.products[pickId].some(p => p.wmds_picked_qty > 0);
+        },
+        requestRemovePicking(pick) {
+            this.pickingToRemove = pick;
+            this.removalReason = "";
+            this.showRemoveDialog = true;
+        },
+        async confirmRemovePicking() {
+            if (!this.removalReason || this.removalReason.trim().length < 5) return;
+            
+            this.removing = true;
+            try {
+                const payload = {
+                    batch_id: this.batch_data.id,
+                    picking_id: this.pickingToRemove.id,
+                    reason: this.removalReason
+                };
+                
+                const result = await this.store.callOdoo("remove_picking_from_batch", "", payload);
+                if (!result.error) {
+                    this.store.toast.add({ severity: 'success', summary: 'Éxito', detail: result.message, life: 3000 });
+                    this.showRemoveDialog = false;
+                    await this.loadBatchData();
+                } else {
+                    this.store.toast.add({ severity: 'error', summary: 'Error', detail: result.error_msg, life: 5000 });
+                }
+            } finally {
+                this.removing = false;
             }
         }
     },

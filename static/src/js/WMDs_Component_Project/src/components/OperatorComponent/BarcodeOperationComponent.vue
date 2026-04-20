@@ -98,11 +98,29 @@
 
                 <div class="list-section">
                     <div class="list-header-sticky">
-                        <i class="fa fa-list-ul"></i> Lista de Productos
+                        <div class="flex justify-content-between align-items-center w-full">
+                            <span><i class="fa fa-list-ul"></i> Lista de Productos</span>
+                            <div class="group-toggle">
+                                <button 
+                                    :class="{'active': groupBy === 'location'}" 
+                                    @click="groupBy = 'location'"
+                                    title="Agrupar por Ubicación"
+                                >
+                                    <i class="fa fa-map-marker"></i>
+                                </button>
+                                <button 
+                                    :class="{'active': groupBy === 'picking'}" 
+                                    @click="groupBy = 'picking'"
+                                    title="Agrupar por Pedido"
+                                >
+                                    <i class="fa fa-shopping-cart"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                    <div v-for="(group, locationName) in groupedLines" :key="locationName" class="picking-group">
+                    <div v-for="(group, groupName) in groupedLines" :key="groupName" class="picking-group">
                         <div class="picking-header">
-                            <i class="fa fa-map-marker"></i> {{ locationName }}
+                            <i :class="groupBy === 'location' ? 'fa fa-map-marker' : 'fa fa-shopping-cart'"></i> {{ groupName }}
                         </div>
                         <DataTable 
                             :value="group" 
@@ -123,7 +141,8 @@
                                             </div>
                                             <div class="flex justify-content-between align-items-center mt-1">
                                                 <small class="text-secondary" style="font-size: 0.7rem;">{{ slotProps.data.sku }}</small>
-                                                <small class="text-info font-bold" style="font-size: 0.65rem;">{{ slotProps.data.picking_name }}</small>
+                                                <small v-if="groupBy === 'location'" class="text-info font-bold" style="font-size: 0.65rem;">{{ slotProps.data.picking_name }}</small>
+                                                <small v-else class="text-info font-bold" style="font-size: 0.65rem;">{{ slotProps.data.location_name }}</small>
                                             </div>
                                         </div>
                                     </div>
@@ -227,6 +246,7 @@ export default {
             showBackorderDialog: false,
             manualQty: 0,
             isManualInputFocused: false,
+            groupBy: 'location', // 'location' or 'picking'
             // Pull to refresh state
             startY: 0,
             pullDistance: 0,
@@ -284,26 +304,52 @@ export default {
             return true;
         },
         missingLines() {
-            return (this.operationData.lines || []).filter(l => l.picked < l.qty_demand);
+            const allMissing = (this.operationData.lines || []).filter(l => l.picked < l.qty_demand);
+            if (this.res_model !== 'stock.picking.batch') return allMissing;
+
+            // For batches, exclude lines from pickings that haven't been started at all
+            // These pickings will be removed from the batch during validation by the backend.
+            const pickingGroups = {};
+            (this.operationData.lines || []).forEach(l => {
+                if (!pickingGroups[l.picking_id]) pickingGroups[l.picking_id] = [];
+                pickingGroups[l.picking_id].push(l);
+            });
+
+            const unstartedPickingIds = Object.entries(pickingGroups)
+                .filter(([id, lines]) => lines.every(l => l.picked === 0))
+                .map(([id, lines]) => parseInt(id));
+
+            return allMissing.filter(l => !unstartedPickingIds.includes(l.picking_id));
         },
         groupedLines() {
             const groups = {};
-            // Sort lines by the last part of the location name (e.g., WH/Stock/A -> A)
-            const sortedLines = [...(this.operationData.lines || [])].sort((a, b) => {
-                const partA = (a.location_name || '').split('/').filter(Boolean).pop()?.trim() || '';
-                const partB = (b.location_name || '').split('/').filter(Boolean).pop()?.trim() || '';
-                
-                if (partA === partB) {
-                    return (a.location_name || '').localeCompare(b.location_name || '');
-                }
-                return partA.localeCompare(partB, undefined, { numeric: true, sensitivity: 'base' });
-            });
+            const lines = [...(this.operationData.lines || [])];
 
-            sortedLines.forEach(line => {
-                const groupKey = line.location_name || 'Sin ubicación';
-                if (!groups[groupKey]) groups[groupKey] = [];
-                groups[groupKey].push(line);
-            });
+            if (this.groupBy === 'location') {
+                // Sort lines by the last part of the location name (e.g., WH/Stock/A -> A)
+                lines.sort((a, b) => {
+                    const partA = (a.location_name || '').split('/').filter(Boolean).pop()?.trim() || '';
+                    const partB = (b.location_name || '').split('/').filter(Boolean).pop()?.trim() || '';
+                    
+                    if (partA === partB) {
+                        return (a.location_name || '').localeCompare(b.location_name || '');
+                    }
+                    return partA.localeCompare(partB, undefined, { numeric: true, sensitivity: 'base' });
+                });
+
+                lines.forEach(line => {
+                    const groupKey = line.location_name || 'Sin ubicación';
+                    if (!groups[groupKey]) groups[groupKey] = [];
+                    groups[groupKey].push(line);
+                });
+            } else {
+                // Group by Picking
+                lines.forEach(line => {
+                    const groupKey = line.picking_name || 'Sin pedido';
+                    if (!groups[groupKey]) groups[groupKey] = [];
+                    groups[groupKey].push(line);
+                });
+            }
             return groups;
         }
     },
@@ -598,7 +644,7 @@ export default {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Operación Incompleta', 
-                        detail: 'Esta operación no permite entregas parciales.', 
+                        detail: 'No se permiten pedidos parciales. Debes completar todos los productos del pedido o dejarlos en 0 para removerlo del plan.', 
                         life: 5000 
                     });
                     return;
@@ -854,6 +900,31 @@ export default {
 
 .list-section { background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #eee; }
 .list-header-sticky { padding: 0.75rem; background: #f1f5f9; font-weight: 800; font-size: 0.85rem; color: #475569; border-bottom: 1px solid #e2e8f0; }
+
+.group-toggle {
+    display: flex;
+    background: #e2e8f0;
+    padding: 2px;
+    border-radius: 6px;
+    gap: 2px;
+}
+
+.group-toggle button {
+    border: none;
+    background: transparent;
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #64748b;
+    transition: all 0.2s;
+}
+
+.group-toggle button.active {
+    background: #fff;
+    color: #3b82f6;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
 .picking-group { margin-bottom: 1rem; }
 .picking-header { background: #f8fafc; padding: 0.4rem 0.75rem; font-weight: bold; color: #64748b; border-bottom: 1px solid #f1f5f9; font-size: 0.75rem; }
 
