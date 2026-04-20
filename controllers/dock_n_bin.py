@@ -304,7 +304,8 @@ class DockNBin(http.Controller):
                 "has_full": len(moves) > 0,
                 "has_ecommerce": len(ei_tags) > 0,
                 "carrier_name": bin_storage.carrier_id.name if bin_storage.carrier_id else "",
-            }        except Exception as e:
+            }
+        except Exception as e:
             return {"error": str(e), "valid": False}
 
 
