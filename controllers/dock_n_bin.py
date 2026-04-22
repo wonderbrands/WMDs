@@ -547,6 +547,82 @@ class DockNBin(http.Controller):
             request.env.cr.rollback()
             return {"error": str(e), "ok": False}
 
+    @http.route('/wmds/v2/engine/get/search_manual_dispatch', type='json', auth='user', methods=['POST'], csrf=True)
+    def search_manual_dispatch(self, **kw):
+        try:
+            term = kw.get('term')
+            if not term:
+                return []
+            
+            # Identify if the tracking field exists in sale.order
+            so_model = request.env['sale.order'].sudo()
+            fields_list = so_model._fields
+            has_tracking_field = 'yuju_carrier_tracking_ref' in fields_list
+            has_carrier_rel = 'carrier_selection_relational' in fields_list
+
+            # Search domain for sale.order
+            domain = [('name', 'ilike', term)]
+            if has_tracking_field:
+                domain = ['|'] + domain + [('yuju_carrier_tracking_ref', 'ilike', term)]
+            
+            # Also search by EI name
+            ei_tags = request.env["sale.order.ei"].sudo().search([('display_name_custom', 'ilike', term)])
+            if ei_tags:
+                domain = ['|'] + domain + [('id', 'in', ei_tags.mapped('so_id').ids)]
+            
+            orders = so_model.search(domain, limit=10)
+            
+            res = []
+            for so in orders:
+                # EIs (Paquetes)
+                so_ei_tags = request.env["sale.order.ei"].sudo().search([('so_id', '=', so.id)])
+                eis = []
+                for tag in so_ei_tags:
+                    status = "Pendiente"
+                    location = ""
+                    if tag.dispatched:
+                        status = "Despachado"
+                    elif tag.on_dock:
+                        status = "En Dock"
+                        location = tag.dock_id.name
+                    elif tag.on_bin:
+                        status = "En Bin"
+                        location = tag.bin_id.name
+                    
+                    eis.append({
+                        "name": tag.display_name_custom,
+                        "status": status,
+                        "location": location,
+                        "on_dock": tag.on_dock,
+                        "dock_id": tag.dock_id.id if tag.dock_id else False,
+                        "dock_name": tag.dock_id.name if tag.dock_id else False
+                    })
+                
+                # Products (from moves related to this SO)
+                pickings = request.env['stock.picking'].sudo().search([('sale_id', '=', so.id)])
+                moves = pickings.mapped('move_ids')
+                products = []
+                for move in moves:
+                    products.append({
+                        "name": move.product_id.display_name,
+                        "qty": move.product_uom_qty,
+                        "qty_done": move.quantity,
+                        "state": move.state
+                    })
+
+                res.append({
+                    "id": so.id,
+                    "name": so.name,
+                    "carrier": so.carrier_selection_relational.name if has_carrier_rel and so.carrier_selection_relational else "N/A",
+                    "tracking": so.yuju_carrier_tracking_ref if has_tracking_field else "N/A",
+                    "eis": eis,
+                    "products": products
+                })
+            return res
+        except Exception as e:
+            _logger.error(f"Error in search_manual_dispatch: {e}")
+            return {"error": str(e)}
+
     @http.route('/wmds/v2/engine/get/active_bins', type='json', auth='user', methods=['POST'], csrf=True)
     def get_active_bins(self, **kw):
         try:

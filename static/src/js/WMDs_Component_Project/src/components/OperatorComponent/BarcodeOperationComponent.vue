@@ -628,6 +628,18 @@ export default {
             }
         },
         async validateOperation() {
+            // No permitir cantidades negativas en la validación
+            const hasNegative = (this.operationData.lines || []).some(l => l.picked < 0);
+            if (hasNegative) {
+                this.$toast.add({ 
+                    severity: 'error', 
+                    summary: 'Cantidades Negativas', 
+                    detail: 'No se puede dejar la cantidad en números negativos en la validación. Favor de revisar desde mesa de control.', 
+                    life: 6000 
+                });
+                return;
+            }
+
             console.log("Validate clicked", this.missingLines.length);
             if (this.$refs.mainScroll) {
                 this.$refs.mainScroll.scrollTo({ top: 0, behavior: 'smooth' });

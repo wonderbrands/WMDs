@@ -5,6 +5,79 @@
             <Button icon="fa fa-refresh" severity="secondary" rounded text @click="refreshAll" :loading="loading" title="Actualizar todo" />
         </div>
 
+        <!-- SECCIÓN DE BÚSQUEDA -->
+        <div class="search-section">
+            <div class="search-bar">
+                <div class="p-inputgroup flex-1">
+                    <InputText v-model="searchTerm" placeholder="Buscar por SO, EI o Tracking..." @keyup.enter="searchOrders" class="search-input-large" />
+                    <Button icon="fa fa-search" @click="searchOrders" :loading="searching" label="Buscar Pedido" class="search-button-large" />
+                </div>
+            </div>
+
+            <div v-if="searchResults.length > 0" class="search-results-container">
+                <Accordion :value="['0']" multiple>
+                    <AccordionPanel v-for="(order, index) in searchResults" :key="order.id" :value="index.toString()">
+                        <AccordionHeader>
+                            <div class="order-header-large">
+                                <span class="order-name-tag"><i class="fa fa-shopping-cart"></i> {{ order.name }}</span>
+                                <span class="order-info-tag"><i class="fa fa-truck"></i> {{ order.carrier }}</span>
+                                <span class="order-info-tag tracking" v-if="order.tracking && order.tracking !== 'N/A'"><i class="fa fa-barcode"></i> {{ order.tracking }}</span>
+                            </div>
+                        </AccordionHeader>
+                        <AccordionContent>
+                             <div class="order-detail-container">
+                                 <div class="detail-column">
+                                    <div class="detail-header">
+                                        <i class="fa fa-cubes"></i>
+                                        <h4>Paquetes (EIs)</h4>
+                                    </div>
+                                    <DataTable :value="order.eis" class="p-datatable-sm custom-table" stripedRows>
+                                        <Column field="name" header="Paquete"></Column>
+                                        <Column field="status" header="Estado">
+                                            <template #body="slotProps">
+                                                <Tag :severity="getStatusSeverity(slotProps.data.status)" :value="slotProps.data.status" class="status-tag" />
+                                            </template>
+                                        </Column>
+                                        <Column field="location" header="Ubicación"></Column>
+                                        <Column header="Acciones">
+                                            <template #body="slotProps">
+                                                <Button 
+                                                    v-if="slotProps.data.status !== 'Despachado'"
+                                                    label="Despacho Manual" 
+                                                    icon="fa fa-paper-plane" 
+                                                    severity="success"
+                                                    size="small"
+                                                    @click="manualDispatchEI(slotProps.data, order)"
+                                                    :loading="dispatching"
+                                                    class="dispatch-btn"
+                                                />
+                                            </template>
+                                        </Column>
+                                    </DataTable>
+                                 </div>
+
+                                 <div class="detail-column">
+                                    <div class="detail-header">
+                                        <i class="fa fa-list"></i>
+                                        <h4>Productos</h4>
+                                    </div>
+                                    <DataTable :value="order.products" class="p-datatable-sm custom-table" stripedRows>
+                                        <Column field="name" header="Producto"></Column>
+                                        <Column field="qty" header="Pedida" class="text-center"></Column>
+                                        <Column field="qty_done" header="Hecha" class="text-center"></Column>
+                                        <Column field="state" header="Estado"></Column>
+                                    </DataTable>
+                                 </div>
+                             </div>
+                        </AccordionContent>
+                    </AccordionPanel>
+                </Accordion>
+            </div>
+            <div v-else-if="searched && !searching" class="empty-results">
+                <i class="fa fa-info-circle"></i> No se encontraron resultados para "{{ searchTerm }}"
+            </div>
+        </div>
+
         <div class="grid-container">
             <!-- SECCIÓN BINS -->
             <div class="section-card">
@@ -117,6 +190,11 @@ import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
 import Select from 'primevue/select';
+import InputText from 'primevue/inputtext';
+import Accordion from 'primevue/accordion';
+import AccordionPanel from 'primevue/accordionpanel';
+import AccordionHeader from 'primevue/accordionheader';
+import AccordionContent from 'primevue/accordioncontent';
 
 export default {
     name: "ManualDispatch",
@@ -126,7 +204,12 @@ export default {
         DataTable,
         Column,
         Tag,
-        Select
+        Select,
+        InputText,
+        Accordion,
+        AccordionPanel,
+        AccordionHeader,
+        AccordionContent
     },
     data() {
         return {
@@ -145,6 +228,12 @@ export default {
             selectedDockContents: null,
             selectedDockPackages: [],
             showDockDialog: false,
+            // Búsqueda
+            searchTerm: '',
+            searching: false,
+            searched: false,
+            searchResults: [],
+            dispatching: false
         }
     },
     async mounted() {
@@ -166,6 +255,49 @@ export default {
                 console.error("Error refreshing manual dispatch data", e);
             } finally {
                 this.loading = false;
+            }
+        },
+        async searchOrders() {
+            if (!this.searchTerm) return;
+            this.searching = true;
+            this.searched = true;
+            try {
+                const res = await this.store.callOdoo("search_manual_dispatch", "", { term: this.searchTerm });
+                this.searchResults = res || [];
+            } catch (e) {
+                console.error("Error searching orders", e);
+            } finally {
+                this.searching = false;
+            }
+        },
+        async manualDispatchEI(ei, order) {
+            this.dispatching = true;
+            try {
+                const res = await this.store.callOdoo("dispatch_orders", "", {
+                    operator_login: this.store.role.email,
+                    picks_ids: [ei.name]
+                });
+                if (res.status === 'success') {
+                    this.store.toast.add({ severity: 'success', summary: 'Éxito', detail: `Paquete ${ei.name} despachado`, life: 3000 });
+                    if (res.warning) {
+                        this.store.toast.add({ severity: 'warn', summary: 'Atención', detail: res.warning, life: 5000 });
+                    }
+                    // Actualizar resultados de búsqueda
+                    await this.searchOrders();
+                    await this.refreshAll();
+                } else {
+                    this.store.toast.add({ severity: 'error', summary: 'Error', detail: res.message, life: 5000 });
+                }
+            } finally {
+                this.dispatching = false;
+            }
+        },
+        getStatusSeverity(status) {
+            switch (status) {
+                case 'Despachado': return 'success';
+                case 'En Dock': return 'info';
+                case 'En Bin': return 'warn';
+                default: return 'secondary';
             }
         },
         async selectBin(bin) {
@@ -277,19 +409,150 @@ export default {
 .manual-dispatch-container {
     width: 100%;
     max-width: 1200px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
 .header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 2rem;
+    margin-bottom: 1rem;
+    height: 4em;
+    flex-shrink: 0;
+}
+
+.search-section {
+    margin: 1rem 2rem 2rem 2rem;
+    background: #ffffff;
+    padding: 2rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: 1px solid #e2e8f0;
+}
+
+.search-bar {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.search-input-large {
+    font-size: 1.2rem !important;
+    padding: 1rem !important;
+}
+
+.search-button-large {
+    padding-left: 2rem !important;
+    padding-right: 2rem !important;
+    font-weight: bold !important;
+}
+
+.search-results-container {
+    max-height: 500px;
+    overflow-y: auto;
+    border-radius: 8px;
+    border: 1px solid #edf2f7;
+    padding: 0.5rem;
+    background: #f7fafc;
+}
+
+.order-header-large {
+    display: flex;
+    gap: 2.5rem;
+    align-items: center;
+    width: 100%;
+    padding: 0.5rem 0;
+}
+
+.order-name-tag {
+    font-weight: 800;
+    font-size: 1.25rem;
+    color: #1a202c;
+    background: #ebf8ff;
+    padding: 0.4rem 1rem;
+    border-radius: 6px;
+    border-left: 4px solid #3182ce;
+}
+
+.order-info-tag {
+    color: #4a5568;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.order-info-tag.tracking {
+    color: #2c5282;
+    font-weight: 600;
+}
+
+.order-detail-container {
+    display: flex;
+    gap: 2rem;
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+}
+
+.detail-column {
+    flex: 1;
+    min-width: 0;
+}
+
+.detail-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    color: #2d3748;
+    border-bottom: 2px solid #edf2f7;
+    padding-bottom: 0.5rem;
+}
+
+.detail-header i {
+    font-size: 1.2rem;
+    color: #4a5568;
+}
+
+.detail-header h4 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.custom-table {
+    border: 1px solid #edf2f7;
+    border-radius: 4px;
+}
+
+.status-tag {
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+}
+
+.dispatch-btn {
+    white-space: nowrap;
+}
+
+.empty-results {
+    text-align: center;
+    padding: 3rem;
+    color: #a0aec0;
+    font-size: 1.1rem;
+    background: #f8fafc;
+    border-radius: 8px;
 }
 
 .grid-container {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 2rem;
+    display: flex;
+    flex-direction: row;
+    flex: 1;
+    min-height: 400px;
+    overflow: hidden;
 }
 
 .section-card {
@@ -299,7 +562,11 @@ export default {
     padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    min-height: 400px;
+    margin: 0 2rem 2rem 2rem;
+    width: 50%;
+    height: auto;
+    max-height: 600px;
+    overflow-y: auto;
 }
 
 .section-header {

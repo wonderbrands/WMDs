@@ -485,6 +485,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_active_docks: {url: '/wmds/v2/engine/get/active_docks', method: 'POST'},
             get_available_docks: {url: '/wmds/v2/engine/get/available_docks', method: 'POST'},
             get_dock_contents: {url: '/wmds/v2/engine/get/dock_contents', method: 'POST'},
+            search_manual_dispatch: {url: '/wmds/v2/engine/get/search_manual_dispatch', method: 'POST'},
         };
     }
 
