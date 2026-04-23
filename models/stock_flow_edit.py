@@ -376,24 +376,18 @@ class BatchWMDS(models.Model):
 class StockMoveWMDS(models.Model):
     _inherit = 'stock.move'
 
-    @api.onchange('location_id', 'location_dest_id', "quant_id")
+    @api.onchange('location_id', 'location_dest_id', 'quant_id')
     def _onchange_locations_forbidden(self):
         forbidden_names = ["WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"]
         
         if self.location_id and self.location_id.complete_name in forbidden_names:
-            loc_name = self.location_id.complete_name
-            self.location_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen en un movimiento manual.")
+            raise UserError(f"La ubicación '{self.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen.")
             
         if self.location_dest_id and self.location_dest_id.complete_name in forbidden_names:
-            loc_name = self.location_dest_id.complete_name
-            self.location_dest_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre. No puedes meter productos aqui")
+            raise UserError(f"La ubicación '{self.location_dest_id.complete_name}' es una ubicación padre. No puedes meter productos aqui.")
 
-        if self.quant_id and self.quant_id.location_id.complete_name in forbidden_names:
-            loc_name = self.quant_id.location_id.complete_name
-            self.quant_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen en un movimiento manual.")
+        if self.quant_id and self.quant_id.location_id and self.quant_id.location_id.complete_name in forbidden_names:
+            raise UserError(f"La ubicación '{self.quant_id.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen.")
 
     def write(self, vals):
         for move in self:
@@ -413,3 +407,19 @@ class StockMoveWMDS(models.Model):
                     'user': self.env.user.id,
                 })
         return super(StockMoveWMDS, self).write(vals)
+
+class StockMoveLineWMDS(models.Model):
+    _inherit = 'stock.move.line'
+
+    @api.onchange('location_id', 'location_dest_id', 'quant_id')
+    def _onchange_locations_forbidden(self):
+        forbidden_names = ["WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"]
+        
+        if self.location_id and self.location_id.complete_name in forbidden_names:
+            raise UserError(f"La ubicación '{self.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen.")
+            
+        if self.location_dest_id and self.location_dest_id.complete_name in forbidden_names:
+            raise UserError(f"La ubicación '{self.location_dest_id.complete_name}' es una ubicación padre. No puedes meter productos aqui.")
+
+        if self.quant_id and self.quant_id.location_id and self.quant_id.location_id.complete_name in forbidden_names:
+            raise UserError(f"La ubicación '{self.quant_id.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen.")
