@@ -411,15 +411,29 @@ class StockMoveWMDS(models.Model):
 class StockMoveLineWMDS(models.Model):
     _inherit = 'stock.move.line'
 
-    @api.onchange('location_id', 'location_dest_id', 'quant_id')
-    def _onchange_locations_forbidden(self):
-        forbidden_names = ["WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"]
-        
-        if self.location_id and self.location_id.complete_name in forbidden_names:
-            raise UserError(f"La ubicación '{self.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen.")
-            
-        if self.location_dest_id and self.location_dest_id.complete_name in forbidden_names:
-            raise UserError(f"La ubicación '{self.location_dest_id.complete_name}' es una ubicación padre. No puedes meter productos aqui.")
+# Usamos set para búsqueda O(1) más rápida
+    _FORBIDDEN_LOCATIONS = {"WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"}
 
-        if self.quant_id and self.quant_id.location_id and self.quant_id.location_id.complete_name in forbidden_names:
-            raise UserError(f"La ubicación '{self.quant_id.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen.")
+    def write(self, vals):
+        records_to_unlink = self.env['stock.move.line']
+
+        for record in self:
+            current_loc_id = record.location_id.id if record.location_id else False
+            effective_loc_id = vals.get('location_id', current_loc_id)
+            
+            loc_rec = self.env['stock.location'].browse(effective_loc_id)
+
+            if loc_rec and loc_rec.complete_name in self._FORBIDDEN_LOCATIONS:               
+                records_to_unlink |= record
+                _logger.warning(
+                    "[WMDS] Línea %s marcada para eliminación: location_id '%s' es ubicación padre prohibida.",
+                    record.id, loc_rec.complete_name
+                )
+
+        if records_to_unlink:
+            records_to_unlink.unlink()
+            self -= records_to_unlink
+
+        if self:
+            return super(StockMoveLineWMDS, self).write(vals)
+        return True
