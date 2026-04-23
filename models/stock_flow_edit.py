@@ -378,7 +378,7 @@ class StockMoveWMDS(models.Model):
 
     @api.onchange('location_id', 'location_dest_id', "quant_id")
     def _onchange_locations_forbidden(self):
-        forbidden_names = ["WH/Stock/Picking", "WH/Cuarentena", "WH/Stock/Almacenaje"]
+        forbidden_names = ["WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"]
         
         if self.location_id and self.location_id.complete_name in forbidden_names:
             loc_name = self.location_id.complete_name
