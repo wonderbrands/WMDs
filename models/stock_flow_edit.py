@@ -376,19 +376,24 @@ class BatchWMDS(models.Model):
 class StockMoveWMDS(models.Model):
     _inherit = 'stock.move'
 
-    @api.onchange('location_id', 'location_dest_id')
+    @api.onchange('location_id', 'location_dest_id', "quant_id")
     def _onchange_locations_forbidden(self):
         forbidden_names = ["WH/Stock/Picking", "WH/Cuarentena", "WH/Stock/Almacenaje"]
         
         if self.location_id and self.location_id.complete_name in forbidden_names:
             loc_name = self.location_id.complete_name
             self.location_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación de paso o jerárquica y no puede ser usada como origen en un movimiento manual.")
+            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen en un movimiento manual.")
             
         if self.location_dest_id and self.location_dest_id.complete_name in forbidden_names:
             loc_name = self.location_dest_id.complete_name
             self.location_dest_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre. No puedes meter ni sacar productos de aqui")
+            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre. No puedes meter productos aqui")
+
+        if self.quant_id and self.quant_id.location_id.complete_name in forbidden_names:
+            loc_name = self.quant_id.location_id.complete_name
+            self.quant_id = False
+            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen en un movimiento manual.")
 
     def write(self, vals):
         for move in self:
