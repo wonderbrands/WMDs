@@ -18,8 +18,8 @@ class StockWMDSPurchase(models.Model):
 
     def button_validate(self):
         for picking in self:
-            if picking.picking_type_id.name == 'Rackeos':
-                clean_origin = picking.origin.replace('COMEX: ', '') if picking.origin else ''
+            if picking.picking_type_id.name == 'Rackeo':
+                clean_origin = picking.origin
                 
                 po = self.env['purchase.order'].search(
                     [('name', '=', clean_origin)],
