@@ -170,10 +170,10 @@ class BarcodeController(http.Controller):
             # Update picked
             line.wmds_picked_qty += increment
             
-            # Log the pick action with source location
+            # Log the pick action with source location at picking level for better granularity
             action_desc = "escaneó" if not kw.get('increment') else ("incrementó" if increment > 0 else "decrementó")
             msg = f"Operador {action_desc} {abs(increment)} unidad(es) de {line.product_id.display_name} desde {line.location_id.display_name}"
-            self._create_log(record, msg, res_model, operator_email)
+            self._create_log(line.picking_id, msg, 'stock.picking', operator_email)
             
             return {
                 "status": "ok",
@@ -394,14 +394,15 @@ class BarcodeController(http.Controller):
             pickings = record if res_model == 'stock.picking' else record.picking_ids
 
             # Handle unstarted pickings in a batch: remove them from the batch
+            excluded_names = []
             if res_model == 'stock.picking.batch':
                 for picking in list(pickings):
                     # A picking is unstarted if ALL its lines have wmds_picked_qty == 0
                     if all(l.wmds_picked_qty == 0 for l in picking.move_line_ids):
+                        excluded_names.append(picking.name)
                         logger.info(f"Removing unstarted picking {picking.name} from batch {record.name}")
-                        self._create_log(record, f"Pedido {picking.name} removido del plan de pickeo por no tener productos recolectados.", res_model, operator_email)
-                        # Log also on the picking itself
-                        self._create_log(picking, f"Removido del plan de pickeo {record.name} por no tener productos recolectados durante la validación.", 'stock.picking', operator_email)
+                        # Log on the picking itself
+                        self._create_log(picking, f"Transferencia removida del lote {record.name} durante la validación por falta de recolección.", 'stock.picking', operator_email)
                         picking.sudo().write({'batch_id': False})
                 
                 # Refresh pickings list after removals
@@ -409,30 +410,58 @@ class BarcodeController(http.Controller):
                 if not pickings:
                      return {"status": "error", "message": "No quedan pedidos en el plan de pickeo tras remover los no iniciados."}
 
+            validated_names = pickings.mapped('name')
             type_names = pickings.mapped('picking_type_id.name')
             is_dful = any('Resurtido a Ful: Despacho' in name for name in type_names if name)
             is_pful = any('Resurtido a Ful: Pick' in name for name in type_names if name)
 
             logger.info(f"Validating {res_model} {record.name}. is_dful: {is_dful}, is_pful: {is_pful}")
 
-            # Synchronize 'picked' to 'quantity' (qty_done)
-            processed_lines_info = []
+            # 1. Proactive stock check (to avoid negative stock bug)
+            stock_check = {}
             for line in record.move_line_ids:
-                if line.wmds_picked_qty > 0:
-                    processed_lines_info.append({
-                        'move_id': line.move_id.id,
-                        'qty': line.wmds_picked_qty
-                    })
+                if line.wmds_picked_qty <= 0: continue
+                key = (line.product_id.id, line.location_id.id)
+                stock_check[key] = stock_check.get(key, 0.0) + line.wmds_picked_qty
+            
+            for (prod_id, loc_id), qty_needed in stock_check.items():
+                product = request.env['product.product'].sudo().browse(prod_id)
+                location = request.env['stock.location'].sudo().browse(loc_id)
                 
-                # En Odoo 19 es quantity
-                line.sudo().write({
-                    'quantity': line.wmds_picked_qty,
-                    'picked': True if line.wmds_picked_qty > 0 else line.picked
-                })
+                # Check stock_no_negative flags
+                disallowed_by_product = not product.allow_negative_stock and not product.categ_id.allow_negative_stock
+                disallowed_by_location = not location.allow_negative_stock
+                
+                if product.is_storable and location.usage in ['internal', 'transit'] and disallowed_by_product and disallowed_by_location:
+                    quants = request.env['stock.quant'].sudo().search([
+                        ('product_id', '=', prod_id),
+                        ('location_id', '=', loc_id)
+                    ])
+                    available = sum(quants.mapped('quantity'))
+                    if qty_needed > available:
+                         return {
+                            "status": "error", 
+                            "message": f"Stock insuficiente en {location.display_name} para {product.display_name}. Disponible: {available}, Requerido: {qty_needed}. No se puede validar para evitar saldos negativos."
+                        }
 
-            # Call Odoo's native validation
+            # 2. Call Odoo's native validation
             res = None
             try:
+                # Synchronize 'picked' to 'quantity' (qty_done) inside the try block
+                processed_lines_info = []
+                for line in record.move_line_ids:
+                    if line.wmds_picked_qty > 0:
+                        processed_lines_info.append({
+                            'move_id': line.move_id.id,
+                            'qty': line.wmds_picked_qty
+                        })
+                    
+                    # En Odoo 19 es quantity
+                    line.sudo().write({
+                        'quantity': line.wmds_picked_qty,
+                        'picked': True if line.wmds_picked_qty > 0 else line.picked
+                    })
+
                 if res_model == 'stock.picking':
                     res = record.button_validate()
                 else:
@@ -474,6 +503,18 @@ class BarcodeController(http.Controller):
                     'pick_ids': [(4, p.id) for p in pickings_to_backorder]
                 })
                 wizard.process()
+
+            # Create summary log for the operation
+            if res_model == 'stock.picking.batch':
+                summary_parts = []
+                if validated_names:
+                    summary_parts.append(f"Pedidos validados: {', '.join(validated_names)}")
+                if excluded_names:
+                    summary_parts.append(f"Excluidos (no iniciados): {', '.join(excluded_names)}")
+                summary = " | ".join(summary_parts)
+                self._create_log(record, summary, res_model, operator_email)
+            else:
+                self._create_log(record, f"Transferencia {record.name} validada con éxito.", res_model, operator_email)
 
             return {
                 "status": "ok", 

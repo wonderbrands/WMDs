@@ -71,7 +71,6 @@ class WMDSLog(models.Model):
         if log.batch_pick:
             batch = log.batch_pick
             for picking in batch.picking_ids:
-                target_records.add(('pick', picking.id))
                 if picking.sale_id:
                     target_records.add(('sale', picking.sale_id.id))
                 if picking.purchase_id:
@@ -80,9 +79,10 @@ class WMDSLog(models.Model):
         # From Sale Order
         if log.sale:
             so = log.sale
+            # We don't propagate to all pickings to avoid noise, 
+            # only to the batch if it exists and we want it there.
             pickings = self.env['stock.picking'].sudo().search([('sale_id', '=', so.id)])
             for pick in pickings:
-                target_records.add(('pick', pick.id))
                 if pick.batch_id:
                     target_records.add(('batch_pick', pick.batch_id.id))
 
@@ -91,7 +91,6 @@ class WMDSLog(models.Model):
             po = log.purchase
             pickings = self.env['stock.picking'].sudo().search([('purchase_id', '=', po.id)])
             for pick in pickings:
-                target_records.add(('pick', pick.id))
                 if pick.batch_id:
                     target_records.add(('batch_pick', pick.batch_id.id))
 

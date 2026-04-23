@@ -159,16 +159,47 @@ class IrAttachment(models.Model):
             })
 
 
-class SaleOrderEI(models.Model):
-    _inherit = 'sale.order.ei'
-    _description = 'Sale Order EI Extension'
+class SaleOrderLineWMDS(models.Model):
+    _inherit = 'sale.order.line'
 
-    display_name_custom = fields.Char(string='Custom Name', compute='_compute_display_name_custom', store=True)
+    @api.model_create_multi
+    def create(self, vals_list):
+        lines = super(SaleOrderLineWMDS, self).create(vals_list)
+        for line in lines:
+            if line.order_id:
+                self.env['wmds.log'].sudo().create({
+                    'sale': line.order_id.id,
+                    'log': f"Línea agregada: {line.product_id.display_name} (Cant: {line.product_uom_qty})",
+                    'user': self.env.user.id,
+                })
+        return lines
 
-    @api.depends('so_id.name', 'sequence_number')
-    def _compute_display_name_custom(self):
-        for record in self:
-            if record.so_id and record.sequence_number:
-                record.display_name_custom = f"{record.so_id.name}/{record.sequence_number}"
-            else:
-                record.display_name_custom = False
+    def write(self, vals):
+        for line in self:
+            changes = []
+            if 'product_id' in vals:
+                new_product = self.env['product.product'].sudo().browse(vals['product_id'])
+                changes.append(f"Producto: {line.product_id.display_name} -> {new_product.display_name}")
+            if 'product_uom_qty' in vals:
+                changes.append(f"Cantidad: {line.product_uom_qty} -> {vals['product_uom_qty']}")
+            if 'price_unit' in vals:
+                changes.append(f"Precio: {line.price_unit} -> {vals['price_unit']}")
+            
+            if changes and line.order_id:
+                msg = f"Línea modificada ({line.product_id.name}): " + ", ".join(changes)
+                self.env['wmds.log'].sudo().create({
+                    'sale': line.order_id.id,
+                    'log': msg,
+                    'user': self.env.user.id,
+                })
+        return super(SaleOrderLineWMDS, self).write(vals)
+
+    def unlink(self):
+        for line in self:
+            if line.order_id:
+                self.env['wmds.log'].sudo().create({
+                    'sale': line.order_id.id,
+                    'log': f"Línea eliminada: {line.product_id.display_name}",
+                    'user': self.env.user.id,
+                })
+        return super(SaleOrderLineWMDS, self).unlink()

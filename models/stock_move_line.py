@@ -23,12 +23,44 @@ class StockMoveLine(models.Model):
                         'user': self.env.user.id,
                         'log': message,
                     }
+                    # We prioritize logging on the picking. Propagation will take it to the batch if needed.
                     if record.picking_id:
                         log_vals['pick'] = record.picking_id.id
-                    if record.batch_id:
+                    elif record.batch_id:
                         log_vals['batch_pick'] = record.batch_id.id
                     
                     self.env['wmds.log'].sudo().create(log_vals)
+        
+        for record in self:
+            changes = []
+            if 'location_id' in vals:
+                new_loc_id = vals.get('location_id')
+                if record.location_id.id != new_loc_id:
+                    new_loc = self.env['stock.location'].sudo().browse(new_loc_id)
+                    changes.append(f"Origen: {record.location_id.display_name} -> {new_loc.display_name}")
+                    # Reset WMDS picked quantity if location changes
+                    if record.wmds_picked_qty > 0:
+                        # We use a separate write to be surgical and avoid recursion issues
+                        record.sudo().write({'wmds_picked_qty': 0.0})
+                        msg_reset = f"Cantidad recolectada reseteada a 0 para {record.product_id.display_name} por cambio de ubicación de origen."
+                        self.env['wmds.log'].sudo().create({
+                            'pick': record.picking_id.id,
+                            'log': msg_reset,
+                            'user': self.env.user.id,
+                        })
+            
+            if 'location_dest_id' in vals:
+                new_loc = self.env['stock.location'].sudo().browse(vals['location_dest_id'])
+                changes.append(f"Destino: {record.location_dest_id.display_name} -> {new_loc.display_name}")
+            
+            if changes and record.picking_id:
+                msg = f"Línea de movimiento modificada ({record.product_id.name}): " + ", ".join(changes)
+                self.env['wmds.log'].sudo().create({
+                    'pick': record.picking_id.id,
+                    'log': msg,
+                    'user': self.env.user.id,
+                })
+
         return super(StockMoveLine, self).write(vals)
 
 class StockMove(models.Model):

@@ -17,6 +17,12 @@
         <field name="model">stock.move.line</field>
         <field name="inherit_id" ref="stock.view_move_line_form"/>
         <field name="arch" type="xml">
+            <xpath expr="//field[@name='location_id']" position="attributes">
+                <attribute name="domain">[('complete_name', 'not ilike', 'Bloqueado')]</attribute>
+            </xpath>
+            <xpath expr="//field[@name='location_dest_id']" position="attributes">
+                <attribute name="domain">[('complete_name', 'not ilike', 'Bloqueado')]</attribute>
+            </xpath>
             <xpath expr="//field[@name='quantity']" position="after">
                 <field name="wmds_picked_qty" string="Recolectado (WMDS)" readonly="0"/>
                 <field name="picked" string="Recogido" widget="boolean_toggle" readonly="0"/>

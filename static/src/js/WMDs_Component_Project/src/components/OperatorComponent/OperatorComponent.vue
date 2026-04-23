@@ -37,9 +37,25 @@
                 <template #subtitle>{{ task.description }}</template>
 
                 <template #content v-if="task.assigned.length > 0 && !task.view">
-                    <span class="pending-badge">
-                        {{ task.assigned[0].children.length }} pendientes
-                    </span>
+                    <div class="flex flex-column gap-3">
+                        <span class="pending-badge">
+                            {{ getFilteredCount(task) }} pendientes
+                            <small v-if="task.assigned[0].children.length > 10" class="text-secondary block">
+                                (Mostrando 10 de {{ task.assigned[0].children.length }})
+                            </small>
+                        </span>
+                        <div v-if="expandedKeys[task.id + '-root']" class="search-wrapper">
+                            <span class="p-input-icon-left w-full">
+                                <i class="fa fa-search" />
+                                <InputText 
+                                    v-model="searchQueries[task.id]" 
+                                    placeholder="Buscar por PO o ubicación..." 
+                                    class="p-inputtext-sm w-full"
+                                    @click.stop
+                                />
+                            </span>
+                        </div>
+                    </div>
                 </template>
                 <template #content v-else-if="task.assigned.length === 0 && !task.view">
                     <span class="pending-badge">Sin pendientes</span>
@@ -49,7 +65,7 @@
                     <div v-if="hasChildren(task)">
                         <Tree
                             v-show="expandedKeys[task.id + '-root']"
-                            :value="task.assigned"
+                            :value="getFilteredAssigned(task)"
                             selectionMode="single"
                             v-model:selectionKeys="current_task[task.id]"
                             v-model:expandedKeys="expandedKeys"
@@ -80,6 +96,7 @@
 <script>
 import Card from "primevue/card";
 import Tree from "primevue/tree";
+import InputText from "primevue/inputtext";
 import PackerView from "./PackerView.vue";
 import CycleCountOperator from "./CycleCountOperator.vue";
 import LogoutComponent from "../RolePicker/LogoutComponent.vue";
@@ -87,13 +104,14 @@ import { useGeneralStore } from "../../store/index";
 
 export default {
     name: "OperatorComponent",
-    components: { Card, Tree, LogoutComponent, PackerView, CycleCountOperator },
+    components: { Card, Tree, InputText, LogoutComponent, PackerView, CycleCountOperator },
 
     data() {
         return {
             store: useGeneralStore(),
             current_task: {},
             expandedKeys: {},
+            searchQueries: {},
             taskDefinitions: [
                 { id: "ingresos", title: "Recepciones", description: "Validación de ingresos.", fetch: true, label: "Abiertas", permission: "WMDs Operator - Reception", buttons_to_add: false, buttons_to_subtract: true, stock_input_add: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: false, any_source: true, any_dest: true, check_empty_dest_location: false },
                 { id: "acomodo", title: "Rackeo", description: "Acomodo de productos.", fetch: true, label: "Abiertos", permission: "WMDs Operator - Forklift operator", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: true, any_source: true, any_dest: true, check_empty_dest_location: true },
@@ -202,6 +220,33 @@ export default {
                 newExpanded[rootKey] = true;
             }
             this.expandedKeys = newExpanded;
+        },
+        getFilteredCount(task) {
+            if (!task.assigned || task.assigned.length === 0) return 0;
+            const searchQuery = (this.searchQueries[task.id] || '').toLowerCase().trim();
+            const allChildren = task.assigned[0].children;
+            if (!searchQuery) return allChildren.length;
+            return allChildren.filter(c => c.label.toLowerCase().includes(searchQuery)).length;
+        },
+        getFilteredAssigned(task) {
+            if (!task.assigned || task.assigned.length === 0) return [];
+            const searchQuery = (this.searchQueries[task.id] || '').toLowerCase().trim();
+            const allChildren = task.assigned[0].children;
+            
+            let filteredChildren = allChildren;
+            if (searchQuery) {
+                filteredChildren = allChildren.filter(c => 
+                    c.label.toLowerCase().includes(searchQuery)
+                );
+            }
+
+            // Limit to 10 results
+            const displayedChildren = filteredChildren.slice(0, 10);
+            
+            return [{
+                ...task.assigned[0],
+                children: displayedChildren
+            }];
         },
         hasChildren(task) {
             return task.assigned?.[0]?.children?.length > 0;
@@ -429,5 +474,26 @@ export default {
     padding: 10px;
     border-radius: 5px;
     cursor: pointer;
+}
+
+.search-wrapper {
+    margin-top: 5px;
+}
+
+.p-input-icon-left {
+    position: relative;
+    display: inline-block;
+}
+
+.p-input-icon-left i {
+    position: absolute;
+    top: 50%;
+    margin-top: -0.5rem;
+    left: 0.75rem;
+    color: #94a3b8;
+}
+
+.p-input-icon-left .p-inputtext {
+    padding-left: 2.5rem;
 }
 </style>

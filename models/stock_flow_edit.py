@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from odoo import models, fields, api
+from odoo.exceptions import UserError
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -372,3 +373,38 @@ class BatchWMDS(models.Model):
                     picking_data['operator'] = False
                     
         return res
+class StockMoveWMDS(models.Model):
+    _inherit = 'stock.move'
+
+    @api.onchange('location_id', 'location_dest_id')
+    def _onchange_locations_forbidden(self):
+        forbidden_names = ["WH/Stock/Picking", "WH/Cuarentena", "WH/Stock/Almacenaje"]
+        
+        if self.location_id and self.location_id.complete_name in forbidden_names:
+            loc_name = self.location_id.complete_name
+            self.location_id = False
+            raise UserError(f"La ubicación '{loc_name}' es una ubicación de paso o jerárquica y no puede ser usada como origen en un movimiento manual.")
+            
+        if self.location_dest_id and self.location_dest_id.complete_name in forbidden_names:
+            loc_name = self.location_dest_id.complete_name
+            self.location_dest_id = False
+            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre. No puedes meter ni sacar productos de aqui")
+
+    def write(self, vals):
+        for move in self:
+            changes = []
+            if 'location_id' in vals:
+                new_loc = self.env['stock.location'].sudo().browse(vals['location_id'])
+                changes.append(f"Origen: {move.location_id.display_name} -> {new_loc.display_name}")
+            if 'location_dest_id' in vals:
+                new_loc = self.env['stock.location'].sudo().browse(vals['location_dest_id'])
+                changes.append(f"Destino: {move.location_dest_id.display_name} -> {new_loc.display_name}")
+            
+            if changes and move.picking_id:
+                msg = f"Movimiento modificado ({move.product_id.name}): " + ", ".join(changes)
+                self.env['wmds.log'].sudo().create({
+                    'pick': move.picking_id.id,
+                    'log': msg,
+                    'user': self.env.user.id,
+                })
+        return super(StockMoveWMDS, self).write(vals)
