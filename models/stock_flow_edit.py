@@ -411,29 +411,63 @@ class StockMoveWMDS(models.Model):
 class StockMoveLineWMDS(models.Model):
     _inherit = 'stock.move.line'
 
-# Usamos set para búsqueda O(1) más rápida
+    @api.onchange('location_id', 'location_dest_id', 'quant_id')
+    def _onchange_locations_forbidden(self):
+        forbidden_names = ["WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"]
+        
+        if self.location_id and self.location_id.complete_name in forbidden_names:
+            raise UserError(f"La ubicación '{self.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen.")
+            
+        if self.location_dest_id and self.location_dest_id.complete_name in forbidden_names:
+            raise UserError(f"La ubicación '{self.location_dest_id.complete_name}' es una ubicación padre. No puedes meter productos aqui.")
+
+        if self.quant_id and self.quant_id.location_id and self.quant_id.location_id.complete_name in forbidden_names:
+            raise UserError(f"La ubicación '{self.quant_id.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen.")
+
+    # Usamos set para búsqueda O(1) más rápida
     _FORBIDDEN_LOCATIONS = {"WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"}
 
     def write(self, vals):
-        records_to_unlink = self.env['stock.move.line']
+        active_lines = self.filtered(lambda l: l.state not in ('done', 'cancel'))
+        if not active_lines:
+            return super().write(vals)
 
-        for record in self:
-            current_loc_id = record.location_id.id if record.location_id else False
-            effective_loc_id = vals.get('location_id', current_loc_id)
-            
-            loc_rec = self.env['stock.location'].browse(effective_loc_id)
+        lines_to_unlink = self.env['stock.move.line']
 
-            if loc_rec and loc_rec.complete_name in self._FORBIDDEN_LOCATIONS:               
-                records_to_unlink |= record
+        for record in active_lines:
+            loc_id = vals.get('location_id', record.location_id.id if record.location_id else False)
+            loc_dest_id = vals.get('location_dest_id', record.location_dest_id.id if record.location_dest_id else False)
+            quant_id = vals.get('quant_id', record.quant_id.id if record.quant_id else False)
+
+            if isinstance(loc_id, models.BaseModel): loc_id = loc_id.id
+            if isinstance(loc_dest_id, models.BaseModel): loc_dest_id = loc_dest_id.id
+            if isinstance(quant_id, models.BaseModel): quant_id = quant_id.id
+
+            loc = self.env['stock.location'].browse(loc_id) if loc_id else None
+            loc_dest = self.env['stock.location'].browse(loc_dest_id) if loc_dest_id else None
+            quant = self.env['stock.quant'].browse(quant_id) if quant_id else None
+
+            forbidden_field = None
+            if loc and loc.complete_name in self._FORBIDDEN_LOCATIONS:
+                forbidden_field = 'location_id'
+            elif loc_dest and loc_dest.complete_name in self._FORBIDDEN_LOCATIONS:
+                forbidden_field = 'location_dest_id'
+            elif quant and quant.location_id and quant.location_id.complete_name in self._FORBIDDEN_LOCATIONS:
+                forbidden_field = 'quant_id'
+
+            if forbidden_field:
                 _logger.warning(
-                    "[WMDS] Línea %s marcada para eliminación: location_id '%s' es ubicación padre prohibida.",
-                    record.id, loc_rec.complete_name
+                    "[WMDS] Línea %s (estado: %s) usa ubicación padre prohibida en '%s'. Marcada para corrección.",
+                    record.id, record.state, forbidden_field
                 )
+                
+ 
+                lines_to_unlink |= record
 
-        if records_to_unlink:
-            records_to_unlink.unlink()
-            self -= records_to_unlink
+        if lines_to_unlink:
+            lines_to_unlink.unlink()
+            active_lines -= lines_to_unlink  # Removerlas del conjunto activo
 
-        if self:
-            return super(StockMoveLineWMDS, self).write(vals)
+        if active_lines:
+            return super(StockMoveLineWMDS, active_lines).write(vals)
         return True
