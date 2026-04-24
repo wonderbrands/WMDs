@@ -413,11 +413,19 @@ class StockMoveLineWMDS(models.Model):
     def _check_forbidden_locations(self, vals):
         loc_id = vals.get('location_id')
         dest_id = vals.get('location_dest_id')
+        quant_id = vals.get('quant_id')
+
         if loc_id:
             loc = self.env['stock.location'].sudo().browse(loc_id)
             if loc.complete_name and loc.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
                 raise UserError(f"Error al guardar: La ubicación '{loc.complete_name}' es una ubicación padre y no puede ser usada como origen en una línea de movimiento.")
+
         if dest_id:
             dest = self.env['stock.location'].sudo().browse(dest_id)
             if dest.complete_name and dest.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
                 raise UserError(f"Error al guardar: La ubicación '{dest.complete_name}' es una ubicación padre y no puede ser usada como destino en una línea de movimiento.")
+
+        if quant_id:
+            quant = self.env['stock.quant'].sudo().browse(quant_id)
+            if quant.location_id and quant.location_id.complete_name and quant.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+                raise UserError(f"Error al guardar: El stock seleccionado pertenece a la ubicación padre '{quant.location_id.complete_name}', lo cual no está permitido.")
