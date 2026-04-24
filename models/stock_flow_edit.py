@@ -457,7 +457,7 @@ class StockMoveLineWMDS(models.Model):
 
             if forbidden_field:
                 _logger.warning(
-                    "[WMDS] Línea %s (estado: %s) usa ubicación padre prohibida en '%s'. Marcada para corrección.",
+                    "Línea %s (estado: %s) usa ubicación padre prohibida en '%s'. Marcada para corrección.",
                     record.id, record.state, forbidden_field
                 )
                 
@@ -466,7 +466,7 @@ class StockMoveLineWMDS(models.Model):
 
         if lines_to_unlink:
             lines_to_unlink.unlink()
-            active_lines -= lines_to_unlink  # Removerlas del conjunto activo
+            active_lines -= lines_to_unlink  
 
         if active_lines:
             return super(StockMoveLineWMDS, active_lines).write(vals)
