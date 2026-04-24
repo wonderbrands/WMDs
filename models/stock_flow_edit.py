@@ -376,16 +376,7 @@ class BatchWMDS(models.Model):
 class StockMoveWMDS(models.Model):
     _inherit = 'stock.move'
 
-    _FORBIDDEN_LOCATIONS = {"WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"}
-
-    @api.model_create_multi
-    def create(self, vals_list):
-        for vals in vals_list:
-            self._check_forbidden_locations(vals)
-        return super(StockMoveWMDS, self).create(vals_list)
-
     def write(self, vals):
-        self._check_forbidden_locations(vals)
         for move in self:
             changes = []
             if 'location_id' in vals:
@@ -403,18 +394,6 @@ class StockMoveWMDS(models.Model):
                     'user': self.env.user.id,
                 })
         return super(StockMoveWMDS, self).write(vals)
-
-    def _check_forbidden_locations(self, vals):
-        loc_id = vals.get('location_id')
-        dest_id = vals.get('location_dest_id')
-        if loc_id:
-            loc = self.env['stock.location'].sudo().browse(loc_id)
-            if loc.complete_name and loc.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"Error al guardar: La ubicación '{loc.complete_name}' es una ubicación padre y no puede ser usada como origen.")
-        if dest_id:
-            dest = self.env['stock.location'].sudo().browse(dest_id)
-            if dest.complete_name and dest.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"Error al guardar: La ubicación '{dest.complete_name}' es una ubicación padre y no puede ser usada como destino.")
 
 class StockMoveLineWMDS(models.Model):
     _inherit = 'stock.move.line'
