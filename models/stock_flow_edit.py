@@ -378,22 +378,14 @@ class StockMoveWMDS(models.Model):
 
     _FORBIDDEN_LOCATIONS = {"WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"}
 
-    @api.constrains('location_id', 'location_dest_id')
-    def _check_locations_forbidden(self):
-        for move in self:
-            if move.location_id and move.location_id.complete_name in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"La ubicación '{move.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen.")
-            if move.location_dest_id and move.location_dest_id.complete_name in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"La ubicación '{move.location_dest_id.complete_name}' es una ubicación padre y no puede ser usada como destino.")
-
     @api.onchange('location_id', 'location_dest_id')
     def _onchange_locations_forbidden(self):
-        if self.location_id and self.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+        if self.location_id and self.location_id.complete_name and self.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
             loc_name = self.location_id.complete_name
             self.location_id = False
             raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen. Se ha limpiado el campo.")
             
-        if self.location_dest_id and self.location_dest_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+        if self.location_dest_id and self.location_dest_id.complete_name and self.location_dest_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
             loc_name = self.location_dest_id.complete_name
             self.location_dest_id = False
             raise UserError(f"La ubicación '{loc_name}' es una ubicación padre. No puedes meter productos aquí. Se ha limpiado el campo.")
@@ -425,19 +417,19 @@ class StockMoveLineWMDS(models.Model):
     @api.constrains('location_id', 'location_dest_id')
     def _check_locations_forbidden(self):
         for line in self:
-            if line.location_id and line.location_id.complete_name in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"La ubicación '{line.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen.")
-            if line.location_dest_id and line.location_dest_id.complete_name in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"La ubicación '{line.location_dest_id.complete_name}' es una ubicación padre y no puede ser usada como destino.")
+            if line.location_id and line.location_id.complete_name and line.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+                raise UserError(f"La ubicación '{line.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen en una línea de movimiento.")
+            if line.location_dest_id and line.location_dest_id.complete_name and line.location_dest_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+                raise UserError(f"La ubicación '{line.location_dest_id.complete_name}' es una ubicación padre y no puede ser usada como destino en una línea de movimiento.")
 
     @api.onchange('location_id', 'location_dest_id')
     def _onchange_locations_forbidden(self):
-        if self.location_id and self.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+        if self.location_id and self.location_id.complete_name and self.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
             loc_name = self.location_id.complete_name
             self.location_id = False
             raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen. Se ha limpiado el campo.")
 
-        if self.location_dest_id and self.location_dest_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+        if self.location_dest_id and self.location_dest_id.complete_name and self.location_dest_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
             loc_name = self.location_dest_id.complete_name
             self.location_dest_id = False
             raise UserError(f"La ubicación '{loc_name}' es una ubicación padre. No puedes meter productos aquí. Se ha limpiado el campo.")
