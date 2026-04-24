@@ -378,19 +378,14 @@ class StockMoveWMDS(models.Model):
 
     _FORBIDDEN_LOCATIONS = {"WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"}
 
-    @api.onchange('location_id', 'location_dest_id')
-    def _onchange_locations_forbidden(self):
-        if self.location_id and self.location_id.complete_name and self.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-            loc_name = self.location_id.complete_name
-            self.location_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen. Se ha limpiado el campo.")
-            
-        if self.location_dest_id and self.location_dest_id.complete_name and self.location_dest_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-            loc_name = self.location_dest_id.complete_name
-            self.location_dest_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre. No puedes meter productos aquí. Se ha limpiado el campo.")
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            self._check_forbidden_locations(vals)
+        return super(StockMoveWMDS, self).create(vals_list)
 
     def write(self, vals):
+        self._check_forbidden_locations(vals)
         for move in self:
             changes = []
             if 'location_id' in vals:
@@ -409,32 +404,41 @@ class StockMoveWMDS(models.Model):
                 })
         return super(StockMoveWMDS, self).write(vals)
 
+    def _check_forbidden_locations(self, vals):
+        loc_id = vals.get('location_id')
+        dest_id = vals.get('location_dest_id')
+        if loc_id:
+            loc = self.env['stock.location'].sudo().browse(loc_id)
+            if loc.complete_name and loc.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+                raise UserError(f"Error al guardar: La ubicación '{loc.complete_name}' es una ubicación padre y no puede ser usada como origen.")
+        if dest_id:
+            dest = self.env['stock.location'].sudo().browse(dest_id)
+            if dest.complete_name and dest.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+                raise UserError(f"Error al guardar: La ubicación '{dest.complete_name}' es una ubicación padre y no puede ser usada como destino.")
+
 class StockMoveLineWMDS(models.Model):
     _inherit = 'stock.move.line'
 
     _FORBIDDEN_LOCATIONS = {"WH/Stock/Pickeable", "WH/Cuarentena", "WH/Stock/Almacenaje"}
 
-    @api.constrains('location_id', 'location_dest_id')
-    def _check_locations_forbidden(self):
-        for line in self:
-            if line.location_id and line.location_id.complete_name and line.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"La ubicación '{line.location_id.complete_name}' es una ubicación padre y no puede ser usada como origen en una línea de movimiento.")
-            if line.location_dest_id and line.location_dest_id.complete_name and line.location_dest_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"La ubicación '{line.location_dest_id.complete_name}' es una ubicación padre y no puede ser usada como destino en una línea de movimiento.")
-
-    @api.onchange('location_id', 'location_dest_id')
-    def _onchange_locations_forbidden(self):
-        if self.location_id and self.location_id.complete_name and self.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-            loc_name = self.location_id.complete_name
-            self.location_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen. Se ha limpiado el campo.")
-
-        if self.location_dest_id and self.location_dest_id.complete_name and self.location_dest_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-            loc_name = self.location_dest_id.complete_name
-            self.location_dest_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre. No puedes meter productos aquí. Se ha limpiado el campo.")
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            self._check_forbidden_locations(vals)
+        return super(StockMoveLineWMDS, self).create(vals_list)
 
     def write(self, vals):
-        # Eliminada la lógica de unlink para evitar pérdida de datos accidental.
-        # Las restricciones (@api.constrains) se encargarán de validar la integridad.
+        self._check_forbidden_locations(vals)
         return super(StockMoveLineWMDS, self).write(vals)
+
+    def _check_forbidden_locations(self, vals):
+        loc_id = vals.get('location_id')
+        dest_id = vals.get('location_dest_id')
+        if loc_id:
+            loc = self.env['stock.location'].sudo().browse(loc_id)
+            if loc.complete_name and loc.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+                raise UserError(f"Error al guardar: La ubicación '{loc.complete_name}' es una ubicación padre y no puede ser usada como origen en una línea de movimiento.")
+        if dest_id:
+            dest = self.env['stock.location'].sudo().browse(dest_id)
+            if dest.complete_name and dest.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
+                raise UserError(f"Error al guardar: La ubicación '{dest.complete_name}' es una ubicación padre y no puede ser usada como destino en una línea de movimiento.")
