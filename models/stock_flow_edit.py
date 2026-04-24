@@ -386,22 +386,17 @@ class StockMoveWMDS(models.Model):
             if move.location_dest_id and move.location_dest_id.complete_name in self._FORBIDDEN_LOCATIONS:
                 raise UserError(f"La ubicación '{move.location_dest_id.complete_name}' es una ubicación padre y no puede ser usada como destino.")
 
-    @api.onchange('location_id', 'location_dest_id', 'quant_id')
+    @api.onchange('location_id', 'location_dest_id')
     def _onchange_locations_forbidden(self):
-        if self.location_id and self.location_id.complete_name in self._FORBIDDEN_LOCATIONS:
+        if self.location_id and self.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
             loc_name = self.location_id.complete_name
             self.location_id = False
             raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen. Se ha limpiado el campo.")
             
-        if self.location_dest_id and self.location_dest_id.complete_name in self._FORBIDDEN_LOCATIONS:
+        if self.location_dest_id and self.location_dest_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
             loc_name = self.location_dest_id.complete_name
             self.location_dest_id = False
             raise UserError(f"La ubicación '{loc_name}' es una ubicación padre. No puedes meter productos aquí. Se ha limpiado el campo.")
-
-        if self.quant_id and self.quant_id.location_id and self.quant_id.location_id.complete_name in self._FORBIDDEN_LOCATIONS:
-            loc_name = self.quant_id.location_id.complete_name
-            self.quant_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen. Se ha limpiado el campo.")
 
     def write(self, vals):
         for move in self:
@@ -435,22 +430,17 @@ class StockMoveLineWMDS(models.Model):
             if line.location_dest_id and line.location_dest_id.complete_name in self._FORBIDDEN_LOCATIONS:
                 raise UserError(f"La ubicación '{line.location_dest_id.complete_name}' es una ubicación padre y no puede ser usada como destino.")
 
-    @api.onchange('location_id', 'location_dest_id', 'quant_id')
+    @api.onchange('location_id', 'location_dest_id')
     def _onchange_locations_forbidden(self):
-        if self.location_id and self.location_id.complete_name in self._FORBIDDEN_LOCATIONS:
+        if self.location_id and self.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
             loc_name = self.location_id.complete_name
             self.location_id = False
             raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen. Se ha limpiado el campo.")
 
-        if self.location_dest_id and self.location_dest_id.complete_name in self._FORBIDDEN_LOCATIONS:
+        if self.location_dest_id and self.location_dest_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
             loc_name = self.location_dest_id.complete_name
             self.location_dest_id = False
             raise UserError(f"La ubicación '{loc_name}' es una ubicación padre. No puedes meter productos aquí. Se ha limpiado el campo.")
-
-        if self.quant_id and self.quant_id.location_id and self.quant_id.location_id.complete_name in self._FORBIDDEN_LOCATIONS:
-            loc_name = self.quant_id.location_id.complete_name
-            self.quant_id = False
-            raise UserError(f"La ubicación '{loc_name}' es una ubicación padre y no puede ser usada como origen. Se ha limpiado el campo.")
 
     def write(self, vals):
         # Eliminada la lógica de unlink para evitar pérdida de datos accidental.
