@@ -29,7 +29,7 @@ class PendingTasks(http.Controller):
                 "ingresos": "Recepciones",
                 "acomodo": "Storage",
                 "pack": "Pack",
-                "reabastecimiento": "Reabastecimiento / Traslados",
+                "reabastecimiento": "Reabastecimiento",
                 "dispatch_ful": "Resurtido a Ful: Despacho",
                 "devoluciones": "Devolucion",
             }
