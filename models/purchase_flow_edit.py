@@ -19,7 +19,7 @@ class StockWMDSPurchase(models.Model):
     def button_validate(self):
         for picking in self:
             if picking.picking_type_id.name == 'Rackeo':
-                clean_origin = picking.origin
+                clean_origin = picking.origin.replace('COMEX: ', '') if picking.origin else ''
                 
                 po = self.env['purchase.order'].search(
                     [('name', '=', clean_origin)],
@@ -186,7 +186,7 @@ class PurchaseWMDS(models.Model):
 
         rackeos = self.env['stock.picking'].search([
             ('origin', '=', self.name),
-            ('picking_type_id.name', '=', 'Rackeos'),
+            ('picking_type_id.name', '=', 'Rackeo'),
             ('state', '=', 'done'),
         ])
         logging.info(f'\n\n rackeos: {rackeos} \n\n')
@@ -281,7 +281,7 @@ class PurchaseWMDS(models.Model):
 
         pick_type = self.env['stock.picking.type'].search([
             ('warehouse_id', '=', warehouse.id),
-            ('code', '=', 'internal'),
+            ('name', '=', 'Traslados internos'),
         ], limit=1)
 
         if not pick_type:
