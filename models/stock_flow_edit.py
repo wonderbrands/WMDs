@@ -398,7 +398,7 @@ class StockMoveWMDS(models.Model):
 class StockMoveLineWMDS(models.Model):
     _inherit = 'stock.move.line'
 
-    _FORBIDDEN_LOCATIONS = {"WH/Stock/Pickeable"}
+    _FORBIDDEN_LOCATIONS = {"WH/Stock/A_Pickable"}
     #_FORBIDDEN_LOCATIONS = []
 
     @api.model_create_multi
