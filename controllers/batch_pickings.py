@@ -31,6 +31,13 @@ class BatchPickController(http.Controller):
                 if not so.data_ready_to_pick:
                     return None, f"La SO {ref_cap} no esta lista para recolectar (le hace falta guía y/o carrier)"
 
+                #verificr si algun pick tiene una move line que no venga de A_Pickable
+                for move in pick_odoo.move_ids:
+                    for line in move.move_line_ids:
+                        if "A_Pickable" not in line.location_id.complete_name:
+                            return None, f"El pick {ref_cap} reserva productos desde posiciones no escogibles, disponibiliza los productos en Pickable y reestablece la ubicación de origen."
+
+
             elif ref_cap.startswith("WH/PICK"):
                 pick_odoo = request.env['stock.picking'].sudo().search([
                     ("name", "=", ref_cap),
@@ -50,6 +57,12 @@ class BatchPickController(http.Controller):
 
                 if not so.data_ready_to_pick:
                     return None, f"La SO {so.name} no esta lista para recolectar (le hace falta guía y/o carrier)"
+
+                #verificr si algun pick tiene una move line que no venga de A_Pickable
+                for move in pick_odoo.move_ids:
+                    for line in move.move_line_ids:
+                        if "A_Pickable" not in line.location_id.complete_name:
+                            return None, f"El pick {ref_cap} reserva productos desde posiciones no escogibles, disponibiliza los productos en Pickable y reestablece la ubicación de origen."
 
             else:
                 return None, f"Formato no reconocido: {ref_cap}. Use SO... o WH/PICK..."
