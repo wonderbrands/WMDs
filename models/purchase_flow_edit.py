@@ -44,6 +44,10 @@ class StockWMDSPurchase(models.Model):
                                 destiny = destiny.replace(
                                     'Stock/Almacenaje', 'Cuarentena'
                                 )
+                            elif 'Stock/A_Pickable' in destiny:
+                                destiny = destiny.replace(
+                                    'Stock/A_Pickable', 'Cuarentena'
+                                )
                             elif 'Stock' in destiny:
                                 destiny = destiny.replace(
                                     'Stock', 'Cuarentena'

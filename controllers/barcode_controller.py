@@ -253,12 +253,34 @@ class BarcodeController(http.Controller):
                 # Si la ubicación termina en N1, no revisamos si está vacía
                 is_n1 = scanned_location.name and scanned_location.name.endswith('N1')
                 if not is_n1:
+                    # 1. Verificar la ubicación escaneada
                     quants = request.env['stock.quant'].sudo().search([
                         ('location_id', '=', scanned_location.id),
                         ('quantity', '>', 0)
                     ], limit=1)
                     if quants:
                         return {"status": "error", "message": f"La ubicación {scanned_location.display_name} ya contiene productos. Elija una vacía."}
+                    
+                    # 2. Verificar la ubicación análoga (Stock <-> Cuarentena)
+                    dest_name = scanned_location.complete_name
+                    analog_name = False
+                    if 'Stock' in dest_name:
+                        analog_name = dest_name.replace('Stock/Almacenaje', 'Cuarentena').replace('Stock', 'Cuarentena')
+                    elif 'Cuarentena' in dest_name:
+                        analog_name = dest_name.replace('Cuarentena', 'Stock/Almacenaje')
+                    
+                    if analog_name and analog_name != dest_name:
+                        analog_loc = request.env['stock.location'].sudo().search([('complete_name', '=', analog_name)], limit=1)
+                        if analog_loc:
+                            analog_quants = request.env['stock.quant'].sudo().search([
+                                ('location_id', '=', analog_loc.id),
+                                ('quantity', '>', 0)
+                            ], limit=1)
+                            if analog_quants:
+                                return {
+                                    "status": "error", 
+                                    "message": f"La ubicación escaneada está vacía, pero su análoga '{analog_loc.display_name}' tiene stock. Ambas deben estar vacías para rackear aquí."
+                                }
 
             original_dest = line.location_dest_id
             # Hierarchy check: Accept any valid location as requested
