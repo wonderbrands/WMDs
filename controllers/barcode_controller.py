@@ -273,28 +273,19 @@ class BarcodeController(http.Controller):
                 # Intentar encontrar la PO. A veces el origin tiene prefijos o múltiples referencias.
                 origin = picking.origin or ''
                 # Buscar cualquier secuencia que parezca una PO (típicamente empieza con P o PO)
-                # O simplemente usar la lógica original pero más flexible
-                clean_origin = origin.replace('COMEX: ', '').strip()
+                clean_origin = origin
                 
                 # Intentar búsqueda exacta primero
                 po = request.env['purchase.order'].sudo().search([('name', '=', clean_origin)], limit=1)
                 
-                # Si no, intentar buscar por partes si el origin es compuesto
-                if not po and clean_origin:
-                    # Si el origin contiene comas o espacios, intentar con la primera parte
-                    first_part = clean_origin.split(',')[0].split(' ')[0].strip()
-                    po = request.env['purchase.order'].sudo().search([('name', '=', first_part)], limit=1)
-                
-                logger.info(f"COMEX Check: origin='{origin}', clean_origin='{clean_origin}', PO found={po.name if po else 'None'}, check_commertial={po.check_commertial if po else 'N/A'}")
                 
                 if po:
                     dest_name = scanned_location.complete_name
                     logger.info(f"COMEX Check: dest_name='{dest_name}', check_commertial={po.check_commertial}")
                     if not po.check_commertial:
                         vobo_message = "La compra NO tiene visto bueno COMEX. "
-                        if 'Stock' in dest_name or 'Almacenaje' in dest_name:
-                            new_dest_name = dest_name.replace('Stock/Almacenaje', 'Cuarentena').replace('Stock', 'Cuarentena')
-                            logger.info(f"COMEX Check: Attempting redirect to '{new_dest_name}'")
+                        if 'Stock/Almacenaje' in dest_name or 'Stock/A_Pickable' in dest_name:
+                            new_dest_name = dest_name.replace('Stock/Almacenaje', 'Cuarentena') if 'Stock/Almacenaje' in dest_name else dest_name.replace('Stock/A_Pickable', 'Cuarentena')
                             quarantine_loc = request.env['stock.location'].sudo().search([('complete_name', '=', new_dest_name)], limit=1)
                             if quarantine_loc:
                                 scanned_location = quarantine_loc
@@ -304,12 +295,15 @@ class BarcodeController(http.Controller):
                     else:
                         vobo_message = "La compra TIENE visto bueno COMEX. "
                         if 'Cuarentena' in dest_name:
-                            new_dest_name = dest_name.replace('Cuarentena', 'Stock/Almacenaje')
+                            if dest_name.endswith('N1'): 
+                                new_dest_name = dest_name.replace('Cuarentena', 'Stock/A_Pickable')
+                            else:
+                                new_dest_name = dest_name.replace('Cuarentena', 'Stock/Almacenaje')
                             logger.info(f"COMEX Check: Attempting redirect to '{new_dest_name}'")
                             storage_loc = request.env['stock.location'].sudo().search([('complete_name', '=', new_dest_name)], limit=1)
                             if storage_loc:
                                 scanned_location = storage_loc
-                                vobo_message += "Redirigiendo a ALMACENAJE."
+                                vobo_message += "Redirigiendo a ubicación ESTÁNDAR."
                             else:
                                 vobo_message += "Manteniendo ubicación de Cuarentena (equivalente de almacenaje no encontrado)."
                         else:

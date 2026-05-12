@@ -19,6 +19,15 @@ def convert_value_in_label(map_cols, value, key, return_severity=False):
                     return option['label']
     return value if not return_severity else None
 
+def get_location_sort_key(loc):
+    name = loc.name or ""
+    # Regex to identify the structure: [Aisle]-P[Position]-F[Front]-N[Level]
+    match = re.match(r"([A-Z]{1,2})-P(\d{2})-F(\d)-N(\d)$", name, re.IGNORECASE)
+    if match:
+        aisle, pos, front, level = match.groups()
+        return (0, aisle.upper(), int(pos), int(front), int(level))
+    return (1, name.upper(), 0, 0, 0)
+
 class CycleCount(http.Controller):
 
     @http.route('/wmds/v2/engine/get/cycle_counts', type='json', auth='user', methods=['POST'])
@@ -136,11 +145,11 @@ class CycleCount(http.Controller):
                 return True
             
             domain = [
-                ('complete_name', '=ilike', 'WH%'),
-                ('complete_name', 'not ilike', 'Cuarentena'),
+                ('complete_name', '=ilike', 'WH/Stock/%'),
+                ('complete_name', 'not ilike', '%Cuarentena%'),
                 ('usage', '=', 'internal') 
             ]
-            all_locs = request.env['stock.location'].sudo().with_context(active_test=True).search(domain, order='complete_name asc')
+            all_locs = request.env['stock.location'].sudo().with_context(active_test=True).search(domain)
             
             active_counts = request.env['scheduled.cycle.count'].sudo().search([('state', 'not in', ['finalized', 'cancelled'])])
             active_location_ids = active_counts.mapped('selected_location_ids.location_id.id')
@@ -148,9 +157,13 @@ class CycleCount(http.Controller):
             # Apply our advanced range filter
             locations = all_locs.filtered(lambda u: u.id not in active_location_ids and is_location_in_range(u.complete_name))
             
+            # Apply custom sorting
+            locations = sorted(locations, key=get_location_sort_key)
+            
             # Identify locations with active reservations
+            locations_ids = [l.id for l in locations]
             reservations = request.env['stock.move.line'].sudo().search([
-                ('location_id', 'in', locations.ids),
+                ('location_id', 'in', locations_ids),
                 ('state', 'not in', ['done', 'cancel']),
                 ('quantity', '>', 0)
             ])
@@ -250,12 +263,15 @@ class CycleCount(http.Controller):
     def get_cycle_count_details(self, **kw):
         try:
             count = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).browse(kw.get('count_id'))
+            # Sort locations by custom key
+            sorted_sl = sorted(count.selected_location_ids, key=lambda sl: get_location_sort_key(sl.location_id))
+            
             return {
                 'ok': True,
                 'details': {
                     'state': count.state,
                     'notes': count.notes,
-                    'locations': [{'id': l.location_id.id, 'complete_name': l.location_id.complete_name} for l in count.selected_location_ids],
+                    'locations': [{'id': l.location_id.id, 'complete_name': l.location_id.complete_name} for l in sorted_sl],
                     'waves': [{
                         'id': w.id,
                         'name': w.name,
@@ -655,33 +671,22 @@ class CycleCount(http.Controller):
             wave_id = kw.get('wave_id')
             wave = request.env['cycle.count.wave'].sudo().browse(wave_id)
             if wave.exists():
-                # Planned locations (those created with wave)
-                # We identify them because they are in wave.line_ids
-                # and maybe they are the ones without product_id or just all stock_location_ids in that wave
-                
-                # Let's get all stock_location_ids that were assigned to this wave
-                all_loc_ids = wave.line_ids.mapped('stock_location_id.id')
-                
-                # Check which ones have at least one line with product_id OR marked as counted
-                # Actually, a location is counted if it has at least one line with product_id OR it was explicitly marked as empty.
-                # However, the current logic for mark_location_empty also creates lines.
-                
-                # We consider a location 'done' if there is ANY line for it that HAS a product_id
-                # OR if it was explicitly marked as empty (maybe we should have a flag or just check lines).
+                all_loc_ids = list(set(wave.line_ids.mapped('stock_location_id.id')))
+                locations = request.env['stock.location'].sudo().browse(all_loc_ids)
+                sorted_locations = sorted(locations, key=get_location_sort_key)
                 
                 # Let's get the status of each location
                 locations_data = []
-                for loc_id in set(all_loc_ids):
-                    location = request.env['stock.location'].sudo().browse(loc_id)
+                for location in sorted_locations:
                     # A location is done if there is at least one line with counted_by_id set
                     has_count = request.env['cycle.count.line'].sudo().search_count([
                         ('wave_id', '=', wave.id),
-                        ('stock_location_id', '=', loc_id),
+                        ('stock_location_id', '=', location.id),
                         ('counted_by_id', '!=', False)
                     ]) > 0
                     
                     locations_data.append({
-                        'id': loc_id,
+                        'id': location.id,
                         'name': location.complete_name,
                         'status': 'done' if has_count else 'pending'
                     })
