@@ -256,7 +256,15 @@ class PurchaseWMDS(models.Model):
             if 'Cuarentena' not in loc_name:
                 continue
 
-            storage_name = loc_name.replace('Cuarentena', 'Stock/Almacenaje')
+            # ────────────────────────────────────────────────────────
+            # Las ubicaciones N1 no tienen equivalente en Stock/Almacenaje;
+            # su destino correcto es Stock/A_Pickable.
+            if 'N1' in loc_name:
+                storage_name = loc_name.replace('Cuarentena', 'Stock/A_Pickable')
+            else:
+                storage_name = loc_name.replace('Cuarentena', 'Stock/Almacenaje')
+            # ─────────────────────────────────────────────────────────────────
+
             storage_loc = self.env['stock.location'].search([
                 ('complete_name', '=', storage_name),
                 ('usage', '=', 'internal'),
@@ -274,7 +282,7 @@ class PurchaseWMDS(models.Model):
 
     def _create_release_pickings(self, lines):
         """
-        Crea picking(s) interno(s) Cuarentena → Almacenaje, 
+        Crea picking(s) interno(s) Cuarentena → Almacenaje/Pickeable,
         asigna cantidades y lotes exactos, y los VALIDA automáticamente.
         """
         self.ensure_one()
@@ -302,9 +310,16 @@ class PurchaseWMDS(models.Model):
         pickings = self.env['stock.picking']
 
         for (src_id, dest_id), group_lines in groups.items():
+
+            # ───────────────────────────────────────────────────────
+            # Mombre del STOR de origen (ubicación de cuarentena)
+            stor_origin = self.env['stock.location'].browse(src_id).complete_name
+            picking_origin = '%s:%s' % (self.name, stor_origin)
+            # ───────────────────────────────────────────────────────
+
             moves = []
             for line in group_lines:
-                # CORRECCIÓN: Definimos explícitamente el stock.move.line para forzar Odoo
+                # Definimos explícitamente el stock.move.line para forzar Odoo
                 # a mover esta cantidad y este lote específicos, bypassando reservas genéricas.
                 move_line_vals = {
                     'product_id': line['product_id'],
@@ -332,12 +347,12 @@ class PurchaseWMDS(models.Model):
                 'picking_type_id': pick_type.id,
                 'location_id': src_id,
                 'location_dest_id': dest_id,
-                'origin': 'COMEX: %s' % self.name,
+                'origin': picking_origin,
                 'comex_source_po_id': self.id,
                 'move_ids': moves,
             })
             
-            # CORRECCIÓN: Confirmar y VALIDAR el movimiento inmediatamente para que el
+            # Confirmar y VALIDAR el movimiento inmediatamente para que el
             # stock se mueva físicamente y no quede bloqueando futuras transferencias.
             picking.action_confirm()
             picking.button_validate()
@@ -398,6 +413,4 @@ class PurchaseWMDS(models.Model):
                         'date': fields.Datetime.now(),
                     })
 
-        return super(PurchaseWMDS, self).write(vals) 
-
-
+        return super(PurchaseWMDS, self).write(vals)
