@@ -209,16 +209,21 @@ class PurchaseWMDS(models.Model):
         if not cuarentena_lines:
             return []
 
-        # Agrupar por (producto, ubicación, lote)
+        # Agrupar por (STOR picking, producto, ubicación, lote)
+        # Es CRÍTICO incluir el picking_id en la clave para que cada STOR
+        # genere su propio traslado de liberación y no se fusionen.
         grouped = {}
         for ml in cuarentena_lines:
             key = (
+                ml.picking_id.id,                          # ← STOR picking
                 ml.product_id.id,
                 ml.location_dest_id.id,
                 ml.lot_id.id if ml.lot_id else False,
             )
             if key not in grouped:
                 grouped[key] = {
+                    'stor_picking_id': ml.picking_id.id,
+                    'stor_picking_name': ml.picking_id.name,  # e.g. WH/STOR/02662
                     'product_id': ml.product_id.id,
                     'product_name': ml.product_id.display_name,
                     'qty': 0.0,
@@ -231,7 +236,7 @@ class PurchaseWMDS(models.Model):
 
         result = []
         for key, data in grouped.items():
-            product_id, location_id, lot_id = key
+            _stor_picking_id, product_id, location_id, lot_id = key
 
             domain = [
                 ('product_id', '=', product_id),
@@ -304,18 +309,17 @@ class PurchaseWMDS(models.Model):
 
         groups = {}
         for line in lines:
-            key = (line['location_id'], line['storage_location_id'])
+            # La clave incluye el nombre del STOR para garantizar un traslado
+            # de liberación por cada picking de rackeo origen.
+            key = (line['stor_picking_name'], line['location_id'], line['storage_location_id'])
             groups.setdefault(key, []).append(line)
 
         pickings = self.env['stock.picking']
 
-        for (src_id, dest_id), group_lines in groups.items():
+        for (stor_picking_name, src_id, dest_id), group_lines in groups.items():
 
-            # ───────────────────────────────────────────────────────
-            # Mombre del STOR de origen (ubicación de cuarentena)
-            stor_origin = self.env['stock.location'].browse(src_id).complete_name
-            picking_origin = '%s:%s' % (self.name, stor_origin)
-            # ───────────────────────────────────────────────────────
+            # Origin: "PO00076:WH/STOR/02662" — nombre de la PO + nombre del STOR
+            picking_origin = '%s:%s' % (self.name, stor_picking_name)
 
             moves = []
             for line in group_lines:
