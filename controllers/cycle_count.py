@@ -224,7 +224,7 @@ class CycleCount(http.Controller):
                 }) for lid in location_ids]
             })
 
-            blocked_parent = request.env.ref('wmds.location_blocked').sudo()
+            blocked_parent = request.env.ref('wb_tech_location_blocking.location_blocked').sudo()
             block_reason_text = f"Conteo Cíclico: {count_obj.name}"
             if user_notes:
                 block_reason_text += f" ({user_notes})"

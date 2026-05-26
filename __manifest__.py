@@ -23,7 +23,8 @@ Planned replacement for the current WMS
         "stock",
         "stock_barcode",
         "purchase",
-        "WB_data_sale_order"
+        "WB_data_sale_order",
+        "wb_tech_location_blocking"
     ],
 
      'external_dependencies': {
@@ -47,7 +48,6 @@ Planned replacement for the current WMS
         "views/dock_n_bin.xml",
         "views/stock_move_wmds.xml",
         "views/stock_move_line_wmds.xml",
-        "views/stock_location_block_wizard_view.xml",
         'views/report_dispatch_sheet.xml',
         "security/ir.model.access.csv",
     ],

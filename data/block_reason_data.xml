@@ -10,10 +10,5 @@
         <record id="block_reason_none" model="block.reason">
             <field name="name">Sin bloquear</field>
         </record>
-
-        <record id="location_blocked" model="stock.location">
-            <field name="name">Bloqueado</field>
-            <field name="usage">internal</field>
-        </record>
     </data>
 </odoo>

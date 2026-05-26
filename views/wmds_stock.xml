@@ -91,34 +91,6 @@
             </field>
         </record>
 
-        <!-- ================= STOCK LOCATION INHERIT ================= -->
-        <record id="wmds_stock_location_inherit" model="ir.ui.view">
-            <field name="name">wmds.stock.location.inherit</field>
-            <field name="model">stock.location</field>
-            <field name="inherit_id" ref="stock.view_location_form"/>
-            <field name="arch" type="xml">
-                <xpath expr="//sheet" position="before">
-                    <header>
-                        <button name="action_open_block_wizard" 
-                                string="Bloquear Ubicación" 
-                                type="object" 
-                                class="btn-warning"
-                                invisible="block_reason != False"/>
-                        <button name="action_unblock" 
-                                string="Desbloquear" 
-                                type="object" 
-                                class="btn-success"
-                                invisible="block_reason == False"/>
-                    </header>
-                </xpath>
-                <xpath expr="//field[@name='comment']" position="before">
-                    <group string="WMDS Bloqueo" name="wmds_bloqueo">
-                        <field name="block_reason" readonly="1" invisible="not block_reason"/>
-                        <field name="original_parent_id" readonly="1" invisible="not original_parent_id"/>
-                    </group>
-                </xpath>
-            </field>
-        </record>
 
     </data>
 </odoo>
