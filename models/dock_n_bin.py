@@ -157,6 +157,30 @@ class SaleOrderEIWMDS(models.Model):
     dock_id = fields.Many2one("dock.storage", string="DOCK Actual", tracking=True)
     dispatched = fields.Boolean(string="Entregado a paquetería", default=False)
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        bypass_list = []
+        for vals in vals_list:
+            if 'sequence_number' in vals and vals.get('so_id'):
+                bypass_list.append({
+                    'so_id': vals['so_id'],
+                    'sequence_number': vals['sequence_number']
+                })
+                # Temporarily set so_id to False to bypass parent's auto-numbering logic
+                vals['so_id'] = False
+            else:
+                bypass_list.append(None)
+
+        records = super(SaleOrderEIWMDS, self).create(vals_list)
+
+        for record, bypass in zip(records, bypass_list):
+            if bypass:
+                record.write({
+                    'so_id': bypass['so_id'],
+                    'sequence_number': bypass['sequence_number']
+                })
+        return records
+
 class LogLine(models.Model):
     _name = "log.line"
     _description = "Log Line"

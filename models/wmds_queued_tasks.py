@@ -56,11 +56,20 @@ class WmdsQueuedTasks(models.Model):
     @classmethod
     def _process_tasks_thread(cls, registry, dbname):
         with registry.cursor() as cr:
-            env = api.Environment(cr, SUPERUSER_ID, {})
-            # Find any pending tasks
-            pending_tasks = env['wmds.queued_tasks'].search([('status', '=', 'pending')], order='id asc')
-            for task in pending_tasks:
-                task._process_task()
+            # Try to acquire advisory lock. If another thread is already processing the queue, exit immediately.
+            cr.execute("SELECT pg_try_advisory_lock(847192847)")
+            if not cr.fetchone()[0]:
+                _logger.info("Another queue processor thread is already running. Exiting.")
+                return
+
+            try:
+                env = api.Environment(cr, SUPERUSER_ID, {})
+                # Find any pending tasks
+                pending_tasks = env['wmds.queued_tasks'].search([('status', '=', 'pending')], order='id asc')
+                for task in pending_tasks:
+                    task._process_task()
+            finally:
+                cr.execute("SELECT pg_advisory_unlock(847192847)")
 
     def _process_task(self):
         self.ensure_one()
@@ -133,6 +142,9 @@ class WmdsQueuedTasks(models.Model):
             moves = pickings.mapped('move_ids').filtered(lambda m: m.state == 'done' and not m.dispatched)
             
             for move in moves:
+                if move.write_date and self.date_created and move.write_date > self.date_created:
+                    _logger.info(f"Skipping stale move_to_bin for move {move.id} (task date_created: {self.date_created}, write_date: {move.write_date})")
+                    continue
                 move.write({
                     'on_bin': True,
                     'bin_id': bin_storage.id,
@@ -163,6 +175,7 @@ class WmdsQueuedTasks(models.Model):
                     ('display_name_custom', '=', so_custom_name)
                 ], limit=1)
 
+                is_new = False
                 if not ei_tag and '/' in so_custom_name:
                     parts = so_custom_name.split('/')
                     if len(parts) == 2:
@@ -176,10 +189,14 @@ class WmdsQueuedTasks(models.Model):
                                         'so_id': so.id,
                                         'sequence_number': seq
                                     })
+                                    is_new = True
                             except ValueError:
                                 pass
 
                 if ei_tag:
+                    if not is_new and ei_tag.write_date and self.date_created and ei_tag.write_date > self.date_created:
+                        _logger.info(f"Skipping stale move_to_bin for package {so_custom_name} (task date_created: {self.date_created}, write_date: {ei_tag.write_date})")
+                        continue
                     ei_tag.write({
                         'on_bin': True,
                         'bin_id': bin_storage.id,
@@ -262,6 +279,9 @@ class WmdsQueuedTasks(models.Model):
 
         ei_tags = self.env["sale.order.ei"].sudo().search(ei_domain)
         for tag in ei_tags:
+            if tag.write_date and self.date_created and tag.write_date > self.date_created:
+                _logger.info(f"Skipping stale move_to_dock for package {tag.display_name_custom} (task date_created: {self.date_created}, write_date: {tag.write_date})")
+                continue
             tag.on_bin = False
             tag.bin_id = False
             tag.on_dock = True
@@ -301,6 +321,9 @@ class WmdsQueuedTasks(models.Model):
         processed_batches = self.env['stock.picking.batch']
 
         for move in moves:
+            if move.write_date and self.date_created and move.write_date > self.date_created:
+                _logger.info(f"Skipping stale move_to_dock for move {move.id} (task date_created: {self.date_created}, write_date: {move.write_date})")
+                continue
             move.on_bin = False
             move.bin_id = False
             move.on_dock = True
@@ -351,13 +374,20 @@ class WmdsQueuedTasks(models.Model):
             so_names = ", ".join(cancelled_sos.mapped('name'))
             raise UserError(f"No se puede despachar: Los pedidos {so_names} están cancelados.")
 
-        ei_tags.write({
+        valid_ei_tags = self.env["sale.order.ei"].sudo()
+        for tag in ei_tags:
+            if tag.write_date and self.date_created and tag.write_date > self.date_created:
+                _logger.info(f"Skipping stale dispatch for package {tag.display_name_custom} (task date_created: {self.date_created}, write_date: {tag.write_date})")
+                continue
+            valid_ei_tags |= tag
+
+        valid_ei_tags.write({
             'dispatched': True,
             'on_dock': False,
             'dock_id': False
         })
         
-        for tag in ei_tags:
+        for tag in valid_ei_tags:
             log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
             
             picking = self.env['stock.picking'].sudo().search([
@@ -380,7 +410,7 @@ class WmdsQueuedTasks(models.Model):
                     'date': fields.Datetime.now(),
                 })
 
-        sale_orders = ei_tags.mapped('so_id')
+        sale_orders = valid_ei_tags.mapped('so_id')
         for so in sale_orders:
             total_ei = so.ei_total
             dispatched_ei_count = self.env['sale.order.ei'].sudo().search_count([
