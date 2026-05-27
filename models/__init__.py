@@ -14,3 +14,5 @@ from . import wmds_dispatch_session
 from . import stock_move_line
 from . import dispatch_session_report
 from . import dispatch_sheet
+from . import wmds_queued_tasks
+

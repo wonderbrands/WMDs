@@ -129,7 +129,7 @@
 
                 <!-- Visualization of n/total -->
                 <div class="scan-summary-grid" v-if="scanSummary.length > 0">
-                    <div v-for="item in scanSummary" :key="item.so_name" class="summary-card">
+                    <div v-for="item in paginatedScanSummary" :key="item.so_name" class="summary-card">
                         <div class="summary-so">{{ item.so_name }}</div>
                         <div class="summary-progress">
                             <div class="progress-text">{{ item.total_scanned }} / {{ item.total }}</div>
@@ -140,19 +140,59 @@
                     </div>
                 </div>
 
+                <!-- Pagination Control for Summary Cards -->
+                <div v-if="summaryTotalPages > 1" class="pagination-container" style="margin-top: 10px; margin-bottom: 15px;">
+                    <Button 
+                        icon="fa fa-chevron-left" 
+                        class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                        :disabled="summaryCurrentPage === 1" 
+                        @click="summaryCurrentPage--" 
+                    />
+                    <span class="pagination-info">
+                        Pág. <b>{{ summaryCurrentPage }}</b> de <b>{{ summaryTotalPages }}</b>
+                        <small class="pagination-total">({{ scanSummary.length }} órdenes)</small>
+                    </span>
+                    <Button 
+                        icon="fa fa-chevron-right" 
+                        class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                        :disabled="summaryCurrentPage === summaryTotalPages" 
+                        @click="summaryCurrentPage++" 
+                    />
+                </div>
+
                 <div class="log-list">
-                    <div v-for="(order, index) in so" :key="index" class="log-item">
+                    <div v-for="order in paginatedSo" :key="order.name" class="log-item">
                         <div>
                             <i class="fa fa-barcode barcode-icon"></i>
                             {{ order.name }}
                             <small class="text-info ml-2">({{ order.current }}/{{ order.total }})</small>
                         </div>
-                        <Button v-if="!showConfirmation" icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
+                        <Button v-if="!showConfirmation" icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(order)" />
                     </div>
                     <div v-if="so.length === 0" class="empty-log">
                         <i class="fa fa-search search-icon"></i>
                         Esperando escaneo de etiqueta EI (SOXXXX/N)...
                     </div>
+                </div>
+
+                <!-- Pagination Control -->
+                <div v-if="totalPages > 1" class="pagination-container">
+                    <Button 
+                        icon="fa fa-chevron-left" 
+                        class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                        :disabled="currentPage === 1" 
+                        @click="currentPage--" 
+                    />
+                    <span class="pagination-info">
+                        Pág. <b>{{ currentPage }}</b> de <b>{{ totalPages }}</b>
+                        <small class="pagination-total">({{ so.length }} ordenes)</small>
+                    </span>
+                    <Button 
+                        icon="fa fa-chevron-right" 
+                        class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                        :disabled="currentPage === totalPages" 
+                        @click="currentPage++" 
+                    />
                 </div>
             </div>
 
@@ -183,6 +223,9 @@ export default {
             showConfirmation: false,
             targetBin: null,
             lastUsedBin: null,
+            currentPage: 1,
+            summaryCurrentPage: 1,
+
             // ── Carrier ──
             carrierList: [],
             carrierIdChoice: null,
@@ -213,7 +256,41 @@ export default {
                 };
             });
             return result;
+        },
+        totalPages() {
+            return Math.ceil(this.so.length / 4) || 1;
+        },
+        paginatedSo() {
+            const start = (this.currentPage - 1) * 4;
+            return this.so.slice(start, start + 4);
+        },
+        summaryTotalPages() {
+            return Math.ceil(this.scanSummary.length / 4) || 1;
+        },
+        paginatedScanSummary() {
+            const start = (this.summaryCurrentPage - 1) * 4;
+            return this.scanSummary.slice(start, start + 4);
         }
+
+    },
+    watch: {
+        'so.length'(newVal, oldVal) {
+            const maxPages = Math.ceil(newVal / 4) || 1;
+            if (newVal > oldVal) {
+                this.currentPage = maxPages;
+            } else if (this.currentPage > maxPages) {
+                this.currentPage = maxPages;
+            }
+        },
+        'scanSummary.length'(newVal, oldVal) {
+            const maxPages = Math.ceil(newVal / 4) || 1;
+            if (newVal > oldVal) {
+                this.summaryCurrentPage = maxPages;
+            } else if (this.summaryCurrentPage > maxPages) {
+                this.summaryCurrentPage = maxPages;
+            }
+        }
+
     },
     async mounted() {
         console.log("Action: BinComponent mounted");
@@ -323,6 +400,25 @@ export default {
 
                 if (response.ok) {
                     console.log("Action: move_to_bin successful");
+                    if (response.status === "queued") {
+                        if (this.$toast) {
+                            this.$toast.add({
+                                severity: 'info',
+                                summary: 'Movimiento Encolado',
+                                detail: 'Debido a la cantidad de paquetes (>10), el traslado se procesará en segundo plano. Puedes continuar usando la app.',
+                                life: 8000
+                            });
+                        }
+                    } else {
+                        if (this.$toast) {
+                            this.$toast.add({
+                                severity: 'success',
+                                summary: 'Traslado Exitoso',
+                                detail: 'Los paquetes han sido movidos al BIN.',
+                                life: 4000
+                            });
+                        }
+                    }
                     this.lastUsedBin = binName;
                     this.so = [];
                     this.scan_bin = false;
@@ -330,6 +426,7 @@ export default {
                     this.targetBin = null;
                     this.scannerKey++; 
                 }
+
             } catch (e) {
                 console.log("Action: Error in confirmMove", e);
                 this.$toast.add({ severity: 'error', summary: 'Error de Servidor', detail: 'No se pudo realizar el movimiento en Odoo.', life: 3000 });
@@ -370,9 +467,12 @@ export default {
             console.log("Action: clearAllOrders triggered");
             this.so = [];
         },
-        removeOrder(index) {
-            console.log("Action: removeOrder triggered for index:", index);
-            this.so.splice(index, 1);
+        removeOrder(order) {
+            console.log("Action: removeOrder triggered for order:", order.name);
+            const index = this.so.findIndex(o => o.name === order.name);
+            if (index !== -1) {
+                this.so.splice(index, 1);
+            }
         }
     }
 }
@@ -602,5 +702,39 @@ export default {
     font-size: 2rem;
     display: block;
     margin-bottom: 10px;
+}
+
+.pagination-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 12px;
+    padding: 8px;
+    background: #34495e;
+    border-radius: 6px;
+    border: 1px solid #455a64;
+}
+
+.pagination-info {
+    font-size: 0.9rem;
+    color: #ecf0f1;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.pagination-total {
+    color: #bdc3c7;
+    margin-left: 5px;
+}
+
+.pagination-btn {
+    color: #ecf0f1 !important;
+}
+
+.pagination-btn:disabled {
+    color: #7f8c8d !important;
+    opacity: 0.5;
 }
 </style>

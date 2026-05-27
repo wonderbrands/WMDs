@@ -91,10 +91,63 @@
                         <i class="fa fa-check-circle me-1"></i> {{ packageCount }} paquetes detectados
                     </div>
                     
+                    <!-- Summary Cards -->
+                    <div class="scan-summary-grid" v-if="scanSummary.length > 0" style="margin-bottom: 10px; width: 100%; text-align: left;">
+                        <div v-for="item in paginatedScanSummary" :key="item.so_name" class="summary-card">
+                            <div class="summary-so">{{ item.so_name }}</div>
+                            <div class="summary-progress">
+                                <div class="progress-text">{{ item.total_scanned }} / {{ item.total }}</div>
+                                <div class="progress-bar">
+                                    <div class="progress-fill" :style="{ width: (item.total_scanned / item.total * 100) + '%' }"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pagination Control for Summary Cards -->
+                    <div v-if="summaryTotalPages > 1" class="pagination-container" style="margin-top: 5px; margin-bottom: 15px; width: 100%;">
+                        <Button 
+                            icon="fa fa-chevron-left" 
+                            class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                            :disabled="summaryCurrentPage === 1" 
+                            @click="summaryCurrentPage--" 
+                        />
+                        <span class="pagination-info">
+                            Pág. <b>{{ summaryCurrentPage }}</b> de <b>{{ summaryTotalPages }}</b>
+                            <small class="pagination-total">({{ scanSummary.length }} órdenes)</small>
+                        </span>
+                        <Button 
+                            icon="fa fa-chevron-right" 
+                            class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                            :disabled="summaryCurrentPage === summaryTotalPages" 
+                            @click="summaryCurrentPage++" 
+                        />
+                    </div>
+
                     <div class="package-list-dock" v-if="packageDetails.length > 0">
-                        <div v-for="pkg in packageDetails" :key="pkg.name" class="package-item-dock">
+                        <div v-for="pkg in paginatedPackageDetails" :key="pkg.name" class="package-item-dock">
                             <i class="fa fa-barcode me-2"></i> {{ pkg.name }} <small>({{ pkg.so }})</small>
                         </div>
+                    </div>
+
+                    <!-- Pagination Control -->
+                    <div v-if="totalPages > 1" class="pagination-container">
+                        <Button 
+                            icon="fa fa-chevron-left" 
+                            class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                            :disabled="currentPage === 1" 
+                            @click="currentPage--" 
+                        />
+                        <span class="pagination-info">
+                            Pág. <b>{{ currentPage }}</b> de <b>{{ totalPages }}</b>
+                            <small class="pagination-total">({{ packageDetails.length }} paquetes)</small>
+                        </span>
+                        <Button 
+                            icon="fa fa-chevron-right" 
+                            class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                            :disabled="currentPage === totalPages" 
+                            @click="currentPage++" 
+                        />
                     </div>
                     
                     <div v-if="!showDockConfirmation">
@@ -134,6 +187,60 @@ export default {
             showDockConfirmation: false,
             targetDock: null,
             binCarrierName: '',
+            currentPage: 1,
+            summaryCurrentPage: 1,
+        }
+
+    },
+    computed: {
+        totalPages() {
+            return Math.ceil(this.packageDetails.length / 4) || 1;
+        },
+        paginatedPackageDetails() {
+            const start = (this.currentPage - 1) * 4;
+            return this.packageDetails.slice(start, start + 4);
+        },
+        scanSummary() {
+            const summaryMap = {};
+            this.packageDetails.forEach(item => {
+                const soName = item.so || 'N/A';
+                if (!summaryMap[soName]) {
+                    summaryMap[soName] = { 
+                        so_name: soName, 
+                        total_scanned: 0, 
+                        total: item.is_full ? 1 : 0 
+                    };
+                }
+                summaryMap[soName].total_scanned++;
+            });
+            return Object.values(summaryMap).map(item => {
+                if (item.total === 0) {
+                    item.total = item.total_scanned;
+                }
+                return item;
+            });
+        },
+        summaryTotalPages() {
+            return Math.ceil(this.scanSummary.length / 4) || 1;
+        },
+        paginatedScanSummary() {
+            const start = (this.summaryCurrentPage - 1) * 4;
+            return this.scanSummary.slice(start, start + 4);
+        }
+
+    },
+    watch: {
+        'packageDetails.length'(newVal, oldVal) {
+            const maxPages = Math.ceil(newVal / 4) || 1;
+            if (this.currentPage > maxPages) {
+                this.currentPage = maxPages;
+            }
+        },
+        'scanSummary.length'(newVal, oldVal) {
+            const maxPages = Math.ceil(newVal / 4) || 1;
+            if (this.summaryCurrentPage > maxPages) {
+                this.summaryCurrentPage = maxPages;
+            }
         }
     },
     mounted() {
@@ -217,19 +324,31 @@ export default {
 
                 if (response.ok) {
                     console.log("Action: Move successful");
-                    const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
-                    if (!isManager) {
-                        this.$toast.add({ 
-                            severity: 'success', 
-                            summary: 'Traslado Exitoso', 
-                            detail: `Se han movido ${response.moved_packages} paquetes desde ${this.scannedBin} al DOCK ${this.targetDock}.`, 
-                            life: 4000 
-                        });
+                    if (response.status === "queued") {
+                        if (this.$toast) {
+                            this.$toast.add({
+                                severity: 'info',
+                                summary: 'Traslado Encolado',
+                                detail: 'Debido a la cantidad de paquetes (>10), el traslado se procesará en segundo plano. Puedes continuar usando la app.',
+                                life: 8000
+                            });
+                        }
+                    } else {
+                        const isManager = this.store.role && (this.store.role.role === 'WMDs Manager' || (this.store.role.permissions && this.store.role.permissions.includes('WMDs Manager')));
+                        if (!isManager) {
+                            this.$toast.add({ 
+                                severity: 'success', 
+                                summary: 'Traslado Exitoso', 
+                                detail: `Se han movido ${response.moved_packages} paquetes desde ${this.scannedBin} al DOCK ${this.targetDock}.`, 
+                                life: 4000 
+                            });
+                        }
                     }
                     this.resetScan();
                     this.showDockConfirmation = false;
                     this.targetDock = null;
                 } else {
+
                     console.log("Action: Move failed", response.error);
                     this.$toast.add({ 
                         severity: 'error', 
@@ -530,5 +649,85 @@ export default {
   0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
   40% {transform: translateY(-15px);}
   60% {transform: translateY(-7px);}
+}
+
+.pagination-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 12px;
+    padding: 8px;
+    background: #34495e;
+    border-radius: 6px;
+    border: 1px solid #455a64;
+}
+
+.pagination-info {
+    font-size: 0.9rem;
+    color: #ecf0f1;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.pagination-total {
+    color: #bdc3c7;
+    margin-left: 5px;
+}
+
+.pagination-btn {
+    color: #ecf0f1 !important;
+}
+
+.pagination-btn:disabled {
+    color: #7f8c8d !important;
+    opacity: 0.5;
+}
+
+.scan-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 5px;
+}
+
+.summary-card {
+    background: #34495e;
+    padding: 8px;
+    border-radius: 6px;
+    border-left: 4px solid #3498db;
+}
+
+.summary-so {
+    font-size: 0.8rem;
+    font-weight: bold;
+    color: #bdc3c7;
+}
+
+.summary-progress {
+    margin-top: 4px;
+}
+
+.progress-text {
+    font-size: 0.9rem;
+    font-weight: 800;
+    text-align: right;
+    color: #ecf0f1;
+}
+
+.progress-bar {
+    height: 4px;
+    background: #2c3e50;
+    border-radius: 2px;
+    margin-top: 2px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #2ecc71;
+    transition: width 0.3s ease;
 }
 </style>

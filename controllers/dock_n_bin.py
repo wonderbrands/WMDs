@@ -111,11 +111,42 @@ class DockNBin(http.Controller):
                 _logger.error("Faltan datos en move_to_bin")
                 return {'error': 'Missing data'}
 
+            # Determine count of items to move
+            item_count = 0
+            if orders:
+                item_count = len(orders)
+            elif batch_id or pick_id:
+                if batch_id:
+                    batch = request.env['stock.picking.batch'].sudo().browse(batch_id)
+                    pickings = batch.picking_ids
+                else:
+                    picking = request.env['stock.picking'].sudo().browse(pick_id)
+                    pickings = picking
+                moves = pickings.mapped('move_ids').filtered(lambda m: m.state == 'done' and not m.dispatched)
+                item_count = len(moves)
+
+            if item_count > 10:
+                import json
+                task = request.env['wmds.queued_tasks'].sudo().create({
+                    'task_type': 'move_to_bin',
+                    'params': json.dumps(kw),
+                    'operator_login': operator_login or '',
+                    'status': 'pending',
+                })
+                task._trigger_async_process()
+                return {
+                    "ok": True,
+                    "status": "queued",
+                    "queued_task_id": task.id,
+                    "message": f"Debido a que son más de 10 paquetes ({item_count}), la tarea se ha encolado en segundo plano."
+                }
+
             operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             if not bin_storage:
                 _logger.error(f"Bin {bin_name} no encontrado")
                 return {'error': 'Bin not found'}
+
 
             # Guardar el carrier en el BIN
             if carrier_id:
@@ -399,6 +430,39 @@ class DockNBin(http.Controller):
 
             if not dock_storage or not bin_storage:
                 return {'error': 'Bin o Dock no existe', 'ok': False}
+
+            # Determine count of items to move
+            item_count = 0
+            if selected_packages:
+                item_count = len(selected_packages)
+            else:
+                ei_count = request.env["sale.order.ei"].sudo().search_count([
+                    ('bin_id', '=', bin_storage.id),
+                    ('on_bin', '=', True)
+                ])
+                move_count = request.env["stock.move"].sudo().search_count([
+                    ('bin_id', '=', bin_storage.id),
+                    ('on_bin', '=', True)
+                ])
+                item_count = ei_count + move_count
+
+            if item_count > 10:
+                import json
+                task = request.env['wmds.queued_tasks'].sudo().create({
+                    'task_type': 'move_to_dock',
+                    'params': json.dumps(kw),
+                    'operator_login': operator_login or '',
+                    'status': 'pending',
+                })
+                task._trigger_async_process()
+                return {
+                    "ok": True,
+                    "status": "queued",
+                    "queued_task_id": task.id,
+                    "moved_packages": item_count,
+                    "message": f"Debido a que son más de 10 paquetes ({item_count}), la tarea se ha encolado en segundo plano."
+                }
+
 
             # Filter logic for partial movement
             ei_domain = [('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]

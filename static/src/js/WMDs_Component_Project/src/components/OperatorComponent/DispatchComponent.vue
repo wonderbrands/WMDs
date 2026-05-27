@@ -114,9 +114,24 @@
                         </div>
                     </div>
 
+                    <!-- Cancelled orders warning banner -->
+                    <div v-if="cancelledOrdersList.length > 0" class="cancelled-banner">
+                        <i class="fa fa-exclamation-triangle"></i>
+                        <span>
+                            <strong>Atención:</strong> Pedido(s) <strong>CANCELADO(S)</strong>: <strong>{{ cancelledOrdersList.join(', ') }}</strong>.
+                            Remuévalo(s) físicamente del carro y de la lista.
+                        </span>
+                        <Button 
+                            label="Remover" 
+                            icon="fa fa-trash" 
+                            class="p-button-danger p-button-sm ml-2" 
+                            @click="removeCancelledOrders" 
+                        />
+                    </div>
+
                     <!-- Visualization of n/total -->
                     <div class="scan-summary-grid" v-if="scanSummary.length > 0">
-                        <div v-for="item in scanSummary" :key="item.so_name" class="summary-card">
+                        <div v-for="item in paginatedScanSummary" :key="item.so_name" class="summary-card">
                             <div class="summary-so">{{ item.so_name }}</div>
                             <div class="summary-carrier" v-if="item.carrier_name">
                                 <i class="fa fa-truck"></i> {{ item.carrier_name }}
@@ -130,25 +145,67 @@
                         </div>
                     </div>
 
+                    <!-- Pagination Control for Summary Cards -->
+                    <div v-if="summaryTotalPages > 1" class="pagination-container" style="margin-top: 10px; margin-bottom: 15px;">
+                        <Button 
+                            icon="fa fa-chevron-left" 
+                            class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                            :disabled="summaryCurrentPage === 1" 
+                            @click="summaryCurrentPage--" 
+                        />
+                        <span class="pagination-info">
+                            Pág. <b>{{ summaryCurrentPage }}</b> de <b>{{ summaryTotalPages }}</b>
+                            <small class="pagination-total">({{ scanSummary.length }} órdenes)</small>
+                        </span>
+                        <Button 
+                            icon="fa fa-chevron-right" 
+                            class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                            :disabled="summaryCurrentPage === summaryTotalPages" 
+                            @click="summaryCurrentPage++" 
+                        />
+                    </div>
+
                     <div class="log-list">
-                        <div v-for="(order, index) in so" :key="index" class="log-item">
+                        <div v-for="order in paginatedSo" :key="order.name" class="log-item" :class="{ 'log-item-cancelled': order.so_state === 'cancel' }">
                             <div class="log-item-info">
                                 <div>
                                     <i class="fa fa-barcode barcode-icon"></i>
                                     {{ order.name }}
                                     <small class="text-info ml-2">({{ order.current }}/{{ order.total }})</small>
+                                    <span v-if="order.so_state === 'cancel'" class="badge-cancelled">CANCELADO</span>
                                 </div>
                                 <div v-if="order.product_name" class="log-item-product">
                                     <small>{{ order.product_name }}</small>
                                 </div>
                             </div>
-                            <Button icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(index)" />
+                            <Button icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(order)" />
                         </div>
+
                         
                         <div v-if="so.length === 0" class="empty-log">
                             <i class="fa fa-archive search-icon"></i>
                             Esperando escaneo de etiqueta EI (SOXXXX/N)...
                         </div>
+                    </div>
+
+                    <!-- Pagination Control -->
+                    <div v-if="totalPages > 1" class="pagination-container">
+                        <Button 
+                            icon="fa fa-chevron-left" 
+                            class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                            :disabled="currentPage === 1" 
+                            @click="currentPage--" 
+                        />
+                        <span class="pagination-info">
+                            Pág. <b>{{ currentPage }}</b> de <b>{{ totalPages }}</b>
+                            <small class="pagination-total">({{ so.length }} ordenes)</small>
+                        </span>
+                        <Button 
+                            icon="fa fa-chevron-right" 
+                            class="p-button-rounded p-button-text p-button-sm pagination-btn" 
+                            :disabled="currentPage === totalPages" 
+                            @click="currentPage++" 
+                        />
                     </div>
                 </div>
 
@@ -288,6 +345,9 @@ export default {
             sessionId: null,
             loadingSession: true,
             sessionRecovered: false,
+            currentPage: 1,
+            summaryCurrentPage: 1,
+
             // ── Carrier ──
             carrierList: [],
             selectedCarrierId: null,
@@ -337,7 +397,46 @@ export default {
                 };
             });
             return result;
+        },
+        totalPages() {
+            return Math.ceil(this.so.length / 4) || 1;
+        },
+        paginatedSo() {
+            const start = (this.currentPage - 1) * 4;
+            return this.so.slice(start, start + 4);
+        },
+        summaryTotalPages() {
+            return Math.ceil(this.scanSummary.length / 4) || 1;
+        },
+        paginatedScanSummary() {
+            const start = (this.summaryCurrentPage - 1) * 4;
+            return this.scanSummary.slice(start, start + 4);
+        },
+        cancelledOrdersList() {
+            const cancelled = this.so.filter(o => o.so_state === 'cancel');
+            return [...new Set(cancelled.map(o => o.so_name))];
         }
+
+
+    },
+    watch: {
+        'so.length'(newVal, oldVal) {
+            const maxPages = Math.ceil(newVal / 4) || 1;
+            if (newVal > oldVal) {
+                this.currentPage = maxPages;
+            } else if (this.currentPage > maxPages) {
+                this.currentPage = maxPages;
+            }
+        },
+        'scanSummary.length'(newVal, oldVal) {
+            const maxPages = Math.ceil(newVal / 4) || 1;
+            if (newVal > oldVal) {
+                this.summaryCurrentPage = maxPages;
+            } else if (this.summaryCurrentPage > maxPages) {
+                this.summaryCurrentPage = maxPages;
+            }
+        }
+
     },
     async mounted() {
         console.log("Action: DispatchComponent mounted");
@@ -421,6 +520,10 @@ export default {
                     }));
 
                     this.sessionRecovered = true;
+                    this.$nextTick(() => {
+                        this.currentPage = 1;
+                        this.summaryCurrentPage = 1;
+                    });
                     console.log(`Action: Sesión ${this.sessionId} recuperada con ${this.so.length} líneas`);
                     
                     if (this.$toast) {
@@ -550,6 +653,26 @@ export default {
             this.so = [];
         },
 
+        async removeCancelledOrders() {
+            const cancelled = this.so.filter(o => o.so_state === 'cancel');
+            for (const order of cancelled) {
+                await this.removeFromSession(order.name);
+                const idx = this.so.findIndex(o => o.name === order.name);
+                if (idx !== -1) {
+                    this.so.splice(idx, 1);
+                }
+            }
+            if (this.$toast) {
+                this.$toast.add({
+                    severity: 'success',
+                    summary: 'Pedidos removidos',
+                    detail: 'Se han removido los pedidos cancelados de la lista.',
+                    life: 3000
+                });
+            }
+        },
+
+
 
         setMode(mode) {
             this.dispatchMode = mode;
@@ -597,11 +720,26 @@ export default {
                             this.$toast.add({ 
                                 severity: 'error', 
                                 summary: 'Pedido cancelado', 
-                                detail: `El pedido ${response.so} está cancelado y no puede ser despachado.`, 
-                                life: 5000 
+                                detail: `El pedido ${response.so} está cancelado. Se agregará a la lista en rojo para que proceda a removerlo físicamente.`, 
+                                life: 6000 
                             });
                         }
+                        const newItem = {
+                            name: response.name,
+                            so_name: response.so,
+                            so_state: 'cancel',
+                            total: response.total,
+                            current: response.current,
+                            dispatched_count: response.dispatched_count || 0,
+                            product_name: '',
+                            carrier_name: '',
+                            scan_datetime: new Date().toISOString(),
+                            line_id: null,
+                        };
+                        this.so.push(newItem);
+                        await this.persistScanToSession(newItem);
                     } else if (response.state && response.state.dispatched) {
+
                         if(this.$toast) {
                             this.$toast.add({ 
                                 severity: 'error', 
@@ -688,8 +826,17 @@ export default {
                     picks_ids: picks_ids 
                 });
 
-                if (response.status === "success") {
-                    if (response.warning) {
+                if (response.status === "success" || response.status === "queued") {
+                    if (response.status === "queued") {
+                        if (this.$toast) {
+                            this.$toast.add({
+                                severity: 'info',
+                                summary: 'Despacho encolado',
+                                detail: 'Debido al volumen de paquetes (>10), el despacho se procesará en segundo plano. Puedes continuar usando la app.',
+                                life: 8000
+                            });
+                        }
+                    } else if (response.warning) {
                         this.$toast.add({ 
                             severity: 'warn', 
                             summary: 'Entrega parcial', 
@@ -719,6 +866,7 @@ export default {
 
                     this.restartScanner(); 
                 } else {
+
                     throw new Error(response.message || "Error desconocido");
                 }
             } catch (e) {
@@ -885,10 +1033,13 @@ export default {
             this.so = [];
         },
 
-        async removeOrder(index) {
-            const eiName = this.so[index].name;
-            this.so.splice(index, 1);
-            await this.removeFromSession(eiName);
+        async removeOrder(order) {
+            const index = this.so.findIndex(o => o.name === order.name);
+            if (index !== -1) {
+                const eiName = this.so[index].name;
+                this.so.splice(index, 1);
+                await this.removeFromSession(eiName);
+            }
         },
 
         async dispatchFullItem(item) {
@@ -1457,5 +1608,71 @@ export default {
         size: A4;
         margin: 10mm;
     }
+}
+
+.pagination-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 15px;
+    margin-top: 12px;
+    padding: 8px;
+    background: #34495e;
+    border-radius: 6px;
+    border: 1px solid #455a64;
+}
+
+.pagination-info {
+    font-size: 0.9rem;
+    color: #ecf0f1;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.pagination-total {
+    color: #bdc3c7;
+    margin-left: 5px;
+}
+
+.pagination-btn {
+    color: #ecf0f1 !important;
+}
+
+.pagination-btn:disabled {
+    color: #7f8c8d !important;
+    opacity: 0.5;
+}
+
+.cancelled-banner {
+    background-color: #e74c3c;
+    color: white;
+    padding: 10px 15px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    border-left: 5px solid #c0392b;
+}
+
+.log-item-cancelled {
+    background-color: #fadbd8 !important;
+    border-left: 4px solid #e74c3c !important;
+    color: #78281f !important;
+}
+
+.badge-cancelled {
+    background-color: #e74c3c;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    margin-left: 8px;
+    display: inline-block;
+    vertical-align: middle;
 }
 </style>

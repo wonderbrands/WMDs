@@ -49,7 +49,10 @@ Planned replacement for the current WMS
         "views/stock_move_line_wmds.xml",
         "views/stock_location_block_wizard_view.xml",
         'views/report_dispatch_sheet.xml',
+        "data/wmds_queued_tasks_cron.xml",
+        "views/wmds_queued_tasks_views.xml",
         "security/ir.model.access.csv",
+
     ],
 
      "assets": {

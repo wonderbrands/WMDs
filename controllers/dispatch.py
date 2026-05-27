@@ -96,8 +96,24 @@ class Dispatch(http.Controller):
                 _logger.info("Validacion fallida: sin guias")
                 return {"status": "error", "message": "No hay guías para procesar"}
 
+            if len(packs_ids) > 10:
+                import json
+                task = request.env['wmds.queued_tasks'].sudo().create({
+                    'task_type': 'dispatch_package',
+                    'params': json.dumps(kw),
+                    'operator_login': operator_login or '',
+                    'status': 'pending',
+                })
+                task._trigger_async_process()
+                return {
+                    "status": "queued",
+                    "queued_task_id": task.id,
+                    "message": f"Debido al número de paquetes ({len(packs_ids)}), la tarea se ha encolado en segundo plano."
+                }
+
             operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
             user_id = operator.id if operator else request.env.user.id
+
             _logger.info(f"Usuario asignado: {user_id}")
 
             ei_tags = request.env["sale.order.ei"].sudo().search([
