@@ -677,11 +677,12 @@ export default {
             }
         },
 
-        async removeFromSession(eiName) {
+        async removeFromSession(eiName, cancelledRemoval = false) {
             try {
                 await this.store.callOdoo("remove_dispatch_session_line", "", {
                     operator_login: this.store.role.email,
                     ei_name: eiName,
+                    cancelled_removal: cancelledRemoval,
                 });
             } catch (e) {
                 console.error("Error eliminando de sesión:", e);
@@ -1246,7 +1247,7 @@ export default {
             }
 
             // Remover inmediatamente de la sesión y de la lista local
-            await this.removeFromSession(scanned);
+            await this.removeFromSession(scanned, true); // true = cancelled_removal
             const idx = this.so.findIndex(o => o.name === scanned);
             if (idx !== -1) this.so.splice(idx, 1);
 

@@ -222,6 +222,7 @@ class DispatchSessionController(http.Controller):
         try:
             operator_login = kw.get("operator_login")
             ei_name = kw.get("ei_name")
+            cancelled_removal = kw.get("cancelled_removal", False)
 
             if not operator_login or not ei_name:
                 return {"ok": False, "error": "Datos incompletos"}
@@ -244,9 +245,24 @@ class DispatchSessionController(http.Controller):
             ], limit=1)
 
             if line:
+                so_name = line.so_name
+
+                # Si se remueve por cancelación, registrar en wmds.log de la SO
+                if cancelled_removal and so_name:
+                    so = request.env["sale.order"].sudo().search([('name', '=', so_name)], limit=1)
+                    if so:
+                        request.env["wmds.log"].sudo().create({
+                            "sale": so.id,
+                            "user": operator.id,
+                            "log": (
+                                f"Operador {operator.name} removió el paquete {ei_name} "
+                                f"por cancelación en la etapa de despacho."
+                            ),
+                        })
+
                 line.unlink()
                 return {"ok": True}
-            
+
             return {"ok": False, "error": "Línea no encontrada"}
 
         except Exception as e:
