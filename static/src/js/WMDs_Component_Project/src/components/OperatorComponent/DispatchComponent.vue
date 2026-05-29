@@ -114,20 +114,7 @@
                         </div>
                     </div>
 
-                    <!-- Cancelled orders warning banner -->
-                    <div v-if="cancelledOrdersList.length > 0" class="cancelled-banner">
-                        <i class="fa fa-exclamation-triangle"></i>
-                        <span>
-                            <strong>Atención:</strong> Pedido(s) <strong>CANCELADO(S)</strong>: <strong>{{ cancelledOrdersList.join(', ') }}</strong>.
-                            Remuévalo(s) físicamente del carro y de la lista.
-                        </span>
-                        <Button 
-                            label="Remover" 
-                            icon="fa fa-trash" 
-                            class="p-button-danger p-button-sm ml-2" 
-                            @click="removeCancelledOrders" 
-                        />
-                    </div>
+                    <!-- Cancelled orders: now handled by modal -->
 
                     <!-- Visualization of n/total -->
                     <div class="scan-summary-grid" v-if="scanSummary.length > 0">
@@ -321,6 +308,95 @@
         </div>
 
     </div>
+
+    <!-- ═══════════ MODAL CANCELADOS ═══════════ -->
+    <Teleport to="body">
+        <div v-if="cancelledModal.show" class="cancelled-modal-overlay" @click.self="null">
+            <div class="cancelled-modal">
+                <!-- Header -->
+                <div class="cancelled-modal-header">
+                    <i class="fa fa-exclamation-triangle cancelled-modal-icon"></i>
+                    <div>
+                        <h2 class="cancelled-modal-title">¡Atención! Pedidos Cancelados</h2>
+                        <p class="cancelled-modal-subtitle">
+                            Tienes <strong>{{ cancelledModal.pending.length }}</strong> guía(s) cancelada(s).
+                            Debes sacarlas físicamente del carro y escanearlas una a una para confirmar.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Lista de canceladas -->
+                <div class="cancelled-modal-list">
+                    <div 
+                        v-for="item in cancelledModal.pending" 
+                        :key="item.name"
+                        class="cancelled-modal-item"
+                        :class="{ 'item-confirmed': cancelledModal.confirmed.includes(item.name) }"
+                    >
+                        <i class="fa" :class="cancelledModal.confirmed.includes(item.name) ? 'fa-check-circle' : 'fa-times-circle'"></i>
+                        <div class="cancelled-modal-item-info">
+                            <span class="item-ei">{{ item.name }}</span>
+                            <span class="item-so">{{ item.so_name }}</span>
+                        </div>
+                        <span v-if="cancelledModal.confirmed.includes(item.name)" class="item-badge-ok">Confirmada</span>
+                        <span v-else class="item-badge-pending">Pendiente</span>
+                    </div>
+                </div>
+
+                <!-- Progreso -->
+                <div class="cancelled-modal-progress">
+                    <div class="progress-label">
+                        {{ cancelledModal.confirmed.length }} / {{ cancelledModal.pending.length }} confirmadas
+                    </div>
+                    <div class="progress-track">
+                        <div 
+                            class="progress-track-fill" 
+                            :style="{ width: (cancelledModal.confirmed.length / cancelledModal.pending.length * 100) + '%' }"
+                        ></div>
+                    </div>
+                </div>
+
+                <!-- Escáner de texto -->
+                <div class="cancelled-modal-scanner">
+                    <label class="scanner-label">
+                        <i class="fa fa-barcode"></i>
+                        Escanea la guía cancelada para confirmar
+                    </label>
+                    <div class="scanner-input-row">
+                        <input 
+                            ref="cancelledInput"
+                            v-model="cancelledModal.inputValue"
+                            @keyup.enter="confirmCancelledScan"
+                            class="cancelled-scan-input"
+                            placeholder="Escanea o escribe el código EI..."
+                            autocomplete="off"
+                            :disabled="cancelledModal.confirmed.length === cancelledModal.pending.length"
+                        />
+                        <Button 
+                            icon="fa fa-check" 
+                            class="p-button-warning p-button-sm"
+                            @click="confirmCancelledScan"
+                            :disabled="!cancelledModal.inputValue || cancelledModal.confirmed.length === cancelledModal.pending.length"
+                        />
+                    </div>
+                    <div v-if="cancelledModal.lastError" class="scanner-error">
+                        <i class="fa fa-warning"></i> {{ cancelledModal.lastError }}
+                    </div>
+                </div>
+
+                <!-- Botón finalizar (solo cuando todas confirmadas) -->
+                <div v-if="cancelledModal.confirmed.length === cancelledModal.pending.length" class="cancelled-modal-footer">
+                    <Button 
+                        label="Remover todas y continuar" 
+                        icon="fa fa-check-circle" 
+                        class="p-button-success p-button-lg"
+                        @click="finishCancelledModal"
+                    />
+                </div>
+            </div>
+        </div>
+    </Teleport>
+
 </template>
 
 <script>
@@ -371,7 +447,16 @@ export default {
             pullDistance: 0,
             pulling: false,
             refreshing: false,
-            maxPullDistance: 100
+            maxPullDistance: 100,
+            // ── Modal cancelados ──
+            cancelledModal: {
+                show: false,
+                pending: [],       // [{ name, so_name }]
+                confirmed: [],     // nombres EI ya escaneados
+                inputValue: '',
+                lastError: '',
+                onFinish: null,    // callback opcional tras completar
+            }
         }
     },
     computed: {
@@ -525,6 +610,15 @@ export default {
                         this.summaryCurrentPage = 1;
                     });
                     console.log(`Action: Sesión ${this.sessionId} recuperada con ${this.so.length} líneas`);
+
+                    // Abrir modal si hay canceladas en la sesión recuperada
+                    const cancelledLines = this.so.filter(o => o.so_state === 'cancel');
+                    if (cancelledLines.length > 0) {
+                        this.openCancelledModal(
+                            cancelledLines.map(o => ({ name: o.name, so_name: o.so_name })),
+                            null // sin callback especial al recuperar sesión
+                        );
+                    }
                     
                     if (this.$toast) {
                         this.$toast.add({ 
@@ -805,15 +899,11 @@ export default {
 
             const cancelledOrders = this.so.filter(o => o.so_state === 'cancel');
             if (cancelledOrders.length > 0) {
-                const names = [...new Set(cancelledOrders.map(o => o.so_name))].join(", ");
-                if (this.$toast) {
-                    this.$toast.add({ 
-                        severity: 'error', 
-                        summary: 'Pedido(s) cancelado(s)', 
-                        detail: `No se puede despachar porque los pedidos ${names} están cancelados. Por favor remuévalos de la lista.`, 
-                        life: 6000 
-                    });
-                }
+                // Abrir modal obligatorio antes de poder despachar
+                this.openCancelledModal(
+                    cancelledOrders.map(o => ({ name: o.name, so_name: o.so_name })),
+                    () => this.dispatchToCarrier() // reintentar despacho tras confirmar
+                );
                 return;
             }
             
@@ -1119,6 +1209,71 @@ export default {
             }
             this.pulling = false;
             this.pullDistance = 0;
+        },
+
+        // ═══════════════════════════════════════════
+        // MODAL CANCELADOS
+        // ═══════════════════════════════════════════
+
+        openCancelledModal(cancelledItems, onFinishCallback) {
+            this.cancelledModal.pending = cancelledItems;
+            this.cancelledModal.confirmed = [];
+            this.cancelledModal.inputValue = '';
+            this.cancelledModal.lastError = '';
+            this.cancelledModal.onFinish = onFinishCallback || null;
+            this.cancelledModal.show = true;
+            this.$nextTick(() => {
+                if (this.$refs.cancelledInput) {
+                    this.$refs.cancelledInput.focus();
+                }
+            });
+        },
+
+        confirmCancelledScan() {
+            const scanned = this.cancelledModal.inputValue.trim();
+            if (!scanned) return;
+
+            this.cancelledModal.lastError = '';
+
+            // Verificar que el código es uno de los pendientes
+            const match = this.cancelledModal.pending.find(p => p.name === scanned);
+            if (!match) {
+                this.cancelledModal.lastError = `"${scanned}" no corresponde a ninguna guía cancelada pendiente.`;
+                this.cancelledModal.inputValue = '';
+                return;
+            }
+
+            // Verificar que no esté ya confirmada
+            if (this.cancelledModal.confirmed.includes(scanned)) {
+                this.cancelledModal.lastError = `"${scanned}" ya fue confirmada.`;
+                this.cancelledModal.inputValue = '';
+                return;
+            }
+
+            this.cancelledModal.confirmed.push(scanned);
+            this.cancelledModal.inputValue = '';
+            this.cancelledModal.lastError = '';
+
+            // Focus de vuelta al input
+            this.$nextTick(() => {
+                if (this.$refs.cancelledInput) {
+                    this.$refs.cancelledInput.focus();
+                }
+            });
+        },
+
+        async finishCancelledModal() {
+            // Remover todas las canceladas de la sesión y de la lista local
+            await this.removeCancelledOrders();
+            this.cancelledModal.show = false;
+
+            const cb = this.cancelledModal.onFinish;
+            this.cancelledModal.onFinish = null;
+
+            // Si había un callback (p.ej. reintentar despacho), ejecutarlo
+            if (cb) {
+                await cb();
+            }
         }
     }
 }
@@ -1674,5 +1829,248 @@ export default {
     margin-left: 8px;
     display: inline-block;
     vertical-align: middle;
+}
+
+/* ═══════════════════════════════════════════
+   MODAL CANCELADOS
+   ═══════════════════════════════════════════ */
+
+.cancelled-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    backdrop-filter: blur(4px);
+}
+
+.cancelled-modal {
+    background: #1a1a2e;
+    border-radius: 16px;
+    padding: 2rem;
+    width: 100%;
+    max-width: 520px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(231,76,60,0.3);
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    animation: modalIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalIn {
+    from { opacity: 0; transform: scale(0.85) translateY(20px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.cancelled-modal-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.cancelled-modal-icon {
+    font-size: 2.5rem;
+    color: #e74c3c;
+    animation: pulse 1.5s infinite;
+    flex-shrink: 0;
+    margin-top: 4px;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.5; }
+}
+
+.cancelled-modal-title {
+    margin: 0 0 4px;
+    color: #e74c3c;
+    font-size: 1.2rem;
+    font-weight: 700;
+}
+
+.cancelled-modal-subtitle {
+    margin: 0;
+    color: #bdc3c7;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.cancelled-modal-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.cancelled-modal-item {
+    background: #2c2c54;
+    border: 1px solid #e74c3c;
+    border-radius: 8px;
+    padding: 0.6rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    transition: all 0.3s ease;
+}
+
+.cancelled-modal-item.item-confirmed {
+    background: #1a3a2a;
+    border-color: #2ecc71;
+    opacity: 0.8;
+}
+
+.cancelled-modal-item .fa-times-circle {
+    color: #e74c3c;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.cancelled-modal-item .fa-check-circle {
+    color: #2ecc71;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+
+.cancelled-modal-item-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+}
+
+.item-ei {
+    font-family: monospace;
+    font-size: 0.95rem;
+    font-weight: bold;
+    color: #ecf0f1;
+}
+
+.item-so {
+    font-size: 0.78rem;
+    color: #95a5a6;
+}
+
+.item-badge-pending {
+    font-size: 0.7rem;
+    background: #e74c3c;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.item-badge-ok {
+    font-size: 0.7rem;
+    background: #2ecc71;
+    color: #1a3a2a;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.cancelled-modal-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.progress-label {
+    font-size: 0.85rem;
+    color: #bdc3c7;
+    text-align: right;
+}
+
+.progress-track {
+    height: 8px;
+    background: #2c3e50;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-track-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #e74c3c, #f39c12, #2ecc71);
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+
+.cancelled-modal-scanner {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    background: #16213e;
+    border-radius: 10px;
+    padding: 1rem;
+    border: 1px solid #34495e;
+}
+
+.scanner-label {
+    font-size: 0.85rem;
+    color: #bdc3c7;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.scanner-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.cancelled-scan-input {
+    flex: 1;
+    background: #0f3460;
+    border: 2px solid #3498db;
+    border-radius: 8px;
+    color: #ecf0f1;
+    padding: 0.6rem 1rem;
+    font-size: 1rem;
+    font-family: monospace;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.cancelled-scan-input:focus {
+    border-color: #f39c12;
+    box-shadow: 0 0 0 3px rgba(243,156,18,0.2);
+}
+
+.cancelled-scan-input:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.scanner-error {
+    color: #e74c3c;
+    font-size: 0.82rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: shake 0.3s ease;
+}
+
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25%       { transform: translateX(-6px); }
+    75%       { transform: translateX(6px); }
+}
+
+.cancelled-modal-footer {
+    display: flex;
+    justify-content: center;
+    animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 </style>
