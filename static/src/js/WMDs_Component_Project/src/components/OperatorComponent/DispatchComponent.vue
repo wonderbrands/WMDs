@@ -384,14 +384,10 @@
                     </div>
                 </div>
 
-                <!-- Botón finalizar (solo cuando todas confirmadas) -->
-                <div v-if="cancelledModal.confirmed.length === cancelledModal.pending.length" class="cancelled-modal-footer">
-                    <Button 
-                        label="Remover todas y continuar" 
-                        icon="fa fa-check-circle" 
-                        class="p-button-success p-button-lg"
-                        @click="finishCancelledModal"
-                    />
+                <!-- Aviso de cierre automático cuando todas están confirmadas -->
+                <div v-if="cancelledModal.confirmed.length === cancelledModal.pending.length && cancelledModal.pending.length > 0" class="cancelled-modal-footer">
+                    <i class="fa fa-spin fa-spinner" style="color: #2ecc71; font-size: 1.4rem;"></i>
+                    <span style="color: #2ecc71; font-weight: 600;">Todas removidas. Cerrando...</span>
                 </div>
             </div>
         </div>
@@ -1229,30 +1225,45 @@ export default {
             });
         },
 
-        confirmCancelledScan() {
+        async confirmCancelledScan() {
             const scanned = this.cancelledModal.inputValue.trim();
             if (!scanned) return;
 
             this.cancelledModal.lastError = '';
 
-            // Verificar que el código es uno de los pendientes
-            const match = this.cancelledModal.pending.find(p => p.name === scanned);
+            // Verificar que el código es uno de los pendientes no confirmados aún
+            const match = this.cancelledModal.pending.find(
+                p => p.name === scanned && !this.cancelledModal.confirmed.includes(p.name)
+            );
             if (!match) {
-                this.cancelledModal.lastError = `"${scanned}" no corresponde a ninguna guía cancelada pendiente.`;
+                if (this.cancelledModal.pending.some(p => p.name === scanned)) {
+                    this.cancelledModal.lastError = `"${scanned}" ya fue removida.`;
+                } else {
+                    this.cancelledModal.lastError = `"${scanned}" no corresponde a ninguna guía cancelada pendiente.`;
+                }
                 this.cancelledModal.inputValue = '';
                 return;
             }
 
-            // Verificar que no esté ya confirmada
-            if (this.cancelledModal.confirmed.includes(scanned)) {
-                this.cancelledModal.lastError = `"${scanned}" ya fue confirmada.`;
-                this.cancelledModal.inputValue = '';
-                return;
-            }
+            // Remover inmediatamente de la sesión y de la lista local
+            await this.removeFromSession(scanned);
+            const idx = this.so.findIndex(o => o.name === scanned);
+            if (idx !== -1) this.so.splice(idx, 1);
 
             this.cancelledModal.confirmed.push(scanned);
             this.cancelledModal.inputValue = '';
             this.cancelledModal.lastError = '';
+
+            // Si ya se removieron todas, cerrar el modal automáticamente
+            if (this.cancelledModal.confirmed.length === this.cancelledModal.pending.length) {
+                setTimeout(async () => {
+                    this.cancelledModal.show = false;
+                    const cb = this.cancelledModal.onFinish;
+                    this.cancelledModal.onFinish = null;
+                    if (cb) await cb();
+                }, 800); // pequeña pausa para que el operador vea el feedback verde
+                return;
+            }
 
             // Focus de vuelta al input
             this.$nextTick(() => {
@@ -1260,20 +1271,6 @@ export default {
                     this.$refs.cancelledInput.focus();
                 }
             });
-        },
-
-        async finishCancelledModal() {
-            // Remover todas las canceladas de la sesión y de la lista local
-            await this.removeCancelledOrders();
-            this.cancelledModal.show = false;
-
-            const cb = this.cancelledModal.onFinish;
-            this.cancelledModal.onFinish = null;
-
-            // Si había un callback (p.ej. reintentar despacho), ejecutarlo
-            if (cb) {
-                await cb();
-            }
         }
     }
 }
