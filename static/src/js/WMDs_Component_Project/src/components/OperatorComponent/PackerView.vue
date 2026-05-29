@@ -37,7 +37,7 @@
                         </div>
                         <div class="task-footer">
                             <span>{{ store.role.user }}</span>
-                            <span class="task-date">{{ store.formatDate(task.date) }}</span>
+                            <span class="task-date">{{ formatLocalDate(task.date) }}</span>
                         </div>
                     </div>
                 </div>
@@ -110,16 +110,22 @@ export default {
                 );
 
                 if (data && Array.isArray(data)) {
-                    this.rawPackData = data.map((p, i) => ({
-                        key: `pack-${i}`,
-                        label: p.label || p,
-                        data: p.data || p,
-                        origin: p.origin || 'Sin origen',
-                        pick: p.pick || p,
-                        date: p.date || new Date().toLocaleDateString(),
-                        carrier: p.carrier,
-                        batch: p.batch
-                    }));
+                    this.rawPackData = data
+                        .map((p, i) => ({
+                            key: `pack-${i}`,
+                            label: p.label || p,
+                            data: p.data || p,
+                            origin: p.origin || 'Sin origen',
+                            pick: p.pick || p,
+                            date: p.date || null,
+                            carrier: p.carrier,
+                            batch: p.batch
+                        }))
+                        .sort((a, b) => {
+                            const da = a.date ? new Date(a.date.endsWith('Z') || a.date.includes('+') ? a.date : a.date + 'Z') : 0;
+                            const db = b.date ? new Date(b.date.endsWith('Z') || b.date.includes('+') ? b.date : b.date + 'Z') : 0;
+                            return db - da; // más nuevos primero
+                        });
                 } else {
                     this.rawPackData = [];
                 }
@@ -148,6 +154,29 @@ export default {
                 this.batchColors[batchId] = `hsl(${hue}, 70%, 92%)`;
             }
             return this.batchColors[batchId];
+        },
+        formatLocalDate(utcDate) {
+            if (!utcDate) return '';
+            let dateStr = String(utcDate);
+            // Odoo devuelve datetimes sin timezone info → tratar como UTC
+            if (!dateStr.endsWith('Z') && !dateStr.includes('+')) {
+                dateStr += 'Z';
+            }
+            const date = new Date(dateStr);
+            if (isNaN(date.getTime())) return utcDate;
+            const clientTZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            const fmt = new Intl.DateTimeFormat('es-MX', {
+                timeZone: clientTZ,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            const p = Object.fromEntries(fmt.formatToParts(date).map(({ type, value }) => [type, value]));
+            return `${p.day}-${p.month}-${p.year} ${p.hour}:${p.minute}:${p.second}`;
         }
     }
 };
