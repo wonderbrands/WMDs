@@ -188,13 +188,29 @@ class Dispatch(http.Controller):
                     # Si ya están todos, procesar pickings
                     pickings = request.env['stock.picking'].sudo().search([
                         ('sale_id', '=', so.id),
-                        ('picking_type_id.name', '=', 'Órdenes de entrega'),
+                        '|',
+                        ('picking_type_id.code', '=', 'outgoing'),
+                        ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
                         ('state', 'not in', ['done', 'cancel'])
                     ])
                     for picking in pickings:
                         try:
                             picking.action_assign()
-                            picking.button_validate()
+                            
+                            # Pre-llenar cantidades realizadas para evitar wizard de cantidades vacías
+                            for move in picking.move_ids:
+                                if move.state not in ('done', 'cancel'):
+                                    move.write({
+                                        'quantity': move.product_uom_qty,
+                                        'picked': True
+                                    })
+                            
+                            res = picking.button_validate()
+                            if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
+                                wizard = request.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
+                                    'pick_ids': [(4, picking.id)]
+                                })
+                                wizard.process()
                             _logger.info(f"Picking {picking.name} validado")
                         except Exception as e:
                             _logger.error(f"Error validando picking {picking.name}: {e}")
