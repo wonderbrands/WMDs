@@ -86,6 +86,7 @@
                             :key="scannerKey"
                             instructions="Escanea la guía para despacho"
                             :onScan="(data) => searchAndValidateSO(data)"
+                            :disableFocus="cancelledModal.show"
                         />
                     </div>
                 </div>
@@ -165,7 +166,7 @@
                                     <small>{{ order.product_name }}</small>
                                 </div>
                             </div>
-                            <Button icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(order)" />
+                            <Button v-if="order.so_state !== 'cancel'" icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(order)" />
                         </div>
 
                         
@@ -310,93 +311,19 @@
     </div>
 
     <!-- ═══════════ MODAL CANCELADOS ═══════════ -->
-    <Teleport to="body">
-        <div v-if="cancelledModal.show" class="cancelled-modal-overlay" @click.self="null">
-            <div class="cancelled-modal">
-                <!-- Header -->
-                <div class="cancelled-modal-header">
-                    <i class="fa fa-exclamation-triangle cancelled-modal-icon"></i>
-                    <div>
-                        <h2 class="cancelled-modal-title">¡Atención! Pedidos Cancelados</h2>
-                        <p class="cancelled-modal-subtitle">
-                            Tienes <strong>{{ cancelledModal.pending.length }}</strong> guía(s) cancelada(s).
-                            Debes sacarlas físicamente del carro y escanearlas una a una para confirmar.
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Lista de canceladas -->
-                <div class="cancelled-modal-list">
-                    <div 
-                        v-for="item in cancelledModal.pending" 
-                        :key="item.name"
-                        class="cancelled-modal-item"
-                        :class="{ 'item-confirmed': cancelledModal.confirmed.includes(item.name) }"
-                    >
-                        <i class="fa" :class="cancelledModal.confirmed.includes(item.name) ? 'fa-check-circle' : 'fa-times-circle'"></i>
-                        <div class="cancelled-modal-item-info">
-                            <span class="item-ei">{{ item.name }}</span>
-                            <span class="item-so">{{ item.so_name }}</span>
-                        </div>
-                        <span v-if="cancelledModal.confirmed.includes(item.name)" class="item-badge-ok">Confirmada</span>
-                        <span v-else class="item-badge-pending">Pendiente</span>
-                    </div>
-                </div>
-
-                <!-- Progreso -->
-                <div class="cancelled-modal-progress">
-                    <div class="progress-label">
-                        {{ cancelledModal.confirmed.length }} / {{ cancelledModal.pending.length }} confirmadas
-                    </div>
-                    <div class="progress-track">
-                        <div 
-                            class="progress-track-fill" 
-                            :style="{ width: (cancelledModal.confirmed.length / cancelledModal.pending.length * 100) + '%' }"
-                        ></div>
-                    </div>
-                </div>
-
-                <!-- Escáner de texto -->
-                <div class="cancelled-modal-scanner">
-                    <label class="scanner-label">
-                        <i class="fa fa-barcode"></i>
-                        Escanea la guía cancelada para confirmar
-                    </label>
-                    <div class="scanner-input-row">
-                        <input 
-                            ref="cancelledInput"
-                            v-model="cancelledModal.inputValue"
-                            @keyup.enter="confirmCancelledScan"
-                            class="cancelled-scan-input"
-                            placeholder="Escanea o escribe el código EI..."
-                            autocomplete="off"
-                            :disabled="cancelledModal.confirmed.length === cancelledModal.pending.length"
-                        />
-                        <Button 
-                            icon="fa fa-check" 
-                            class="p-button-warning p-button-sm"
-                            @click="confirmCancelledScan"
-                            :disabled="!cancelledModal.inputValue || cancelledModal.confirmed.length === cancelledModal.pending.length"
-                        />
-                    </div>
-                    <div v-if="cancelledModal.lastError" class="scanner-error">
-                        <i class="fa fa-warning"></i> {{ cancelledModal.lastError }}
-                    </div>
-                </div>
-
-                <!-- Aviso de cierre automático cuando todas están confirmadas -->
-                <div v-if="cancelledModal.confirmed.length === cancelledModal.pending.length && cancelledModal.pending.length > 0" class="cancelled-modal-footer">
-                    <i class="fa fa-spin fa-spinner" style="color: #2ecc71; font-size: 1.4rem;"></i>
-                    <span style="color: #2ecc71; font-weight: 600;">Todas removidas. Cerrando...</span>
-                </div>
-            </div>
-        </div>
-    </Teleport>
+    <CancelledModalComponent
+        :show="cancelledModal.show"
+        :pending="cancelledModal.pending"
+        :confirmed="cancelledModal.confirmed"
+        :lastError="cancelledModal.lastError"
+        :onScanCancelled="confirmCancelledScan"
+    />
 
 </template>
 
 <script>
 import BarcodeScannerComponent from '../QRScannerComponent/BarcodeScannerComponent.vue';
+import CancelledModalComponent from './CancelledModalComponent.vue';
 import Button from 'primevue/button';
 import { useGeneralStore } from "../../store/index";
 
@@ -404,6 +331,7 @@ export default {
     name: "DispatchComponent",
     components: {
         BarcodeScannerComponent,
+        CancelledModalComponent,
         Button
     },
     data() {
@@ -829,6 +757,14 @@ export default {
                         };
                         this.so.push(newItem);
                         await this.persistScanToSession(newItem);
+
+                        const cancelledLines = this.so.filter(o => o.so_state === 'cancel');
+                        if (cancelledLines.length > 0) {
+                            this.openCancelledModal(
+                                cancelledLines.map(o => ({ name: o.name, so_name: o.so_name })),
+                                null
+                            );
+                        }
                     } else if (response.state && response.state.dispatched) {
 
                         if(this.$toast) {
@@ -1219,59 +1155,65 @@ export default {
             this.cancelledModal.lastError = '';
             this.cancelledModal.onFinish = onFinishCallback || null;
             this.cancelledModal.show = true;
-            this.$nextTick(() => {
-                if (this.$refs.cancelledInput) {
-                    this.$refs.cancelledInput.focus();
-                }
-            });
         },
 
-        async confirmCancelledScan() {
-            const scanned = this.cancelledModal.inputValue.trim();
+        async confirmCancelledScan(scanned) {
+            if (!scanned) return;
+            scanned = scanned.trim();
             if (!scanned) return;
 
             this.cancelledModal.lastError = '';
 
-            // Verificar que el código es uno de los pendientes no confirmados aún
-            const match = this.cancelledModal.pending.find(
-                p => p.name === scanned && !this.cancelledModal.confirmed.includes(p.name)
-            );
-            if (!match) {
-                if (this.cancelledModal.pending.some(p => p.name === scanned)) {
-                    this.cancelledModal.lastError = `"${scanned}" ya fue removida.`;
+            try {
+                // Consultar al backend para validar y obtener el nombre limpio del bulto/guía
+                let response = await this.store.callOdoo("validate_attachment_guide", "", {
+                    attachment_id: scanned,
+                });
+
+                if (response && response.valid) {
+                    const resolvedName = response.name;
+
+                    // Verificar que el código es uno de los pendientes no confirmados aún
+                    const match = this.cancelledModal.pending.find(
+                        p => p.name === resolvedName && !this.cancelledModal.confirmed.includes(p.name)
+                    );
+                    if (!match) {
+                        if (this.cancelledModal.pending.some(p => p.name === resolvedName)) {
+                            this.cancelledModal.lastError = `"${resolvedName}" ya fue removida.`;
+                        } else {
+                            this.cancelledModal.lastError = `"${resolvedName}" no corresponde a ninguna guía cancelada pendiente.`;
+                        }
+                        this.cancelledModal.inputValue = '';
+                        return;
+                    }
+
+                    // Remover inmediatamente de la sesión y de la lista local
+                    await this.removeFromSession(resolvedName, true); // true = cancelled_removal
+                    const idx = this.so.findIndex(o => o.name === resolvedName);
+                    if (idx !== -1) this.so.splice(idx, 1);
+
+                    this.cancelledModal.confirmed.push(resolvedName);
+                    this.cancelledModal.inputValue = '';
+                    this.cancelledModal.lastError = '';
+
+                    // Si ya se removieron todas, cerrar el modal automáticamente
+                    if (this.cancelledModal.confirmed.length === this.cancelledModal.pending.length) {
+                        setTimeout(async () => {
+                            this.cancelledModal.show = false;
+                            const cb = this.cancelledModal.onFinish;
+                            this.cancelledModal.onFinish = null;
+                            if (cb) await cb();
+                        }, 800); // pequeña pausa para que el operador vea el feedback verde
+                        return;
+                    }
                 } else {
-                    this.cancelledModal.lastError = `"${scanned}" no corresponde a ninguna guía cancelada pendiente.`;
+                    this.cancelledModal.lastError = `Guía inválida o no encontrada: "${scanned}".`;
+                    this.cancelledModal.inputValue = '';
                 }
+            } catch (e) {
+                this.cancelledModal.lastError = "Error al validar la guía.";
                 this.cancelledModal.inputValue = '';
-                return;
             }
-
-            // Remover inmediatamente de la sesión y de la lista local
-            await this.removeFromSession(scanned, true); // true = cancelled_removal
-            const idx = this.so.findIndex(o => o.name === scanned);
-            if (idx !== -1) this.so.splice(idx, 1);
-
-            this.cancelledModal.confirmed.push(scanned);
-            this.cancelledModal.inputValue = '';
-            this.cancelledModal.lastError = '';
-
-            // Si ya se removieron todas, cerrar el modal automáticamente
-            if (this.cancelledModal.confirmed.length === this.cancelledModal.pending.length) {
-                setTimeout(async () => {
-                    this.cancelledModal.show = false;
-                    const cb = this.cancelledModal.onFinish;
-                    this.cancelledModal.onFinish = null;
-                    if (cb) await cb();
-                }, 800); // pequeña pausa para que el operador vea el feedback verde
-                return;
-            }
-
-            // Focus de vuelta al input
-            this.$nextTick(() => {
-                if (this.$refs.cancelledInput) {
-                    this.$refs.cancelledInput.focus();
-                }
-            });
         }
     }
 }

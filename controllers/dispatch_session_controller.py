@@ -79,6 +79,10 @@ class DispatchSessionController(http.Controller):
                 ei_tag = request.env["sale.order.ei"].sudo().search([('display_name_custom', '=', line.ei_name)], limit=1)
                 if ei_tag:
                     so_state = ei_tag.so_id.state
+                elif line.so_name:
+                    so = request.env['sale.order'].sudo().search([('name', '=', line.so_name)], limit=1)
+                    if so:
+                        so_state = so.state
 
                 lines.append({
                     "line_id": line.id,

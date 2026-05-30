@@ -67,12 +67,7 @@
                 <xpath expr="//field[@name='location_dest_id']" position="attributes">
                     <attribute name="domain">[('complete_name', 'not ilike', 'Bloqueado')]</attribute>
                 </xpath>
-                <xpath expr="//field[@name='location_dest_id']" position="after">
-                    <field name="picking_type_id_name" invisible="1"/>
-                    <field name="marketplace_location" 
-                        invisible="picking_type_id_name != 'Resurtido a Ful: Pick'"
-                        required="picking_type_id_name == 'Resurtido a Ful: Pick'"/>
-                </xpath>
+
                 <xpath expr="//notebook" position="inside">
                     <page string="WMDS" name="wmds_logs">
                         <group>
