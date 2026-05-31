@@ -307,9 +307,6 @@
                 </div>
             </div>
         </div>
-
-    </div>
-
     <!-- ═══════════ MODAL CANCELADOS ═══════════ -->
     <CancelledModalComponent
         :show="cancelledModal.show"
@@ -318,6 +315,7 @@
         :lastError="cancelledModal.lastError"
         :onScanCancelled="confirmCancelledScan"
     />
+    </div>
 
 </template>
 
