@@ -17,89 +17,7 @@ class StockWMDSPurchase(models.Model):
     )
 
     def button_validate(self):
-        for picking in self:
-            if picking.picking_type_id.name == 'Rackeo':
-                clean_origin = picking.origin.replace('COMEX: ', '') if picking.origin else ''
-                
-                po = self.env['purchase.order'].search(
-                    [('name', '=', clean_origin)],
-                    limit=1
-                )
-                
-                logging.info(f'po: {po}')
-
-                if not po:
-                    raise UserError(
-                        'No se pudo encontrar la orden de compra asociada a la recepción'
-                    )
-
-                if not po.check_commertial:
-                    for move in picking.move_ids:
-                        for line in move.move_line_ids:
-                            destiny = line.location_dest_id.complete_name
-                            
-                            logging.info(f'\n\ndestiny: {destiny}\n\n')
-
-                            if 'Stock/Almacenaje' in destiny:
-                                destiny = destiny.replace(
-                                    'Stock/Almacenaje', 'Cuarentena'
-                                )
-                            elif 'Stock/A_Pickable' in destiny:
-                                destiny = destiny.replace(
-                                    'Stock/A_Pickable', 'Cuarentena'
-                                )
-                            elif 'Stock' in destiny:
-                                destiny = destiny.replace(
-                                    'Stock', 'Cuarentena'
-                                )
-                            elif 'Cuarentena' in destiny:
-                                pass
-                            else:
-                                raise UserError(
-                                    'No se pudo encontrar el destino '
-                                    'de la recepción'
-                                )
-
-                            location = self.env['stock.location'].search(
-                                [('complete_name', '=', destiny)],
-                                limit=1
-                            )
-
-                            if not location:
-                                raise UserError(
-                                    'No se encontró la ubicación de '
-                                    'cuarentena'
-                                )
-
-                            line.location_dest_id = location.id
-
-                        move.location_dest_id = location.id
-                
-                    # Log the change
-                    self.env['wmds.log'].sudo().create({
-                        'pick': picking.id,
-                        'log': f"Destino de rackeo cambiado a cuarentena automáticamente por falta de Vo.Bo COMEX. Nueva ubicación: {location.complete_name}",
-                        'user': self.env.user.id,
-                    })
-
-                else:
-                    # VoBo TRUE: si el destino apunta a Cuarentena,
-                    # # corregir a Stock/Almacenaje
-                    for move in picking.move_ids:
-                        for line in move.move_line_ids:
-                            destiny = line.location_dest_id.complete_name
-                            if 'Cuarentena' in destiny:
-                                new_dest = destiny.replace(
-                                    'Cuarentena', 'Stock/Almacenaje'
-                                )
-                                loc = self.env['stock.location'].search(
-                                    [('complete_name', '=', new_dest)],
-                                    limit=1
-                                )
-                                if loc:
-                                    line.location_dest_id = loc.id
-                                    move.location_dest_id = loc.id
-
+        # We now handle quarantine by blocking the target locations themselves in wb_tech_location_blocking
         return super(StockWMDSPurchase, self).button_validate()
 
 
@@ -133,10 +51,9 @@ class PurchaseWMDS(models.Model):
     def action_comex_approve(self):
         """
         Botón VoBo COMEX. Un solo click:
-        1. Busca stock en cuarentena de ESTA PO
-        2. Activa check_commertial
-        3. Crea traslados Cuarentena → Almacenaje
-        4. Recarga la vista
+        1. Activa check_commertial
+        2. Busca y desbloquea ubicaciones bloqueadas bajo este PO
+        3. Recarga la vista
         """
         self.ensure_one()
 
@@ -145,30 +62,29 @@ class PurchaseWMDS(models.Model):
                 'El VoBo COMEX ya fue otorgado para esta orden.'
             )
 
-        # Buscar stock en cuarentena de esta PO
-        lines = self._get_quarantine_from_rackeos()
-
         # Activar VoBo
         self.write({
             'check_commertial': True,
             'comex_release_date': fields.Datetime.now(),
         })
 
-        # Crear traslados si hay stock en cuarentena
-        if lines:
-            pickings = self._create_release_pickings(lines)
-            pick_names = ', '.join(pickings.mapped('name'))
-            total = sum(l['qty'] for l in lines)
+        # Find and unblock locations blocked by this PO
+        blocked_locs = self.env['stock.location'].search([
+            ('block_reason', 'like', self.name),
+            ('block_reason_type', '=', 'cuarentena'),
+            ('original_parent_id', '!=', False)
+        ])
 
-            self.env['wmds.log'].sudo().create({
-                'purchase': self.id,
-                'log': (
-                    'COMEX: Traslado automático Cuarentena → Almacenaje. '
-                    'Pickings: %s. Total: %s uds.' % (pick_names, total)
-                ),
-                'user': self.env.user.id,
-                'date': fields.Datetime.now(),
-            })
+        for loc in blocked_locs:
+            loc._do_unblock(comment=f"Desbloqueo automático por aprobación de Vo.Bo. COMEX (PO: {self.name}).")
+
+        # Create log
+        self.env['wmds.log'].sudo().create({
+            'purchase': self.id,
+            'log': f"COMEX: Aprobación Vo.Bo. COMEX. Ubicaciones liberadas: {', '.join(blocked_locs.mapped('complete_name')) or 'Ninguna'}",
+            'user': self.env.user.id,
+            'date': fields.Datetime.now(),
+        })
 
         # Recargar el formulario
         return {
