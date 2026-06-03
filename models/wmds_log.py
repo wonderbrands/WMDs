@@ -24,6 +24,39 @@ class WMDSLog(models.Model):
     def create(self, vals):
         if vals.get('log'):
             vals['log'] = vals['log'].replace('\n', ' ').replace('\r', ' ').strip()
+
+        # Deduplicate stock move / stock move line duplicate logs (e.g., Movimiento modificado vs Línea de movimiento modificada)
+        if vals.get('log'):
+            import re
+            from datetime import datetime, timedelta
+            match = re.match(r"^(Línea de movimiento modificada|Movimiento modificado) \((.*?)\): (.*)$", vals['log'])
+            if match:
+                prefix, product_part, details_part = match.groups()
+                rel_domain = []
+                for field in ['pick', 'purchase', 'sale', 'batch_pick', 'cycle_count']:
+                    if vals.get(field):
+                        rel_domain.append((field, '=', vals[field]))
+                
+                if rel_domain:
+                    five_seconds_ago = datetime.now() - timedelta(seconds=5)
+                    domain = [
+                        ('date', '>=', five_seconds_ago),
+                    ]
+                    if len(rel_domain) > 1:
+                        or_domain = ['|'] * (len(rel_domain) - 1)
+                        for term in rel_domain:
+                            or_domain.append(term)
+                        domain.extend(or_domain)
+                    else:
+                        domain.extend(rel_domain)
+                    
+                    recent_logs = self.sudo().search(domain)
+                    for r_log in recent_logs:
+                        r_match = re.match(r"^(Línea de movimiento modificada|Movimiento modificado) \((.*?)\): (.*)$", r_log.log)
+                        if r_match:
+                            r_prefix, r_product, r_details = r_match.groups()
+                            if r_product == product_part and r_details == details_part:
+                                return r_log
         
         # Resolve correct operator/user
         current_user_id = vals.get('user')
