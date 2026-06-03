@@ -47,73 +47,121 @@
           </div>
         </div>
 
-        <div class="results-list" v-if="searchResults && searchResults.length > 0">
-          <div 
-            v-for="loc in searchResults" 
-            :key="loc.id"
-            class="result-item"
-            :class="{'active-item': activeLocation && activeLocation.id === loc.id, 'blocked-item': loc.is_blocked}"
-            @click="selectLocation(loc)"
-          >
-            <div class="flex-between">
-              <span class="loc-name font-bold">{{ loc.complete_name }}</span>
-              <span class="badge badge-danger">
-                Bloqueada
-              </span>
-            </div>
-            <div class="loc-subinfo">
-              <span>Motivo: {{ getReasonLabel(loc.block_reason_type) }}</span>
-              <span v-if="loc.oversized_from"> (Sobredimensión de: {{ loc.oversized_from }})</span>
-            </div>
-          </div>
-        </div>
+        <DataTable 
+          v-if="searchResults && searchResults.length > 0"
+          v-model:selection="selectedLocations"
+          :value="searchResults" 
+          paginator 
+          :rows="15" 
+          class="p-datatable-sm custom-border mt-2" 
+          dataKey="id"
+          @row-click="onRowClick"
+        >
+          <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
+          <Column field="complete_name" header="Ubicación">
+            <template #body="slotProps">
+              <span class="font-bold cursor-pointer">{{ slotProps.data.complete_name }}</span>
+            </template>
+          </Column>
+          <Column header="Motivo" headerStyle="width: 12rem">
+            <template #body="slotProps">
+              <div class="flex flex-column gap-1">
+                <span class="badge badge-danger">
+                  {{ getReasonLabel(slotProps.data.block_reason_type) }}
+                </span>
+                <span class="text-xs text-muted block" v-if="slotProps.data.oversized_from">
+                  Sobredimensión de: {{ slotProps.data.oversized_from }}
+                </span>
+              </div>
+            </template>
+          </Column>
+        </DataTable>
         <div class="no-results" v-else-if="searched">
           No se encontraron ubicaciones bloqueadas para el rango especificado.
         </div>
       </div>
 
       <!-- RIGHT SECTION: Configuration & Management -->
-      <div class="card detail-card" v-if="activeLocation">
-        <div class="flex-between header-border">
-          <h2>Detalles de la Posición: {{ activeLocation.name }}</h2>
-          <Button icon="fa fa-times" severity="secondary" text rounded @click="activeLocation = null" />
+      <div class="card detail-card" v-if="selectedLocationIds.length > 0 || activeLocation">
+        <!-- MASSIVE UNBLOCKING VIEW -->
+        <div v-if="selectedLocationIds.length > 0">
+          <div class="flex-between header-border">
+            <h2>Desbloqueo Masivo ({{ selectedLocationIds.length }} Ubicaciones)</h2>
+            <Button icon="fa fa-times" severity="secondary" text rounded @click="clearSelection" />
+          </div>
+
+          <div class="location-details">
+            <div class="selected-locations-preview">
+              <span class="text-xs text-muted font-bold block mb-1">Ubicaciones a desbloquear:</span>
+              <div class="tags-container">
+                <span v-for="id in selectedLocationIds" :key="id" class="loc-tag">
+                  {{ getLocNameById(id) }}
+                  <i class="fa fa-times cursor-pointer remove-tag-icon" @click="removeSelectedId(id)"></i>
+                </span>
+              </div>
+            </div>
+
+            <div class="available-status-box">
+              <h4 class="text-success mb-3"><i class="fa fa-unlock"></i> Confirmar Desbloqueo Masivo</h4>
+              <p class="text-sm text-muted">Se procederá a desbloquear y liberar todas las ubicaciones seleccionadas listadas arriba.</p>
+
+              <div class="action-btn-row">
+                <Button 
+                  label="Desbloquear Posiciones Seleccionadas" 
+                  icon="fa fa-unlock" 
+                  severity="success" 
+                  class="w-full mt-4" 
+                  @click="unblockLocation" 
+                  :loading="store.loading" 
+                />
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="location-details">
-          <p><strong>Ubicación Completa:</strong> {{ activeLocation.complete_name }}</p>
-          
-          <div class="blocked-status-box">
-            <div class="status-header">
-              <i class="fa fa-lock status-icon"></i>
-              <div>
-                <h4 class="text-danger">Ubicación actualmente bloqueada</h4>
-                <p class="status-meta" v-if="activeLocation.block_user || activeLocation.block_date">
-                  Bloqueada <span v-if="activeLocation.block_user">por <strong>{{ activeLocation.block_user }}</strong></span> <span v-if="activeLocation.block_date">el {{ activeLocation.block_date }}</span>
-                </p>
-              </div>
-            </div>
+        <!-- ORIGINAL SINGLE LOCATION UNBLOCK VIEW -->
+        <div v-else-if="activeLocation">
+          <div class="flex-between header-border">
+            <h2>Detalles de la Posición: {{ activeLocation.name }}</h2>
+            <Button icon="fa fa-times" severity="secondary" text rounded @click="activeLocation = null" />
+          </div>
 
-            <div class="details-grid">
-              <div><strong>Tipo de bloqueo:</strong> {{ getReasonLabel(activeLocation.block_reason_type) }}</div>
-              <div><strong>Comentario:</strong> {{ activeLocation.block_reason || '-' }}</div>
-              <div v-if="activeLocation.block_expiration_date">
-                <strong>Fecha Expiración:</strong> {{ activeLocation.block_expiration_date }}
-                <span v-if="activeLocation.is_block_expired" class="text-danger font-bold"> (VENCIDO)</span>
+          <div class="location-details">
+            <p><strong>Ubicación Completa:</strong> {{ activeLocation.complete_name }}</p>
+            
+            <div class="blocked-status-box">
+              <div class="status-header">
+                <i class="fa fa-lock status-icon"></i>
+                <div>
+                  <h4 class="text-danger">Ubicación actualmente bloqueada</h4>
+                  <p class="status-meta" v-if="activeLocation.block_user || activeLocation.block_date">
+                    Bloqueada <span v-if="activeLocation.block_user">por <strong>{{ activeLocation.block_user }}</strong></span> <span v-if="activeLocation.block_date">el {{ activeLocation.block_date }}</span>
+                  </p>
+                </div>
               </div>
-              <div v-if="activeLocation.oversized_from">
-                <strong>Sobredimensionada desde:</strong> {{ activeLocation.oversized_from }}
-              </div>
-            </div>
 
-            <div class="action-btn-row">
-              <Button 
-                label="Desbloquear Posición" 
-                icon="fa fa-unlock" 
-                severity="success" 
-                class="w-full mt-3" 
-                @click="unblockLocation" 
-                :loading="store.loading" 
-              />
+              <div class="details-grid">
+                <div><strong>Tipo de bloqueo:</strong> {{ getReasonLabel(activeLocation.block_reason_type) }}</div>
+                <div><strong>Comentario:</strong> {{ activeLocation.block_reason || '-' }}</div>
+                <div v-if="activeLocation.block_expiration_date">
+                  <strong>Fecha Expiración:</strong> {{ activeLocation.block_expiration_date }}
+                  <span v-if="activeLocation.is_block_expired" class="text-danger font-bold"> (VENCIDO)</span>
+                </div>
+                <div v-if="activeLocation.oversized_from">
+                  <strong>Sobredimensionada desde:</strong> {{ activeLocation.oversized_from }}
+                </div>
+              </div>
+
+              <div class="action-btn-row">
+                <Button 
+                  label="Desbloquear Posición" 
+                  icon="fa fa-unlock" 
+                  severity="success" 
+                  class="w-full mt-3" 
+                  @click="unblockLocation" 
+                  :loading="store.loading" 
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -135,13 +183,17 @@ import { useGeneralStore } from "../../store/index";
 import Button from "primevue/button";
 import InputText from "primevue/inputtext";
 import InputNumber from "primevue/inputnumber";
+import DataTable from "primevue/datatable";
+import Column from "primevue/column";
 
 export default {
   name: "LocationUnblocking",
   components: {
     Button,
     InputText,
-    InputNumber
+    InputNumber,
+    DataTable,
+    Column
   },
   data() {
     return {
@@ -159,6 +211,8 @@ export default {
       searchResults: [],
       searched: false,
       activeLocation: null,
+      selectedLocations: [],
+      selectedLocationIds: [],
       reasonOptions: [
         { label: "No Apta", value: "no_apto" },
         { label: "Dañada", value: "danado" },
@@ -166,6 +220,11 @@ export default {
         { label: "Sobredimensionada", value: "sobredimensionada" }
       ]
     };
+  },
+  watch: {
+    selectedLocations(newVal) {
+      this.selectedLocationIds = newVal.map(loc => loc.id);
+    }
   },
   methods: {
     getReasonLabel(val) {
@@ -191,49 +250,102 @@ export default {
           return loc.is_blocked && !isQuarantine && !isCyclic;
         });
         this.searched = true;
+        this.clearSelection();
       }
     },
     selectLocation(loc) {
       this.activeLocation = loc;
+      this.selectedLocations = [];
+      this.selectedLocationIds = [];
+    },
+    onRowClick(event) {
+      this.selectLocation(event.data);
+    },
+    getLocNameById(id) {
+      const loc = this.searchResults.find(l => l.id === id);
+      return loc ? loc.name : '';
+    },
+    removeSelectedId(id) {
+      this.selectedLocations = this.selectedLocations.filter(loc => loc.id !== id);
+      this.selectedLocationIds = this.selectedLocationIds.filter(x => x !== id);
+    },
+    clearSelection() {
+      this.selectedLocations = [];
+      this.selectedLocationIds = [];
     },
     async unblockLocation() {
-      if (!this.activeLocation) return;
-
-      const isQuarantine = (this.activeLocation.complete_name && this.activeLocation.complete_name.toLowerCase().includes('cuarentena')) ||
-                           (this.activeLocation.name && this.activeLocation.name.toLowerCase().includes('cuarentena')) ||
-                           this.activeLocation.block_reason_type === 'cuarentena';
-      const isCyclic = this.activeLocation.block_reason_type === 'ciclico';
-
-      if (isQuarantine || isCyclic) {
-        this.store.toast.add({
-          severity: "error",
-          summary: "Acción no permitida",
-          detail: "No se permite desbloquear ubicaciones de cuarentena o cíclicas desde esta pantalla.",
-          life: 5000
-        });
-        return;
-      }
-      
-      const res = await this.store.callOdoo("location_blocking_unblock", "", {
-        location_id: this.activeLocation.id
-      });
-
-      if (res && !res.error && res.status === 'ok') {
-        this.store.toast.add({
-          severity: "success",
-          summary: "Desbloqueo Completado",
-          detail: "La posición ha sido liberada correctamente.",
-          life: 3000
-        });
-        this.activeLocation = null;
+      if (this.selectedLocationIds.length > 0) {
+        // Massive unblocking
+        this.store.loading = true;
+        let successCount = 0;
+        let failCount = 0;
+        for (const locId of this.selectedLocationIds) {
+          const res = await this.store.callOdoo("location_blocking_unblock", "", {
+            location_id: locId
+          });
+          if (res && !res.error && res.status === 'ok') {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        }
+        this.store.loading = false;
+        
+        if (successCount > 0) {
+          this.store.toast.add({
+            severity: "success",
+            summary: "Desbloqueo Completado",
+            detail: `${successCount} posiciones liberadas correctamente.` + (failCount > 0 ? ` ${failCount} fallaron.` : ''),
+            life: 3000
+          });
+        } else if (failCount > 0) {
+          this.store.toast.add({
+            severity: "error",
+            summary: "Error al Desbloquear",
+            detail: "No se pudieron liberar las posiciones seleccionadas.",
+            life: 5000
+          });
+        }
+        this.clearSelection();
         await this.performSearch();
-      } else if (res && res.message) {
-        this.store.toast.add({
-          severity: "error",
-          summary: "Error al Desbloquear",
-          detail: res.message,
-          life: 5000
+      } else if (this.activeLocation) {
+        // Single unblocking
+        const isQuarantine = (this.activeLocation.complete_name && this.activeLocation.complete_name.toLowerCase().includes('cuarentena')) ||
+                             (this.activeLocation.name && this.activeLocation.name.toLowerCase().includes('cuarentena')) ||
+                             this.activeLocation.block_reason_type === 'cuarentena';
+        const isCyclic = this.activeLocation.block_reason_type === 'ciclico';
+
+        if (isQuarantine || isCyclic) {
+          this.store.toast.add({
+            severity: "error",
+            summary: "Acción no permitida",
+            detail: "No se permite desbloquear ubicaciones de cuarentena o cíclicas desde esta pantalla.",
+            life: 5000
+          });
+          return;
+        }
+        
+        const res = await this.store.callOdoo("location_blocking_unblock", "", {
+          location_id: this.activeLocation.id
         });
+
+        if (res && !res.error && res.status === 'ok') {
+          this.store.toast.add({
+            severity: "success",
+            summary: "Desbloqueo Completado",
+            detail: "La posición ha sido liberada correctamente.",
+            life: 3000
+          });
+          this.activeLocation = null;
+          await this.performSearch();
+        } else if (res && res.message) {
+          this.store.toast.add({
+            severity: "error",
+            summary: "Error al Desbloquear",
+            detail: res.message,
+            life: 5000
+          });
+        }
       }
     },
     downloadCSV() {
@@ -471,5 +583,55 @@ export default {
 
 .font-bold {
   font-weight: 700;
+}
+
+/* Estilos para desbloqueo masivo */
+.selected-locations-preview {
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.loc-tag {
+  background-color: #eff6ff;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.remove-tag-icon {
+  font-size: 0.75rem;
+  opacity: 0.6;
+}
+
+.remove-tag-icon:hover {
+  opacity: 1;
+}
+
+.available-status-box {
+  background-color: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-top: 0.5rem;
+}
+
+.text-success {
+  color: #16a34a;
 }
 </style>

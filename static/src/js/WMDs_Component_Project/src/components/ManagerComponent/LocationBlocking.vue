@@ -47,44 +47,33 @@
           </div>
         </div>
 
-        <div class="flex items-center gap-small mb-2" v-if="searchResults && searchResults.length > 0">
-          <Checkbox v-model="selectAllSearch" :binary="true" @change="toggleSelectAllSearch" />
-          <span class="text-xs text-muted font-bold">Seleccionar todos para bloqueo masivo</span>
-        </div>
-
-        <div class="results-list" v-if="searchResults && searchResults.length > 0">
-          <div 
-            v-for="loc in searchResults" 
-            :key="loc.id"
-            class="result-item"
-            :class="{'active-item': (activeLocation && activeLocation.id === loc.id) || selectedLocationIds.includes(loc.id), 'blocked-item': loc.is_blocked}"
-            @click="selectLocation(loc)"
-          >
-            <div class="flex items-center gap-small">
-              <Checkbox 
-                v-model="selectedLocationIds" 
-                :value="loc.id" 
-                @click.stop
-                v-if="!loc.is_blocked"
-              />
-              <div class="flex-grow">
-                <div class="flex-between">
-                  <span class="loc-name font-bold">{{ loc.complete_name }}</span>
-                  <span 
-                    class="badge" 
-                    :class="loc.is_blocked ? 'badge-danger' : 'badge-success'"
-                  >
-                    {{ loc.is_blocked ? 'Bloqueada' : 'Disponible' }}
-                  </span>
-                </div>
-                <div class="loc-subinfo" v-if="loc.is_blocked">
-                  <span>Motivo: {{ getReasonLabel(loc.block_reason_type) }}</span>
-                  <span v-if="loc.oversized_from"> (Sobredimensión de: {{ loc.oversized_from }})</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <DataTable 
+          v-if="searchResults && searchResults.length > 0"
+          v-model:selection="selectedLocations"
+          :value="searchResults" 
+          paginator 
+          :rows="15" 
+          class="p-datatable-sm custom-border mt-2" 
+          dataKey="id"
+          @row-click="onRowClick"
+        >
+          <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
+          <Column field="complete_name" header="Ubicación">
+            <template #body="slotProps">
+              <span class="font-bold cursor-pointer">{{ slotProps.data.complete_name }}</span>
+            </template>
+          </Column>
+          <Column header="Estado" headerStyle="width: 8rem">
+            <template #body="slotProps">
+              <span 
+                class="badge" 
+                :class="slotProps.data.is_blocked ? 'badge-danger' : 'badge-success'"
+              >
+                {{ slotProps.data.is_blocked ? 'Bloqueada' : 'Disponible' }}
+              </span>
+            </template>
+          </Column>
+        </DataTable>
         <div class="no-results" v-else-if="searched">
           No se encontraron ubicaciones para el rango especificado.
         </div>
@@ -428,6 +417,8 @@ import InputText from "primevue/inputtext";
 import InputNumber from "primevue/inputnumber";
 import Select from "primevue/select";
 import Checkbox from "primevue/checkbox";
+import DataTable from "primevue/datatable";
+import Column from "primevue/column";
 
 export default {
   name: "LocationBlocking",
@@ -436,7 +427,9 @@ export default {
     InputText,
     InputNumber,
     Select,
-    Checkbox
+    Checkbox,
+    DataTable,
+    Column
   },
   data() {
     return {
@@ -456,6 +449,7 @@ export default {
       activeLocation: null,
 
       // Massive blocking fields
+      selectedLocations: [],
       selectedLocationIds: [],
       selectAllSearch: false,
 
@@ -526,6 +520,9 @@ export default {
         this.adjacencies = [];
         this.selectedAdjacents = [];
       }
+    },
+    selectedLocations(newVal) {
+      this.selectedLocationIds = newVal.map(loc => loc.id);
     }
   },
   methods: {
@@ -558,6 +555,7 @@ export default {
     selectLocation(loc) {
       this.activeLocation = loc;
       // Clear massive selection as we are selecting a single active location details
+      this.selectedLocations = [];
       this.selectedLocationIds = [];
       this.selectAllSearch = false;
 
@@ -568,29 +566,24 @@ export default {
       this.adjacencies = [];
       this.selectedAdjacents = [];
     },
+    onRowClick(event) {
+      this.selectLocation(event.data);
+    },
     getLocNameById(id) {
       const loc = this.searchResults.find(l => l.id === id);
       return loc ? loc.name : '';
     },
     removeSelectedId(id) {
+      this.selectedLocations = this.selectedLocations.filter(loc => loc.id !== id);
       this.selectedLocationIds = this.selectedLocationIds.filter(x => x !== id);
       if (this.selectedLocationIds.length === 0) {
         this.selectAllSearch = false;
       }
     },
     clearSelection() {
+      this.selectedLocations = [];
       this.selectedLocationIds = [];
       this.selectAllSearch = false;
-    },
-    toggleSelectAllSearch() {
-      if (this.selectAllSearch) {
-        this.selectedLocationIds = this.searchResults
-          .filter(loc => !loc.is_blocked)
-          .map(loc => loc.id);
-        this.activeLocation = null; // deactivate single location details
-      } else {
-        this.selectedLocationIds = [];
-      }
     },
     selectAllAdjacents() {
       const availableIds = this.adjacentsGrouped
