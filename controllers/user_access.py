@@ -16,7 +16,7 @@ class UserAccess(http.Controller):
                 'error': 'Bad request',
                 'message': 'Missing required field: email'
             }
-        user = request.env['res.users'].sudo().search([('login', '=', email)], limit=1)
+        user = request.env['res.users'].sudo().search([('login', '=ilike', str(email).strip())], limit=1)
         if not user:
             return {
                 'error': 'Not found',
@@ -49,7 +49,7 @@ class UserAccess(http.Controller):
         
         user = request.env['res.users'].sudo().search([
             '|', 
-            ('login', '=', email_or_uuid), 
+            ('login', '=ilike', str(email_or_uuid).strip()), 
             ('packer_uuid', '=', email_or_uuid)
         ], limit=1)
 
@@ -90,7 +90,7 @@ class UserAccess(http.Controller):
         
         user = request.env['res.users'].sudo().search([
             '|', 
-            ('login', '=', email_or_uuid), 
+            ('login', '=ilike', str(email_or_uuid).strip()), 
             ('packer_uuid', '=', email_or_uuid)
         ], limit=1)
         

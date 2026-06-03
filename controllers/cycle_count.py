@@ -865,7 +865,7 @@ class CycleCount(http.Controller):
                 return {'ok': False, 'error': 'Faltan datos.'}
             
             wave = request.env['cycle.count.wave'].sudo().browse(wave_id)
-            operator = request.env['res.users'].sudo().search([('login', '=', operator_email)], limit=1)
+            operator = request.env['res.users'].sudo().search([('login', '=ilike', str(operator_email).strip())], limit=1)
             
             # Get all products that Odoo thinks are in this location
             quants = request.env['stock.quant'].sudo().search([
@@ -1057,7 +1057,7 @@ class CycleCount(http.Controller):
                 return {'ok': False, 'error': 'Faltan datos para registrar el conteo.'}
             
             wave = request.env['cycle.count.wave'].sudo().browse(wave_id)
-            operator = request.env['res.users'].sudo().search([('login', '=', operator_email)], limit=1)
+            operator = request.env['res.users'].sudo().search([('login', '=ilike', str(operator_email).strip())], limit=1)
             
             if not wave.exists():
                 return {'ok': False, 'error': 'Ola no encontrada.'}

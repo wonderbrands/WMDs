@@ -60,7 +60,7 @@ class DispatchSessionController(http.Controller):
             if not operator_login:
                 return {"active": False}
 
-            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            operator = request.env["res.users"].sudo().search([('login', '=ilike', str(operator_login).strip())], limit=1)
             if not operator:
                 return {"active": False}
 
@@ -133,7 +133,7 @@ class DispatchSessionController(http.Controller):
             if not operator_login or not ei_name:
                 return {"ok": False, "error": "Datos incompletos"}
 
-            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            operator = request.env["res.users"].sudo().search([('login', '=ilike', str(operator_login).strip())], limit=1)
             if not operator:
                 return {"ok": False, "error": "Operador no encontrado"}
 
@@ -231,7 +231,7 @@ class DispatchSessionController(http.Controller):
             if not operator_login or not ei_name:
                 return {"ok": False, "error": "Datos incompletos"}
 
-            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            operator = request.env["res.users"].sudo().search([('login', '=ilike', str(operator_login).strip())], limit=1)
             if not operator:
                 return {"ok": False, "error": "Operador no encontrado"}
 
@@ -284,7 +284,7 @@ class DispatchSessionController(http.Controller):
             if not operator_login:
                 return {"ok": False, "error": "Datos incompletos"}
 
-            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            operator = request.env["res.users"].sudo().search([('login', '=ilike', str(operator_login).strip())], limit=1)
             if not operator:
                 return {"ok": False, "error": "Operador no encontrado"}
 
@@ -316,7 +316,7 @@ class DispatchSessionController(http.Controller):
             if not operator_login:
                 return {"ok": False, "error": "Datos incompletos"}
 
-            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            operator = request.env["res.users"].sudo().search([('login', '=ilike', str(operator_login).strip())], limit=1)
             if not operator:
                 return {"ok": False, "error": "Operador no encontrado"}
 
@@ -388,7 +388,7 @@ class DispatchSessionController(http.Controller):
             if not operator_login:
                 return {"ok": False, "error": "Datos incompletos"}
 
-            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            operator = request.env["res.users"].sudo().search([('login', '=ilike', str(operator_login).strip())], limit=1)
             if not operator:
                 return {"ok": False, "error": "Operador no encontrado"}
 

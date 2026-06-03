@@ -225,7 +225,7 @@ class GetPicks(http.Controller):
 
             operator_record = None
             if operator_mail:
-                operator_record = request.env['res.users'].sudo().search([('login', '=', operator_mail)], limit=1)
+                operator_record = request.env['res.users'].sudo().search([('login', '=ilike', str(operator_mail).strip())], limit=1)
             elif operator:
                 operator_record = request.env['res.users'].sudo().search([('id', '=', operator["id"])], limit=1)
 

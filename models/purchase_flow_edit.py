@@ -63,7 +63,7 @@ class PurchaseWMDS(models.Model):
             )
 
         # Activar VoBo
-        self.write({
+        self.with_context(wmds_comex_approving=True).write({
             'check_commertial': True,
             'comex_release_date': fields.Datetime.now(),
         })
@@ -317,7 +317,7 @@ class PurchaseWMDS(models.Model):
                                 'user': self.env.user.id,
                             })
 
-        if 'check_commertial' in vals:
+        if 'check_commertial' in vals and not self.env.context.get('wmds_comex_approving'):
             is_comm = vals.get('check_commertial')
             log_msg = (
                 'Vo.Bo de COMEX otorgado' if is_comm

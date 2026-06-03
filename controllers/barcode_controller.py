@@ -22,7 +22,7 @@ class BarcodeController(http.Controller):
         
         # Check operator assignment
         assigned_operator = getattr(record, 'operator', False)
-        if assigned_operator and assigned_operator.login != operator_email:
+        if assigned_operator and (assigned_operator.login or '').strip().lower() != (operator_email or '').strip().lower():
             message = "Esta operación ha sido reasignada a otro operador."
             if record._name == 'stock.picking.batch':
                 message = "Este BATCH ha sido reasignado a otro operador."

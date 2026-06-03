@@ -141,7 +141,7 @@ class DockNBin(http.Controller):
                     "message": f"Debido a que son más de 10 paquetes ({item_count}), la tarea se ha encolado en segundo plano."
                 }
 
-            operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            operator_orm = request.env["res.users"].sudo().search([('login', '=ilike', str(operator_login).strip())], limit=1)
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             if not bin_storage:
                 _logger.error(f"Bin {bin_name} no encontrado")
@@ -424,7 +424,7 @@ class DockNBin(http.Controller):
             if not bin_name or not dock_name or not operator_login:
                 return {'error': 'Faltan datos: bin, dock u operator', 'ok': False}
 
-            operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            operator_orm = request.env["res.users"].sudo().search([('login', '=ilike', str(operator_login).strip())], limit=1)
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             dock_storage = request.env["dock.storage"].sudo().search([('name', '=', dock_name)], limit=1)
 

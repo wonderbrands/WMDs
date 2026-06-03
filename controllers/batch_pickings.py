@@ -122,9 +122,9 @@ class BatchPickController(http.Controller):
 
         operator_user = None
         if operator_code:
-            operator_user = request.env['res.users'].sudo().search([('login', '=', operator_code)], limit=1)
+            operator_user = request.env['res.users'].sudo().search([('login', '=ilike', str(operator_code).strip())], limit=1)
             if not operator_user:
-                 operator_user = request.env['res.users'].sudo().search([('id', '=', operator_code)], limit=1)
+                operator_user = request.env['res.users'].sudo().search([('id', '=', operator_code)], limit=1)
 
         valid_picks = []
 

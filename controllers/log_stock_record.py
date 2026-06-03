@@ -56,9 +56,19 @@ class LogStockRecord(http.Controller):
             
             is_storage = any(word in p_type_name.lower() for word in ["storage", "rack", "rackeo"])
             
+            dest_location_names = []
+            if picking.location_dest_id:
+                dest_location_names.append(picking.location_dest_id.name)
+            
+            if picking.move_line_ids:
+                for ml in picking.move_line_ids:
+                    loc_name = ml.location_dest_id.name
+                    if loc_name and loc_name not in dest_location_names:
+                        dest_location_names.append(loc_name)
+            
             location_header = ""
-            if not is_storage and picking.location_dest_id:
-                location_header = f"Hacia {picking.location_dest_id.name}, "
+            if dest_location_names:
+                location_header = f"Hacia {', '.join(dest_location_names)}, "
 
             detail_header = f"{location_header}Productos: {product_list}"
 

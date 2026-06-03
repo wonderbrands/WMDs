@@ -37,7 +37,7 @@ class PendingTasks(http.Controller):
             if task == "batch_pick":
                 pending_tasks = env['stock.picking.batch'].sudo().search([
                     ('state', '=', 'in_progress'),
-                    ('operator.login', '=', email)
+                    ('operator.login', '=ilike', str(email).strip())
                 ], order='write_date desc', limit=20)
 
             else:
@@ -53,11 +53,11 @@ class PendingTasks(http.Controller):
                     search_domain.append(('picking_type_id.name', 'ilike', map_task[task]))
 
                 if task not in ["acomodo", "ingresos"]:
-                    search_domain.append(('operator.login', '=', email))
+                    search_domain.append(('operator.login', '=ilike', str(email).strip()))
                 else:
                     search_domain.append('|')
                     search_domain.append(('operator', '=', False))
-                    search_domain.append(('operator.login', '=', email))
+                    search_domain.append(('operator.login', '=ilike', str(email).strip()))
 
                 pending_tasks = env['stock.picking'].sudo().search(search_domain, order='scheduled_date desc, id desc', limit=30)
             

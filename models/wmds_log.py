@@ -25,11 +25,51 @@ class WMDSLog(models.Model):
         if vals.get('log'):
             vals['log'] = vals['log'].replace('\n', ' ').replace('\r', ' ').strip()
         
+        # Resolve correct operator/user
+        current_user_id = vals.get('user')
+        resolved_user_id = None
+
+        # Check if there is an active HTTP request and get the actual logged-in user
+        from odoo.http import request
+        try:
+            if request and request.env and request.env.user:
+                public_user = self.env.ref('base.public_user', raise_if_not_found=False)
+                if not public_user or request.env.user.id != public_user.id:
+                    resolved_user_id = request.env.user.id
+        except Exception:
+            pass
+
+        # If not resolved from request, check if the passed user is a real user (not superuser/system)
+        root_user = self.env.ref('base.user_root', raise_if_not_found=False)
+        admin_user = self.env.ref('base.user_admin', raise_if_not_found=False)
+        system_ids = [u.id for u in [root_user, admin_user] if u]
+
+        if not resolved_user_id:
+            if current_user_id and current_user_id not in system_ids:
+                resolved_user_id = current_user_id
+
+        # If still not resolved (or resolved as system user), try to fallback to the linked record's operator
+        if not resolved_user_id or resolved_user_id in system_ids:
+            if vals.get('pick'):
+                pick = self.env['stock.picking'].sudo().browse(vals['pick'])
+                if pick.exists() and pick.operator:
+                    resolved_user_id = pick.operator.id
+            elif vals.get('batch_pick'):
+                batch = self.env['stock.picking.batch'].sudo().browse(vals['batch_pick'])
+                if batch.exists() and batch.operator:
+                    resolved_user_id = batch.operator.id
+
+        # Last fallback
+        if not resolved_user_id:
+            resolved_user_id = current_user_id or self.env.user.id
+
+        vals['user'] = resolved_user_id
+
         # Original log record
         log = super(WMDSLog, self).create(vals)
         
-        # Avoid recursion if we are already duplicating
-        if self.env.context.get('wmds_log_duplicating'):
+        # Avoid recursion if we are already duplicating or if propagation is disabled
+        if self.env.context.get('wmds_log_duplicating') or self.env.context.get('wmds_log_no_propagate'):
             return log
 
         # Propagation logic
@@ -112,6 +152,14 @@ class WMDSLog(models.Model):
                 new_vals_base.pop(field, None)
             
             for model, res_id in target_records:
+                # Check if an identical log already exists on this target record
+                existing = self.sudo().search([
+                    (model, '=', res_id),
+                    ('log', '=', log.log),
+                ], limit=1)
+                if existing:
+                    continue
+                
                 new_vals = new_vals_base.copy()
                 new_vals[model] = res_id
                 self.with_context(wmds_log_duplicating=True).create(new_vals)

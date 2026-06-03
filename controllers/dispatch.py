@@ -34,7 +34,9 @@ class Dispatch(http.Controller):
             items = kw.get("items", []) # List of {move_id, qty}
             operator_login = kw.get("operator_login")
             
-            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            operator = False
+            if operator_login:
+                operator = request.env["res.users"].sudo().search([('login', '=ilike', str(operator_login).strip())], limit=1)
             user_id = operator.id if operator else request.env.user.id
 
             for item in items:
@@ -111,7 +113,9 @@ class Dispatch(http.Controller):
                     "message": f"Debido al número de paquetes ({len(packs_ids)}), la tarea se ha encolado en segundo plano."
                 }
 
-            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            operator = False
+            if operator_login:
+                operator = request.env["res.users"].sudo().search([('login', '=ilike', str(operator_login).strip())], limit=1)
             user_id = operator.id if operator else request.env.user.id
 
             _logger.info(f"Usuario asignado: {user_id}")
@@ -193,6 +197,15 @@ class Dispatch(http.Controller):
                         ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
                         ('state', 'not in', ['done', 'cancel'])
                     ])
+                    
+                    # Log on Sale Order that all packages have been dispatched
+                    request.env['wmds.log'].sudo().create({
+                        'sale': so.id,
+                        'log': "Pedido totalmente despachado. Cerrando transferencias de salida (OUT).",
+                        'user': user_id,
+                        'date': fields.Datetime.now(),
+                    })
+                    
                     for picking in pickings:
                         try:
                             picking.action_assign()
@@ -211,6 +224,15 @@ class Dispatch(http.Controller):
                                     'pick_ids': [(4, picking.id)]
                                 })
                                 wizard.process()
+                                
+                            # Log on the OUT picking
+                            request.env['wmds.log'].sudo().create({
+                                'pick': picking.id,
+                                'log': f"Salida ({picking.name}) validada automáticamente por despacho completo.",
+                                'user': user_id,
+                                'date': fields.Datetime.now(),
+                            })
+                            
                             _logger.info(f"Picking {picking.name} validado")
                         except Exception as e:
                             _logger.error(f"Error validando picking {picking.name}: {e}")
