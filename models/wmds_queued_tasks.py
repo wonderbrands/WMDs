@@ -391,72 +391,85 @@ class WmdsQueuedTasks(models.Model):
                 continue
             valid_ei_tags |= tag
 
-        valid_ei_tags.write({
-            'dispatched': True,
-            'on_dock': False,
-            'dock_id': False
-        })
-        
+        errors = []
         for tag in valid_ei_tags:
-            log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
-            
-            picking = self.env['stock.picking'].sudo().search([
-                ('sale_id', '=', tag.so_id.id),
-                ('state', 'in', ['assigned', 'done']),
-                ('picking_type_id.name', 'ilike', 'Pick')
-            ], order='date_done desc', limit=1)
-            
-            if picking:
-                self.env["wmds.log"].sudo().create({
-                    "pick": picking.id,
-                    "log": log_msg,
-                    "user": user_id,
-                })
-            else:
-                self.env['wmds.log'].sudo().create({
-                    'sale': tag.so_id.id,
-                    'log': log_msg,
-                    'user': user_id,
-                    'date': fields.Datetime.now(),
-                })
+            try:
+                with self.env.cr.savepoint():
+                    if tag.dispatched:
+                        _logger.info(f"Package {tag.display_name_custom} is already dispatched. Skipping.")
+                        continue
 
-        sale_orders = valid_ei_tags.mapped('so_id')
-        for so in sale_orders:
-            total_ei = so.ei_total
-            dispatched_ei_count = self.env['sale.order.ei'].sudo().search_count([
-                ('so_id', '=', so.id),
-                ('dispatched', '=', True)
-            ])
-            
-            if dispatched_ei_count >= total_ei:
-                pickings = self.env['stock.picking'].sudo().search([
-                    ('sale_id', '=', so.id),
-                    '|',
-                    ('picking_type_id.code', '=', 'outgoing'),
-                    ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
-                    ('state', 'not in', ['done', 'cancel'])
-                ])
-                for picking in pickings:
-                    try:
-                        picking.action_assign()
+                    tag.write({
+                        'dispatched': True,
+                        'on_dock': False,
+                        'dock_id': False
+                    })
+                    
+                    log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
+                    
+                    picking = self.env['stock.picking'].sudo().search([
+                        ('sale_id', '=', tag.so_id.id),
+                        ('state', 'in', ['assigned', 'done']),
+                        ('picking_type_id.name', 'ilike', 'Pick')
+                    ], order='date_done desc', limit=1)
+                    
+                    if picking:
+                        self.env["wmds.log"].sudo().create({
+                            "pick": picking.id,
+                            "log": log_msg,
+                            "user": user_id,
+                        })
+                    else:
+                        self.env['wmds.log'].sudo().create({
+                            'sale': tag.so_id.id,
+                            'log': log_msg,
+                            'user': user_id,
+                            'date': fields.Datetime.now(),
+                        })
+
+                    so = tag.so_id
+                    if so:
+                        total_ei = so.ei_total
+                        dispatched_ei_count = self.env['sale.order.ei'].sudo().search_count([
+                            ('so_id', '=', so.id),
+                            ('dispatched', '=', True)
+                        ])
                         
-                        # Pre-llenar cantidades realizadas para evitar wizard de cantidades vacías
-                        for move in picking.move_ids:
-                            if move.state not in ('done', 'cancel'):
-                                move.write({
-                                    'quantity': move.product_uom_qty,
-                                    'picked': True
-                                })
-                        
-                        res = picking.button_validate()
-                        if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
-                            wizard = self.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
-                                'pick_ids': [(4, picking.id)]
-                            })
-                            wizard.process()
-                        _logger.info(f"Picking {picking.name} validado con éxito en segundo plano.")
-                    except Exception as e:
-                        _logger.error(f"Error validando picking {picking.name} en tarea encolada: {e}")
+                        if dispatched_ei_count >= total_ei:
+                            pickings = self.env['stock.picking'].sudo().search([
+                                ('sale_id', '=', so.id),
+                                '|',
+                                ('picking_type_id.code', '=', 'outgoing'),
+                                ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
+                                ('state', 'not in', ['done', 'cancel'])
+                            ])
+                            for picking in pickings:
+                                picking.action_assign()
+                                
+                                # Pre-llenar cantidades realizadas para evitar wizard de cantidades vacías
+                                for move in picking.move_ids:
+                                    if move.state not in ('done', 'cancel'):
+                                        move.write({
+                                            'quantity': move.product_uom_qty,
+                                            'picked': True
+                                        })
+                                
+                                res = picking.button_validate()
+                                if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
+                                    wizard = self.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
+                                        'pick_ids': [(4, picking.id)]
+                                    })
+                                    wizard.process()
+                                _logger.info(f"Picking {picking.name} validado con éxito en segundo plano.")
+                # Commit successful dispatch for this package
+                self.env.cr.commit()
+            except Exception as e:
+                err_msg = f"Error procesando despacho para el paquete {tag.display_name_custom}: {str(e)}"
+                _logger.error(f"{err_msg}\n{traceback.format_exc()}")
+                errors.append(err_msg)
+
+        if errors:
+            raise UserError("\n".join(errors))
 
     @api.model
     def cleanup_old_tasks(self):

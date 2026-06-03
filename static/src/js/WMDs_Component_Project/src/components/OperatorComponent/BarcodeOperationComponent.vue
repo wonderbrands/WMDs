@@ -378,6 +378,15 @@ export default {
                             return partA.localeCompare(partB, undefined, { numeric: true, sensitivity: 'base' });
                         });
 
+                        // Pre-populate scannedLineIds for lines that already have picked quantity and a destination location
+                        res.lines.forEach(l => {
+                            if (l.picked > 0 && l.location_dest_id) {
+                                if (!this.scannedLineIds.includes(l.id)) {
+                                    this.scannedLineIds.push(l.id);
+                                }
+                            }
+                        });
+
                         // Ignore default destination ID if scan_dest is on to force re-selection/validation
                         if (this.localConfig.scan_dest) {
                             res.lines.forEach(l => {

@@ -9,6 +9,13 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+try:
+    import barcode
+    from barcode.writer import SVGWriter
+    HAS_BARCODE = True
+except ImportError:
+    HAS_BARCODE = False
+
 class ResUsers(models.Model):
     _inherit = 'res.users'
 
@@ -62,15 +69,11 @@ class ResUsers(models.Model):
     @api.depends('packer_uuid')
     def _compute_packer_barcode_image(self):
         for user in self:
-            if not user.packer_uuid:
+            if not user.packer_uuid or not HAS_BARCODE:
                 user.packer_barcode_image = False
                 continue
 
             try:
-                # Use python-barcode with SVGWriter (generates plain text SVG, no external GUI libs needed)
-                import barcode
-                from barcode.writer import SVGWriter
-
                 # We use code128 as it's the standard for this uuid
                 CODE128 = barcode.get_barcode_class('code128')
                 # SVGWriter creates a pure text SVG
@@ -86,7 +89,7 @@ class ResUsers(models.Model):
                 svg_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
                 user.packer_barcode_image = svg_data
             except Exception as e:
-                _logger.error(f"Error generating manual SVG barcode: {str(e)}")
+                _logger.warning(f"Error generating manual SVG barcode: {str(e)}")
                 user.packer_barcode_image = False
 
     @api.depends('login')

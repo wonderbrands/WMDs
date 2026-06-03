@@ -53,6 +53,24 @@ class StockWMDS(models.Model):
     wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log')
     picking_type_id_name = fields.Char(related='picking_type_id.name', string='Operation Type Name', store=False)
 
+    def button_validate(self):
+        # 1. Enforce that destination locations for Rackeo pickings must be empty before validation
+        for picking in self:
+            if picking.picking_type_id.name in ('Rackeo', 'Rackeos'):
+                active_moves = picking.move_ids.filtered(
+                    lambda m: getattr(m, 'quantity', getattr(m, 'quantity_done', 0.0)) > 0
+                )
+                dest_locations = active_moves.mapped('location_dest_id')
+                for loc in dest_locations:
+                    if loc.usage == 'internal':
+                        quants = self.env['stock.quant'].search([
+                            ('location_id', '=', loc.id),
+                            ('quantity', '>', 0)
+                        ], limit=1)
+                        if quants:
+                            raise UserError(f"No se puede rackear en la ubicación '{loc.complete_name}' porque no está vacía.")
+        return super(StockWMDS, self).button_validate()
+
     @api.model
     def create(self, vals):
         res = super(StockWMDS, self).create(vals)

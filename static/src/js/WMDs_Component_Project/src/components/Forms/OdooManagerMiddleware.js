@@ -394,6 +394,22 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
             case "process_dest_location_scan":
                 return { status: "ok", new_location_name: "Ubicación Hija" }
 
+            case "location_blocking_search":
+                return [
+                    { id: 1, name: "A-P02-F1-N2", complete_name: "WH/Stock/A-P02-F1-N2", is_blocked: false, block_reason_type: "", block_reason: "" },
+                    { id: 2, name: "A-P01-F1-N2", complete_name: "WH/Stock/A-P01-F1-N2", is_blocked: true, block_reason_type: "ciclico", block_reason: "Bloqueado/Cíclico" }
+                ];
+            case "location_blocking_get_adjacent":
+                return [
+                    { id: 10, name: "A-P01-F1-N2", complete_name: "WH/Stock/A-P01-F1-N2", pos_offset: -1, frente_offset: 0, nivel_offset: 0 },
+                    { id: 11, name: "A-P03-F1-N2", complete_name: "WH/Stock/A-P03-F1-N2", pos_offset: 1, frente_offset: 0, nivel_offset: 0 },
+                    { id: 12, name: "A-P02-F2-N2", complete_name: "WH/Stock/A-P02-F2-N2", pos_offset: 0, frente_offset: 1, nivel_offset: 0 }
+                ];
+            case "location_blocking_block":
+                return { status: "ok" };
+            case "location_blocking_unblock":
+                return { status: "ok" };
+
             default:
                 break;
         }
@@ -486,6 +502,10 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_available_docks: {url: '/wmds/v2/engine/get/available_docks', method: 'POST'},
             get_dock_contents: {url: '/wmds/v2/engine/get/dock_contents', method: 'POST'},
             search_manual_dispatch: {url: '/wmds/v2/engine/get/search_manual_dispatch', method: 'POST'},
+            location_blocking_search: {url: '/wmds/v2/engine/location_blocking/search', method: 'POST'},
+            location_blocking_get_adjacent: {url: '/wmds/v2/engine/location_blocking/get_adjacent', method: 'POST'},
+            location_blocking_block: {url: '/wmds/v2/engine/location_blocking/block', method: 'POST'},
+            location_blocking_unblock: {url: '/wmds/v2/engine/location_blocking/unblock', method: 'POST'},
         };
     }
 

@@ -2,6 +2,8 @@
   <article class="main_manager_screen">
     <ListView v-if="['ingreso', 'ingresos', 'disponibilizar', 'traslado', 'pick', 'pack', 'devolucion', 'resurtido', 'batch_pick', 'cycle_count', 'operator_list'].includes(store.main_manager_screen.value)"/>
     <ManualDispatch v-else-if="store.main_manager_screen.value === 'manual_dispatch'" />
+    <LocationBlocking v-else-if="store.main_manager_screen.value === 'location_blocking'" />
+    <LocationUnblocking v-else-if="store.main_manager_screen.value === 'location_unblocking'" />
     <div v-else class="home-screen">
         <h1>Bienvenido al WMDs Manager</h1>
         <p>Selecciona una opción del menú lateral para comenzar.</p>
@@ -13,6 +15,8 @@
     import { useGeneralStore } from "../../store/index"
     import ListView from './ListView.vue'
     import ManualDispatch from './ManualDispatch.vue'
+    import LocationBlocking from './LocationBlocking.vue'
+    import LocationUnblocking from './LocationUnblocking.vue'
     export default {
       name: 'MainManagerScreen',
 
@@ -30,7 +34,9 @@
       },
       components: {
           ListView,
-          ManualDispatch
+          ManualDispatch,
+          LocationBlocking,
+          LocationUnblocking
       }
     }
 </script>

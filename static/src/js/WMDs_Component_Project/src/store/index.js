@@ -294,6 +294,16 @@ export const useGeneralStore = defineStore('general_store', {
             title: "Despacho Manual",
             description: "Flujo manual de BIN -> DOCK -> Despacho para Managers",
             value: "manual_dispatch"
+        },
+        location_blocking: {
+            title: "Bloqueo de Ubicaciones",
+            description: "Gestión de bloqueos y adyacencias por sobredimensionado",
+            value: "location_blocking"
+        },
+        location_unblocking: {
+            title: "Desbloqueo de Ubicaciones",
+            description: "Gestión de desbloqueo de posiciones (excepto cuarentenas y cíclicos)",
+            value: "location_unblocking"
         }
       },
       main_manager_screen: null,
