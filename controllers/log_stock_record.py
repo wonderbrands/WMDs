@@ -29,17 +29,16 @@ class LogStockRecord(http.Controller):
                 operator_id = request.env['res.users'].sudo().search([('login', '=ilike', str(operator_mail).strip())], limit=1)
             
             # --- EXTRACCIÓN DE CANTIDADES SEGURA ---
-            # Agregamos por producto para evitar duplicados si hay varias líneas del mismo
+            # Agregamos por producto usando los movimientos (moves) para evitar inconsistencias con líneas divididas
             product_data = {}
-            lines = picking.move_line_ids or picking.move_ids_without_package
+            lines = picking.move_ids
             
             for m in lines:
                 p_id = m.product_id.id
                 p_name = m.product_id.display_name
                 
-                # Odoo 19: quantity es el campo estándar. quantity_done en moves.
-                done = getattr(m, 'quantity', getattr(m, 'qty_done', getattr(m, 'quantity_done', 0.0)))
-                demand = getattr(m, 'reserved_uom_qty', getattr(m, 'qty_reserved', getattr(m, 'product_uom_qty', 0.0)))
+                done = m.quantity
+                demand = m.product_uom_qty
                 
                 if p_id not in product_data:
                     product_data[p_id] = {'name': p_name, 'done': 0.0, 'demand': 0.0}
@@ -47,7 +46,7 @@ class LogStockRecord(http.Controller):
                 product_data[p_id]['done'] += done
                 product_data[p_id]['demand'] += demand
             
-            product_list_arr = [f"{data['name']}: {data['done']}/{data['demand']}" for data in product_data.values()]
+            product_list_arr = [f"{data['name']}: {int(data['done'])}/{int(data['demand'])}" for data in product_data.values()]
             product_list = " | ".join(product_list_arr)
             # ---------------------------------------
             
