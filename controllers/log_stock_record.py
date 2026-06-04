@@ -39,7 +39,10 @@ class LogStockRecord(http.Controller):
                 
                 # Odoo 19: quantity es el campo estándar. quantity_done en moves.
                 done = getattr(m, 'quantity', getattr(m, 'qty_done', getattr(m, 'quantity_done', 0.0)))
-                demand = getattr(m, 'reserved_uom_qty', getattr(m, 'qty_reserved', getattr(m, 'product_uom_qty', 0.0)))
+                if getattr(m, '_name', '') == 'stock.move.line':
+                    demand = getattr(m, 'reserved_uom_qty', 0.0) or getattr(m, 'quantity', 0.0) or getattr(m.move_id, 'product_uom_qty', 0.0)
+                else:
+                    demand = getattr(m, 'reserved_uom_qty', getattr(m, 'qty_reserved', getattr(m, 'product_uom_qty', 0.0)))
                 
                 if p_id not in product_data:
                     product_data[p_id] = {'name': p_name, 'done': 0.0, 'demand': 0.0}

@@ -30,6 +30,15 @@ class BarcodeController(http.Controller):
         
         return {"status": "ok"}
 
+    def _get_line_demand(self, line):
+        # Fallbacks: 1. reserved_uom_qty, 2. quantity (Odoo 18/19), 3. move_id.product_uom_qty
+        val = getattr(line, 'reserved_uom_qty', 0.0) or 0.0
+        if not val:
+            val = getattr(line, 'quantity', 0.0) or 0.0
+        if not val:
+            val = getattr(line.move_id, 'product_uom_qty', 0.0) or 0.0
+        return val
+
     @http.route('/wmds/v2/barcode/get_operation_data', type='json', auth='user', methods=['POST'], csrf=True)
     def get_operation_data(self, **kw):
         try:
@@ -62,7 +71,7 @@ class BarcodeController(http.Controller):
                 # En Odoo 19, 'quantity' es el campo principal. 
                 # La demanda suele estar en el move, pero en la línea usamos lo reservado o la cantidad total.
                 qty_done = getattr(line, 'quantity', getattr(line, 'qty_done', 0.0))
-                qty_reserved = getattr(line, 'reserved_uom_qty', getattr(line.move_id, 'product_uom_qty', getattr(line, 'quantity', 0.0))) # Fallback a product_uom_qty si no hay reserva explícita
+                qty_reserved = self._get_line_demand(line)
                 
                 lines_data.append({
                     'id': line.id,
@@ -148,7 +157,7 @@ class BarcodeController(http.Controller):
                 
                 # Strategy: Prioritize the first incomplete line
                 incomplete_line = lines.filtered(
-                    lambda l: l.wmds_picked_qty < getattr(l, 'reserved_uom_qty', getattr(l.move_id, 'product_uom_qty', getattr(l, 'quantity', 0.0)))
+                    lambda l: l.wmds_picked_qty < self._get_line_demand(l)
                 )
                 if incomplete_line:
                     line = incomplete_line[0]
@@ -163,7 +172,7 @@ class BarcodeController(http.Controller):
             
             # Demand validation
             if not extra_products and increment > 0:
-                line_demand = getattr(line, 'reserved_uom_qty', getattr(line.move_id, 'product_uom_qty', getattr(line, 'quantity', 0.0)))
+                line_demand = self._get_line_demand(line)
                 if line.wmds_picked_qty + increment > line_demand:
                     source_loc = line.location_id.display_name
                     msg = f"Intento de escaneo excedido en {source_loc}: Producto {line.product_id.display_name}. Recogidos: {line.wmds_picked_qty}, Demanda: {line_demand}"
