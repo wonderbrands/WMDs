@@ -599,7 +599,6 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
 export default function OdooManagerMiddleware() {
     if(import.meta.env.VITE_ENVIRONMENT === 'DEV') {
         return new OdooManagerMiddlewareDev()
-    } else if (import.meta.env.VITE_ENVIRONMENT === 'PROD') {
-        return new OdooManagerMiddlewareProd()
     }
+    return new OdooManagerMiddlewareProd()
 }
