@@ -4,9 +4,7 @@
 
     'summary': "Local Warehouse Management System",
 
-    'description': """
-Planned replacement for the current WMS
-    """,
+    'description': """Planned replacement for the current WMS.""",
 
     'author': "Wonderbrands",
     'website': "https://www.wonderbrands.co",

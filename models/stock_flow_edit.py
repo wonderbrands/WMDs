@@ -63,12 +63,20 @@ class StockWMDS(models.Model):
                 dest_locations = active_moves.mapped('location_dest_id')
                 for loc in dest_locations:
                     if loc.usage == 'internal':
+                        is_n1 = loc.name and loc.name.upper().endswith('N1')
                         quants = self.env['stock.quant'].search([
                             ('location_id', '=', loc.id),
                             ('quantity', '>', 0)
-                        ], limit=1)
+                        ])
                         if quants:
-                            raise UserError(f"No se puede rackear en la ubicación '{loc.complete_name}' porque no está vacía.")
+                            if is_n1:
+                                existing_product_ids = quants.mapped('product_id.id')
+                                moves_for_loc = active_moves.filtered(lambda m: m.location_dest_id.id == loc.id)
+                                for move in moves_for_loc:
+                                    if move.product_id.id not in existing_product_ids:
+                                        raise UserError(f"El SKU a rackear debe ser el mismo que ya contiene la ubicación.")
+                            else:
+                                raise UserError(f"No se puede rackear en la ubicación '{loc.complete_name}' porque no está vacía.")
         return super(StockWMDS, self).button_validate()
 
     @api.model

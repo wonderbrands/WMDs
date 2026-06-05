@@ -262,8 +262,8 @@ class BarcodeController(http.Controller):
                 return {"status": "error", "message": "Ubicación no encontrada."}
 
             if check_empty:
-                # Si la ubicación termina en N1, no revisamos si está vacía
-                is_n1 = scanned_location.name and scanned_location.name.endswith('N1')
+                # Si la ubicación termina en N1, se puede rackear pero el SKU debe ser el mismo que contiene
+                is_n1 = scanned_location.name and scanned_location.name.upper().endswith('N1')
                 if not is_n1:
                     # 1. Verificar la ubicación escaneada
                     quants = request.env['stock.quant'].sudo().search([
@@ -293,6 +293,20 @@ class BarcodeController(http.Controller):
                                     "status": "error", 
                                     "message": f"La ubicación escaneada está vacía, pero su análoga '{analog_loc.display_name}' tiene stock. Ambas deben estar vacías para rackear aquí."
                                 }
+                else:
+                    # Es nivel 1 (termina en N1)
+                    # Si no está vacía, el SKU a rackear debe ser el mismo que contiene
+                    quants = request.env['stock.quant'].sudo().search([
+                        ('location_id', '=', scanned_location.id),
+                        ('quantity', '>', 0)
+                    ])
+                    if quants:
+                        existing_product_ids = quants.mapped('product_id.id')
+                        if line.product_id.id not in existing_product_ids:
+                            return {
+                                "status": "error",
+                                "message": "El SKU a rackear debe ser el mismo que ya contiene la ubicación."
+                            }
 
             original_dest = line.location_dest_id
             # Hierarchy check: Accept any valid location as requested
