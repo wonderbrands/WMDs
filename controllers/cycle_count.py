@@ -337,7 +337,7 @@ class CycleCount(http.Controller):
             for sl in count.selected_location_ids:
                 if sl.location_id:
                     if sl.location_id.original_parent_id:
-                        sl.location_id.write({
+                        sl.location_id.with_context(unblock_comment=f"Desbloqueo automático por finalización del conteo cíclico {count.name}.").write({
                             'location_id': sl.location_id.original_parent_id.id,
                             'block_reason': False,
                             'original_parent_id': False
@@ -372,7 +372,7 @@ class CycleCount(http.Controller):
             for sl in count.selected_location_ids:
                 if sl.location_id:
                     if sl.location_id.original_parent_id:
-                        sl.location_id.write({
+                        sl.location_id.with_context(unblock_comment=f"Desbloqueo automático por cancelación del conteo cíclico {count.name}.").write({
                             'location_id': sl.location_id.original_parent_id.id,
                             'block_reason': False,
                             'original_parent_id': False
