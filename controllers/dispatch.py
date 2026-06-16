@@ -132,7 +132,8 @@ class Dispatch(http.Controller):
             ei_tags.write({
                 'dispatched': True,
                 'on_dock': False,
-                'dock_id': False
+                'dock_id': False,
+                'dispatch_status': 'success'
             })
             _logger.info("EI tags actualizados a dispatched y removidos de DOCK")
             

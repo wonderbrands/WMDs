@@ -18,13 +18,13 @@
         <field name="name">wmds.queued_tasks.list</field>
         <field name="model">wmds.queued_tasks</field>
         <field name="arch" type="xml">
-            <list decoration-danger="status == 'failed'" decoration-success="status == 'completed'" decoration-info="status == 'running'" decoration-muted="status == 'pending'">
+            <list decoration-danger="status == 'failed'" decoration-warning="status == 'completed_with_errors'" decoration-success="status == 'completed'" decoration-info="status == 'running'" decoration-muted="status == 'pending'">
                 <field name="id"/>
                 <field name="task_type"/>
                 <field name="operator_login"/>
                 <field name="date_created"/>
                 <field name="date_processed"/>
-                <field name="status" widget="badge" decoration-danger="status == 'failed'" decoration-success="status == 'completed'" decoration-info="status == 'running'" decoration-muted="status == 'pending'"/>
+                <field name="status" widget="badge" decoration-danger="status == 'failed'" decoration-warning="status == 'completed_with_errors'" decoration-success="status == 'completed'" decoration-info="status == 'running'" decoration-muted="status == 'pending'"/>
             </list>
         </field>
     </record>
@@ -35,8 +35,9 @@
         <field name="arch" type="xml">
             <form string="Tarea Encolada">
                 <header>
-                    <button name="action_retry" string="Reintentar Tarea" type="object" class="oe_highlight" invisible="status not in ['failed', 'completed']"/>
-                    <field name="status" widget="statusbar" statusbar_visible="pending,running,completed,failed"/>
+                    <button name="action_retry" string="Reintentar Tarea" type="object" class="oe_highlight" invisible="status not in ['failed', 'completed_with_errors', 'completed']"/>
+                    <button name="action_stop" string="Detener Tarea" type="object" class="btn-danger" invisible="status not in ['running', 'pending']"/>
+                    <field name="status" widget="statusbar" statusbar_visible="pending,running,completed,completed_with_errors,failed"/>
                 </header>
                 <sheet>
                     <group>
@@ -54,7 +55,10 @@
                         <page string="Parámetros (JSON)">
                             <field name="params" readonly="1" font_style="monospace"/>
                         </page>
-                        <page string="Error / Detalles" invisible="status not in ['failed', 'running']">
+                        <page string="Log de Información">
+                            <field name="info_message" readonly="1" placeholder="Sin información de progreso." font_style="monospace"/>
+                        </page>
+                        <page string="Error / Detalles" invisible="status not in ['failed', 'completed_with_errors', 'running']">
                             <field name="error_message" readonly="1" placeholder="Sin errores." font_style="monospace"/>
                         </page>
                     </notebook>

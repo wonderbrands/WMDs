@@ -27,9 +27,11 @@ class WmdsQueuedTasks(models.Model):
         ('pending', 'Pending'),
         ('running', 'Running'),
         ('completed', 'Completed'),
+        ('completed_with_errors', 'Completed with Errors'),
         ('failed', 'Failed')
     ], string='Status', default='pending', required=True, index=True)
     error_message = fields.Text(string='Error Message')
+    info_message = fields.Text(string='Info Log')
 
     def action_retry(self):
         """Retries the queued task"""
@@ -37,10 +39,22 @@ class WmdsQueuedTasks(models.Model):
         self.write({
             'status': 'pending',
             'error_message': False,
+            'info_message': False,
             'date_processed': False
         })
         # Process asynchronously immediately
         self._trigger_async_process()
+        return True
+
+    def action_stop(self):
+        """Manually stops a running or pending queued task by setting it to completed_with_errors"""
+        self.ensure_one()
+        if self.status in ('running', 'pending'):
+            self.write({
+                'status': 'completed_with_errors',
+                'error_message': 'Detenido manualmente por el operador.',
+                'date_processed': fields.Datetime.now()
+            })
         return True
 
     def _trigger_async_process(self):
@@ -82,17 +96,39 @@ class WmdsQueuedTasks(models.Model):
         try:
             params = json.loads(self.params)
             if self.task_type == 'move_to_bin':
+                self.write({'info_message': "Iniciando movimiento a bin..."})
+                self.env.cr.commit()
                 self._execute_move_to_bin(params)
+                self.write({
+                    'status': 'completed',
+                    'date_processed': fields.Datetime.now(),
+                    'error_message': False,
+                    'info_message': "Movimiento a bin completado con éxito."
+                })
             elif self.task_type == 'move_to_dock':
+                self.write({'info_message': "Iniciando movimiento a dock..."})
+                self.env.cr.commit()
                 self._execute_move_to_dock(params)
+                self.write({
+                    'status': 'completed',
+                    'date_processed': fields.Datetime.now(),
+                    'error_message': False,
+                    'info_message': "Movimiento a dock completado con éxito."
+                })
             elif self.task_type == 'dispatch_package':
-                self._execute_dispatch_package(params)
-            
-            self.write({
-                'status': 'completed',
-                'date_processed': fields.Datetime.now(),
-                'error_message': False
-            })
+                has_errors, error_summary = self._execute_dispatch_package(params)
+                if has_errors:
+                    self.write({
+                        'status': 'completed_with_errors',
+                        'date_processed': fields.Datetime.now(),
+                        'error_message': error_summary
+                    })
+                else:
+                    self.write({
+                        'status': 'completed',
+                        'date_processed': fields.Datetime.now(),
+                        'error_message': False
+                    })
         except Exception as e:
             self.env.cr.rollback()
             error_text = f"{str(e)}\n{traceback.format_exc()}"
@@ -368,6 +404,13 @@ class WmdsQueuedTasks(models.Model):
                 'carrier_id': False,
             })
 
+    def _update_progress(self, progress_msg):
+        self.write({
+            'status': 'running',
+            'info_message': progress_msg
+        })
+        self.env.cr.commit()
+
     def _execute_dispatch_package(self, params):
         packs_ids = params.get("picks_ids", [])
         operator_login = params.get("operator_login")
@@ -379,7 +422,7 @@ class WmdsQueuedTasks(models.Model):
         # Asegurar estado running y mensaje inicial dinámico en la UI
         self.write({
             'status': 'running',
-            'error_message': f"Iniciando procesamiento de {total_packs} paquetes por {operator_login}..."
+            'info_message': f"Iniciando procesamiento de {total_packs} paquetes por {operator_login}..."
         })
         self.env.cr.commit()
 
@@ -392,38 +435,77 @@ class WmdsQueuedTasks(models.Model):
         errors = []
         success_packs = []
         so_out_closed = {} # Caché en memoria para almacenar si el OUT de una Sale Order ya está cerrado
+        log_lines = []
         
         for idx, pack_id in enumerate(packs_ids):
-            # Actualización dinámica de progreso en Odoo en tiempo real
-            progress_msg = (
-                f"Procesando lote de despachos...\n"
-                f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
-                f" - Exitosos/Omitidos: {len(success_packs)}\n"
-                f" - Fallidos: {len(errors)}"
-            )
-            self.write({'error_message': progress_msg})
-            self.env.cr.commit()
+            now_str = fields.Datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
             # Obtener de forma instantánea en memoria sin hacer query
             tag = tag_by_name.get(pack_id)
 
             if not tag:
-                errors.append(f"Paquete {pack_id}: No se encontró la etiqueta sale.order.ei en el sistema.")
+                err_msg = f"Paquete {pack_id}: No se encontró la etiqueta sale.order.ei en el sistema."
+                errors.append(err_msg)
+                log_lines.append(f"[{now_str}] {err_msg}")
+                
+                progress_msg = (
+                    f"Procesando lote de despachos...\n"
+                    f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                    f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                    f" - Fallidos: {len(errors)}\n\n"
+                    f"=== DETALLE DE EJECUCIÓN ===\n" +
+                    "\n".join(log_lines)
+                )
+                self._update_progress(progress_msg)
                 continue
 
-            if tag.write_date and self.date_created and tag.write_date > self.date_created:
-                _logger.info(f"Skipping stale dispatch for package {tag.display_name_custom} (task date_created: {self.date_created}, write_date: {tag.write_date})")
-                success_packs.append(f"Paquete {pack_id} (Omitido: write_date posterior a la creación de la tarea)")
-                continue
 
-            if tag.dispatched:
-                _logger.info(f"Package {tag.display_name_custom} is already dispatched. Skipping.")
-                success_packs.append(f"Paquete {pack_id} (Omitido: Ya despachado previamente)")
+
+            if tag.dispatch_status == 'success' or tag.dispatched:
+                # Si ya está despachado pero el subestado no estaba en success, lo actualizamos para coherencia
+                if tag.dispatch_status != 'success':
+                    try:
+                        with self.env.cr.savepoint():
+                            tag.write({'dispatch_status': 'success'})
+                        self.env.cr.commit()
+                    except Exception as write_err:
+                        _logger.error(f"Error saving success status on already dispatched tag {pack_id}: {write_err}")
+                _logger.info(f"Package {tag.display_name_custom} is already successfully dispatched. Skipping.")
+                success_packs.append(f"Paquete {pack_id} (Omitido: Ya despachado)")
+                log_lines.append(f"[{now_str}] Paquete {pack_id}: Omitido - Ya se encontraba despachado anteriormente.")
+                
+                progress_msg = (
+                    f"Procesando lote de despachos...\n"
+                    f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                    f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                    f" - Fallidos: {len(errors)}\n\n"
+                    f"=== DETALLE DE EJECUCIÓN ===\n" +
+                    "\n".join(log_lines)
+                )
+                self._update_progress(progress_msg)
                 continue
 
             so = tag.so_id
             if so and so.state == 'cancel':
-                errors.append(f"Paquete {pack_id}: No se puede despachar porque el pedido {so.name} está cancelado.")
+                err_msg = f"Paquete {pack_id}: No se puede despachar porque el pedido {so.name} está cancelado."
+                errors.append(err_msg)
+                log_lines.append(f"[{now_str}] {err_msg}")
+                try:
+                    with self.env.cr.savepoint():
+                        tag.write({'dispatch_status': 'failed'})
+                    self.env.cr.commit()
+                except Exception as write_err:
+                    _logger.error(f"Error saving failed status for cancelled order tag {pack_id}: {write_err}")
+                
+                progress_msg = (
+                    f"Procesando lote de despachos...\n"
+                    f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                    f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                    f" - Fallidos: {len(errors)}\n\n"
+                    f"=== DETALLE DE EJECUCIÓN ===\n" +
+                    "\n".join(log_lines)
+                )
+                self._update_progress(progress_msg)
                 continue
 
             # 2. Optimización rápida: Si el OUT de la SO ya está cerrado, marcar y continuar inmediatamente
@@ -442,13 +524,38 @@ class WmdsQueuedTasks(models.Model):
 
                 if so_out_closed[so.id]:
                     # Marcar etiqueta como despachada de forma directa y rápida (sin logs ni validaciones de stock)
-                    tag.write({
-                        'dispatched': True,
-                        'on_dock': False,
-                        'dock_id': False
-                    })
-                    self.env.cr.commit()
-                    success_packs.append(f"Paquete {pack_id} (Procesado rápido - OUT ya cerrado/entregado)")
+                    try:
+                        with self.env.cr.savepoint():
+                            tag.write({
+                                'dispatched': True,
+                                'on_dock': False,
+                                'dock_id': False,
+                                'dispatch_status': 'success'
+                            })
+                        self.env.cr.commit()
+                        success_packs.append(f"Paquete {pack_id} (Procesado rápido - OUT ya cerrado)")
+                        log_lines.append(f"[{now_str}] Paquete {pack_id}: Procesado (rápido) - La orden de entrega (OUT) ya estaba cerrada/entregada.")
+                    except Exception as e:
+                        err_msg = f"Paquete {pack_id}: Error procesando despacho rápido - {str(e)}"
+                        _logger.error(f"{err_msg}\n{traceback.format_exc()}")
+                        errors.append(err_msg)
+                        log_lines.append(f"[{now_str}] Paquete {pack_id}: ERROR en procesamiento rápido - {str(e)}")
+                        try:
+                            with self.env.cr.savepoint():
+                                tag.write({'dispatch_status': 'failed'})
+                            self.env.cr.commit()
+                        except Exception as write_err:
+                            _logger.error(f"Error saving failed status on rapid dispatch tag {pack_id}: {write_err}")
+                    
+                    progress_msg = (
+                        f"Procesando lote de despachos...\n"
+                        f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                        f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                        f" - Fallidos: {len(errors)}\n\n"
+                        f"=== DETALLE DE EJECUCIÓN ===\n" +
+                        "\n".join(log_lines)
+                    )
+                    self._update_progress(progress_msg)
                     continue
 
             try:
@@ -457,7 +564,8 @@ class WmdsQueuedTasks(models.Model):
                     tag.write({
                         'dispatched': True,
                         'on_dock': False,
-                        'dock_id': False
+                        'dock_id': False,
+                        'dispatch_status': 'success'
                     })
                     
                     log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
@@ -528,13 +636,54 @@ class WmdsQueuedTasks(models.Model):
                 # Commit de la transacción de este paquete individual exitoso
                 self.env.cr.commit()
                 success_packs.append(f"Paquete {pack_id} (Procesado con éxito)")
+                log_lines.append(f"[{now_str}] Paquete {pack_id}: Despachado y validado con éxito.")
 
             except Exception as e:
-                err_msg = f"Paquete {pack_id}: Error procesando despacho - {str(e)}"
+                err_detail = str(e) or repr(e)
+                err_msg = f"Paquete {pack_id}: Error procesando despacho - {err_detail}"
                 _logger.error(f"{err_msg}\n{traceback.format_exc()}")
                 errors.append(err_msg)
+                log_lines.append(f"[{now_str}] Paquete {pack_id}: ERROR - {err_detail}")
+                # Escribir estado 'failed' para esta EI en su propia transacción y hacer commit
+                try:
+                    with self.env.cr.savepoint():
+                        tag.write({'dispatch_status': 'failed'})
+                    self.env.cr.commit()
+                except Exception as write_err:
+                    _logger.error(f"Error saving failed status on tag {pack_id}: {write_err}")
 
-        # Si hubo errores, consolidamos el reporte final para la UI y lanzamos error para habilitar reintento
+                if isinstance(e, MemoryError):
+                    _logger.error("MemoryError detectado. Límite de memoria excedido. Se aborta la ejecución de la tarea.")
+                    log_lines.append(f"[{now_str}] ERROR CRÍTICO: Límite de memoria excedido (MemoryError). Se detiene el procesamiento de los paquetes restantes para evitar inestabilidad del sistema.")
+                    self.env.invalidate_all()
+                    break
+
+            progress_msg = (
+                f"Procesando lote de despachos...\n"
+                f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                f" - Fallidos: {len(errors)}\n\n"
+                f"=== DETALLE DE EJECUCIÓN ===\n" +
+                "\n".join(log_lines)
+            )
+            self._update_progress(progress_msg)
+
+            # Invalida el caché de Odoo en cada iteración para liberar memoria y evitar MemoryError
+            self.env.invalidate_all()
+
+        # Escribir el log final consolidado
+        final_msg = (
+            f"Procesamiento finalizado.\n"
+            f"Total: {total_packs} paquetes.\n"
+            f" - Exitosos/Omitidos: {len(success_packs)}\n"
+            f" - Fallidos: {len(errors)}\n\n"
+            f"=== DETALLE DE EJECUCIÓN ===\n" +
+            "\n".join(log_lines)
+        )
+        self.write({'info_message': final_msg})
+        self.env.cr.commit()
+
+        # Si hubo errores, consolidamos el reporte final para la UI
         if errors:
             summary = []
             summary.append("=== RESUMEN DE PROCESAMIENTO CON ERRORES ===")
@@ -546,7 +695,9 @@ class WmdsQueuedTasks(models.Model):
             for err in errors:
                 summary.append(f" - {err}")
             
-            raise UserError("\n".join(summary))
+            return True, "\n".join(summary)
+
+        return False, ""
 
     @api.model
     def cleanup_old_tasks(self):
@@ -555,7 +706,7 @@ class WmdsQueuedTasks(models.Model):
         limit_date = datetime.now() - timedelta(days=15)
         old_tasks = self.search([
             ('date_created', '<', limit_date),
-            ('status', '=', 'completed')
+            ('status', 'in', ['completed', 'completed_with_errors'])
         ])
         _logger.info(f"Removing {len(old_tasks)} queued tasks older than 15 days")
         old_tasks.unlink()
