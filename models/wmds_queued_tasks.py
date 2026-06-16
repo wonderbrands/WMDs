@@ -555,7 +555,7 @@ class WmdsQueuedTasks(models.Model):
         limit_date = datetime.now() - timedelta(days=15)
         old_tasks = self.search([
             ('date_created', '<', limit_date),
-            ('status', 'in', ['completed', 'failed'])
+            ('status', '=', 'completed')
         ])
         _logger.info(f"Removing {len(old_tasks)} queued tasks older than 15 days")
         old_tasks.unlink()
