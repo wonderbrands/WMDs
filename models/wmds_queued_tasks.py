@@ -391,6 +391,7 @@ class WmdsQueuedTasks(models.Model):
 
         errors = []
         success_packs = []
+        so_out_closed = {} # Caché en memoria para almacenar si el OUT de una Sale Order ya está cerrado
         
         for idx, pack_id in enumerate(packs_ids):
             # Actualización dinámica de progreso en Odoo en tiempo real
@@ -425,8 +426,33 @@ class WmdsQueuedTasks(models.Model):
                 errors.append(f"Paquete {pack_id}: No se puede despachar porque el pedido {so.name} está cancelado.")
                 continue
 
+            # 2. Optimización rápida: Si el OUT de la SO ya está cerrado, marcar y continuar inmediatamente
+            if so:
+                if so.id not in so_out_closed:
+                    # Buscar en base de datos únicamente la primera vez para esta Sale Order
+                    pending_out_pickings = self.env['stock.picking'].sudo().search([
+                        ('sale_id', '=', so.id),
+                        '|',
+                        ('picking_type_id.code', '=', 'outgoing'),
+                        ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
+                        ('state', 'not in', ['done', 'cancel'])
+                    ])
+                    # Si no hay pickings de salida pendientes, el OUT ya está cerrado
+                    so_out_closed[so.id] = not bool(pending_out_pickings)
+
+                if so_out_closed[so.id]:
+                    # Marcar etiqueta como despachada de forma directa y rápida (sin logs ni validaciones de stock)
+                    tag.write({
+                        'dispatched': True,
+                        'on_dock': False,
+                        'dock_id': False
+                    })
+                    self.env.cr.commit()
+                    success_packs.append(f"Paquete {pack_id} (Procesado rápido - OUT ya cerrado/entregado)")
+                    continue
+
             try:
-                # 2. Solo iniciamos savepoint y transacción para los paquetes que realmente requieren despacho
+                # 3. Solo iniciamos savepoint y transacción para los paquetes que realmente requieren despacho y tienen OUT pendiente
                 with self.env.cr.savepoint():
                     tag.write({
                         'dispatched': True,
@@ -457,6 +483,7 @@ class WmdsQueuedTasks(models.Model):
                         })
 
                     if so:
+                        # Sabemos que hay pickings de salida pendientes porque so_out_closed[so.id] es False
                         pending_out_pickings = self.env['stock.picking'].sudo().search([
                             ('sale_id', '=', so.id),
                             '|',
@@ -490,10 +517,13 @@ class WmdsQueuedTasks(models.Model):
                                         })
                                         wizard.process()
                                     _logger.info(f"Picking OUT {picking_out.name} validado con éxito en segundo plano.")
+                                # Si acabamos de validar con éxito todos los pickings OUT, actualizamos la caché
+                                so_out_closed[so.id] = True
                             else:
                                 _logger.info(f"Faltan de despachar etiquetas para SO {so.name} ({dispatched_ei_count}/{total_ei}).")
                         else:
                             _logger.info(f"No hay pickings OUT pendientes para SO {so.name}. Se salta la validación.")
+                            so_out_closed[so.id] = True
 
                 # Commit de la transacción de este paquete individual exitoso
                 self.env.cr.commit()
