@@ -54,7 +54,7 @@
                         <page string="Parámetros (JSON)">
                             <field name="params" readonly="1" font_style="monospace"/>
                         </page>
-                        <page string="Error / Detalles" invisible="status != 'failed'">
+                        <page string="Error / Detalles" invisible="status not in ['failed', 'running']">
                             <field name="error_message" readonly="1" placeholder="Sin errores." font_style="monospace"/>
                         </page>
                     </notebook>
