@@ -375,6 +375,14 @@ class WmdsQueuedTasks(models.Model):
         operator = self.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
         user_id = operator.id if operator else self.env.user.id
 
+        total_packs = len(packs_ids)
+        # Asegurar estado running y mensaje inicial dinámico en la UI
+        self.write({
+            'status': 'running',
+            'error_message': f"Iniciando procesamiento de {total_packs} paquetes por {operator_login}..."
+        })
+        self.env.cr.commit()
+
         # 1. Búsqueda masiva inicial para eliminar latencia de base de datos
         ei_tags = self.env["sale.order.ei"].sudo().search([
             ('display_name_custom', 'in', packs_ids)
@@ -384,7 +392,17 @@ class WmdsQueuedTasks(models.Model):
         errors = []
         success_packs = []
         
-        for pack_id in packs_ids:
+        for idx, pack_id in enumerate(packs_ids):
+            # Actualización dinámica de progreso en Odoo en tiempo real
+            progress_msg = (
+                f"Procesando lote de despachos...\n"
+                f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                f" - Fallidos: {len(errors)}"
+            )
+            self.write({'error_message': progress_msg})
+            self.env.cr.commit()
+
             # Obtener de forma instantánea en memoria sin hacer query
             tag = tag_by_name.get(pack_id)
 
