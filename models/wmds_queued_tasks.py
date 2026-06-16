@@ -375,36 +375,41 @@ class WmdsQueuedTasks(models.Model):
         operator = self.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
         user_id = operator.id if operator else self.env.user.id
 
+        # 1. Búsqueda masiva inicial para eliminar latencia de base de datos
+        ei_tags = self.env["sale.order.ei"].sudo().search([
+            ('display_name_custom', 'in', packs_ids)
+        ])
+        tag_by_name = {t.display_name_custom: t for t in ei_tags}
+
         errors = []
         success_packs = []
+        
         for pack_id in packs_ids:
+            # Obtener de forma instantánea en memoria sin hacer query
+            tag = tag_by_name.get(pack_id)
+
+            if not tag:
+                errors.append(f"Paquete {pack_id}: No se encontró la etiqueta sale.order.ei en el sistema.")
+                continue
+
+            if tag.write_date and self.date_created and tag.write_date > self.date_created:
+                _logger.info(f"Skipping stale dispatch for package {tag.display_name_custom} (task date_created: {self.date_created}, write_date: {tag.write_date})")
+                success_packs.append(f"Paquete {pack_id} (Omitido: write_date posterior a la creación de la tarea)")
+                continue
+
+            if tag.dispatched:
+                _logger.info(f"Package {tag.display_name_custom} is already dispatched. Skipping.")
+                success_packs.append(f"Paquete {pack_id} (Omitido: Ya despachado previamente)")
+                continue
+
+            so = tag.so_id
+            if so and so.state == 'cancel':
+                errors.append(f"Paquete {pack_id}: No se puede despachar porque el pedido {so.name} está cancelado.")
+                continue
+
             try:
-                # Buscar la etiqueta individualmente
-                tag = self.env["sale.order.ei"].sudo().search([
-                    ('display_name_custom', '=', pack_id)
-                ], limit=1)
-
-                if not tag:
-                    errors.append(f"Paquete {pack_id}: No se encontró la etiqueta sale.order.ei en el sistema.")
-                    continue
-
-                if tag.write_date and self.date_created and tag.write_date > self.date_created:
-                    _logger.info(f"Skipping stale dispatch for package {tag.display_name_custom} (task date_created: {self.date_created}, write_date: {tag.write_date})")
-                    success_packs.append(f"Paquete {pack_id} (Omitido: write_date posterior a la creación de la tarea)")
-                    continue
-
-                if tag.dispatched:
-                    _logger.info(f"Package {tag.display_name_custom} is already dispatched. Skipping.")
-                    success_packs.append(f"Paquete {pack_id} (Omitido: Ya despachado previamente)")
-                    continue
-
-                so = tag.so_id
-                if so and so.state == 'cancel':
-                    errors.append(f"Paquete {pack_id}: No se puede despachar porque el pedido {so.name} está cancelado.")
-                    continue
-
+                # 2. Solo iniciamos savepoint y transacción para los paquetes que realmente requieren despacho
                 with self.env.cr.savepoint():
-                    # Marcar etiqueta como despachada
                     tag.write({
                         'dispatched': True,
                         'on_dock': False,
@@ -433,9 +438,7 @@ class WmdsQueuedTasks(models.Model):
                             'date': fields.Datetime.now(),
                         })
 
-                    # Si hay Sale Order relacional, verificar si requiere procesar picking de salida
                     if so:
-                        # Buscar si existen pickings OUT pendientes
                         pending_out_pickings = self.env['stock.picking'].sudo().search([
                             ('sale_id', '=', so.id),
                             '|',
@@ -445,7 +448,6 @@ class WmdsQueuedTasks(models.Model):
                         ])
                         
                         if pending_out_pickings:
-                            # Checar si todas las EIs fueron despachadas
                             total_ei = so.ei_total
                             dispatched_ei_count = self.env['sale.order.ei'].sudo().search_count([
                                 ('so_id', '=', so.id),
@@ -456,7 +458,6 @@ class WmdsQueuedTasks(models.Model):
                                 for picking_out in pending_out_pickings:
                                     picking_out.action_assign()
                                     
-                                    # Pre-llenar cantidades en los movimientos de Odoo 19
                                     for move in picking_out.move_ids:
                                         if move.state not in ('done', 'cancel'):
                                             move.write({
@@ -476,22 +477,21 @@ class WmdsQueuedTasks(models.Model):
                         else:
                             _logger.info(f"No hay pickings OUT pendientes para SO {so.name}. Se salta la validación.")
 
-                # Guardamos éxito de la transacción de este paquete individual
+                # Commit de la transacción de este paquete individual exitoso
                 self.env.cr.commit()
                 success_packs.append(f"Paquete {pack_id} (Procesado con éxito)")
 
             except Exception as e:
-                # El context manager de savepoint ya hizo rollback de los cambios locales del paquete.
-                # Aseguramos registrar el error en la bitácora.
                 err_msg = f"Paquete {pack_id}: Error procesando despacho - {str(e)}"
                 _logger.error(f"{err_msg}\n{traceback.format_exc()}")
                 errors.append(err_msg)
 
-        # Si hubo algún error, consolidamos la información de término para permitir el reintento de la tarea
+        # Si hubo errores, consolidamos el reporte final para la UI y lanzamos error para habilitar reintento
         if errors:
             summary = []
             summary.append("=== RESUMEN DE PROCESAMIENTO CON ERRORES ===")
-            summary.append(f"Paquetes procesados con éxito/omitidos: {len(success_packs)}")
+            summary.append("Nota: El procesamiento continuó con los demás paquetes del lote a pesar de las fallas individuales.")
+            summary.append(f"\nPaquetes procesados con éxito/omitidos: {len(success_packs)}")
             for s in success_packs:
                 summary.append(f" - {s}")
             summary.append(f"\nPaquetes fallidos: {len(errors)}")
