@@ -375,30 +375,36 @@ class WmdsQueuedTasks(models.Model):
         operator = self.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
         user_id = operator.id if operator else self.env.user.id
 
-        ei_tags = self.env["sale.order.ei"].sudo().search([
-            ('display_name_custom', 'in', packs_ids)
-        ])
-
-        cancelled_sos = ei_tags.mapped('so_id').filtered(lambda s: s.state == 'cancel')
-        if cancelled_sos:
-            so_names = ", ".join(cancelled_sos.mapped('name'))
-            raise UserError(f"No se puede despachar: Los pedidos {so_names} están cancelados.")
-
-        valid_ei_tags = self.env["sale.order.ei"].sudo()
-        for tag in ei_tags:
-            if tag.write_date and self.date_created and tag.write_date > self.date_created:
-                _logger.info(f"Skipping stale dispatch for package {tag.display_name_custom} (task date_created: {self.date_created}, write_date: {tag.write_date})")
-                continue
-            valid_ei_tags |= tag
-
         errors = []
-        for tag in valid_ei_tags:
+        success_packs = []
+        for pack_id in packs_ids:
             try:
-                with self.env.cr.savepoint():
-                    if tag.dispatched:
-                        _logger.info(f"Package {tag.display_name_custom} is already dispatched. Skipping.")
-                        continue
+                # Buscar la etiqueta individualmente
+                tag = self.env["sale.order.ei"].sudo().search([
+                    ('display_name_custom', '=', pack_id)
+                ], limit=1)
 
+                if not tag:
+                    errors.append(f"Paquete {pack_id}: No se encontró la etiqueta sale.order.ei en el sistema.")
+                    continue
+
+                if tag.write_date and self.date_created and tag.write_date > self.date_created:
+                    _logger.info(f"Skipping stale dispatch for package {tag.display_name_custom} (task date_created: {self.date_created}, write_date: {tag.write_date})")
+                    success_packs.append(f"Paquete {pack_id} (Omitido: write_date posterior a la creación de la tarea)")
+                    continue
+
+                if tag.dispatched:
+                    _logger.info(f"Package {tag.display_name_custom} is already dispatched. Skipping.")
+                    success_packs.append(f"Paquete {pack_id} (Omitido: Ya despachado previamente)")
+                    continue
+
+                so = tag.so_id
+                if so and so.state == 'cancel':
+                    errors.append(f"Paquete {pack_id}: No se puede despachar porque el pedido {so.name} está cancelado.")
+                    continue
+
+                with self.env.cr.savepoint():
+                    # Marcar etiqueta como despachada
                     tag.write({
                         'dispatched': True,
                         'on_dock': False,
@@ -408,7 +414,7 @@ class WmdsQueuedTasks(models.Model):
                     log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
                     
                     picking = self.env['stock.picking'].sudo().search([
-                        ('sale_id', '=', tag.so_id.id),
+                        ('sale_id', '=', so.id) if so else ('id', '=', False),
                         ('state', 'in', ['assigned', 'done']),
                         ('picking_type_id.name', 'ilike', 'Pick')
                     ], order='date_done desc', limit=1)
@@ -419,57 +425,80 @@ class WmdsQueuedTasks(models.Model):
                             "log": log_msg,
                             "user": user_id,
                         })
-                    else:
+                    elif so:
                         self.env['wmds.log'].sudo().create({
-                            'sale': tag.so_id.id,
+                            'sale': so.id,
                             'log': log_msg,
                             'user': user_id,
                             'date': fields.Datetime.now(),
                         })
 
-                    so = tag.so_id
+                    # Si hay Sale Order relacional, verificar si requiere procesar picking de salida
                     if so:
-                        total_ei = so.ei_total
-                        dispatched_ei_count = self.env['sale.order.ei'].sudo().search_count([
-                            ('so_id', '=', so.id),
-                            ('dispatched', '=', True)
+                        # Buscar si existen pickings OUT pendientes
+                        pending_out_pickings = self.env['stock.picking'].sudo().search([
+                            ('sale_id', '=', so.id),
+                            '|',
+                            ('picking_type_id.code', '=', 'outgoing'),
+                            ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
+                            ('state', 'not in', ['done', 'cancel'])
                         ])
                         
-                        if dispatched_ei_count >= total_ei:
-                            pickings = self.env['stock.picking'].sudo().search([
-                                ('sale_id', '=', so.id),
-                                '|',
-                                ('picking_type_id.code', '=', 'outgoing'),
-                                ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
-                                ('state', 'not in', ['done', 'cancel'])
+                        if pending_out_pickings:
+                            # Checar si todas las EIs fueron despachadas
+                            total_ei = so.ei_total
+                            dispatched_ei_count = self.env['sale.order.ei'].sudo().search_count([
+                                ('so_id', '=', so.id),
+                                ('dispatched', '=', True)
                             ])
-                            for picking in pickings:
-                                picking.action_assign()
-                                
-                                # Pre-llenar cantidades realizadas para evitar wizard de cantidades vacías
-                                for move in picking.move_ids:
-                                    if move.state not in ('done', 'cancel'):
-                                        move.write({
-                                            'quantity': move.product_uom_qty,
-                                            'picked': True
+                            
+                            if dispatched_ei_count >= total_ei:
+                                for picking_out in pending_out_pickings:
+                                    picking_out.action_assign()
+                                    
+                                    # Pre-llenar cantidades en los movimientos de Odoo 19
+                                    for move in picking_out.move_ids:
+                                        if move.state not in ('done', 'cancel'):
+                                            move.write({
+                                                'quantity': move.product_uom_qty,
+                                                'picked': True
+                                            })
+                                    
+                                    res = picking_out.button_validate()
+                                    if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
+                                        wizard = self.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
+                                            'pick_ids': [(4, picking_out.id)]
                                         })
-                                
-                                res = picking.button_validate()
-                                if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
-                                    wizard = self.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
-                                        'pick_ids': [(4, picking.id)]
-                                    })
-                                    wizard.process()
-                                _logger.info(f"Picking {picking.name} validado con éxito en segundo plano.")
-                # Commit successful dispatch for this package
+                                        wizard.process()
+                                    _logger.info(f"Picking OUT {picking_out.name} validado con éxito en segundo plano.")
+                            else:
+                                _logger.info(f"Faltan de despachar etiquetas para SO {so.name} ({dispatched_ei_count}/{total_ei}).")
+                        else:
+                            _logger.info(f"No hay pickings OUT pendientes para SO {so.name}. Se salta la validación.")
+
+                # Guardamos éxito de la transacción de este paquete individual
                 self.env.cr.commit()
+                success_packs.append(f"Paquete {pack_id} (Procesado con éxito)")
+
             except Exception as e:
-                err_msg = f"Error procesando despacho para el paquete {tag.display_name_custom}: {str(e)}"
+                # El context manager de savepoint ya hizo rollback de los cambios locales del paquete.
+                # Aseguramos registrar el error en la bitácora.
+                err_msg = f"Paquete {pack_id}: Error procesando despacho - {str(e)}"
                 _logger.error(f"{err_msg}\n{traceback.format_exc()}")
                 errors.append(err_msg)
 
+        # Si hubo algún error, consolidamos la información de término para permitir el reintento de la tarea
         if errors:
-            raise UserError("\n".join(errors))
+            summary = []
+            summary.append("=== RESUMEN DE PROCESAMIENTO CON ERRORES ===")
+            summary.append(f"Paquetes procesados con éxito/omitidos: {len(success_packs)}")
+            for s in success_packs:
+                summary.append(f" - {s}")
+            summary.append(f"\nPaquetes fallidos: {len(errors)}")
+            for err in errors:
+                summary.append(f" - {err}")
+            
+            raise UserError("\n".join(summary))
 
     @api.model
     def cleanup_old_tasks(self):
