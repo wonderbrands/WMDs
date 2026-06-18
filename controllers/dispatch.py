@@ -129,12 +129,14 @@ class Dispatch(http.Controller):
                     "message": f"No se puede despachar: Los pedidos {so_names} están cancelados."
                 }
             
-            ei_tags.write({
+            vals = {
                 'dispatched': True,
                 'on_dock': False,
                 'dock_id': False,
-                'dispatch_status': 'success'
-            })
+            }
+            if 'dispatch_status' in request.env['sale.order.ei']._fields:
+                vals['dispatch_status'] = 'success'
+            ei_tags.write(vals)
             _logger.info("EI tags actualizados a dispatched y removidos de DOCK")
             
             for tag in ei_tags:

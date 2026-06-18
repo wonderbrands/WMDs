@@ -485,12 +485,14 @@ class WmdsQueuedTasks(models.Model):
 
 
 
-            if tag.dispatch_status == 'success' or tag.dispatched:
+            tag_dispatch_status = getattr(tag, 'dispatch_status', 'pending')
+            if tag_dispatch_status == 'success' or tag.dispatched:
                 # Si ya está despachado pero el subestado no estaba en success, lo actualizamos para coherencia
-                if tag.dispatch_status != 'success':
+                if tag_dispatch_status != 'success':
                     try:
                         with self.env.cr.savepoint():
-                            tag.write({'dispatch_status': 'success'})
+                            if 'dispatch_status' in tag._fields:
+                                tag.write({'dispatch_status': 'success'})
                         self.env.cr.commit()
                     except Exception as write_err:
                         _logger.error(f"Error saving success status on already dispatched tag {pack_id}: {write_err}")
@@ -516,7 +518,8 @@ class WmdsQueuedTasks(models.Model):
                 log_lines.append(f"[{now_str}] ADVERTENCIA: {warn_msg}")
                 try:
                     with self.env.cr.savepoint():
-                        tag.write({'dispatch_status': 'failed'})
+                        if 'dispatch_status' in tag._fields:
+                            tag.write({'dispatch_status': 'failed'})
                     self.env.cr.commit()
                 except Exception as write_err:
                     _logger.error(f"Error saving failed status for cancelled order tag {pack_id}: {write_err}")
@@ -550,12 +553,14 @@ class WmdsQueuedTasks(models.Model):
                     # Marcar etiqueta como despachada de forma directa y rápida (sin logs ni validaciones de stock)
                     try:
                         with self.env.cr.savepoint():
-                            tag.write({
+                            vals = {
                                 'dispatched': True,
                                 'on_dock': False,
                                 'dock_id': False,
-                                'dispatch_status': 'success'
-                            })
+                            }
+                            if 'dispatch_status' in tag._fields:
+                                vals['dispatch_status'] = 'success'
+                            tag.write(vals)
                         self.env.cr.commit()
                         success_packs.append(f"Paquete {pack_id} (Procesado rápido - OUT ya cerrado)")
                         log_lines.append(f"[{now_str}] Paquete {pack_id}: Procesado (rápido) - La orden de entrega (OUT) ya estaba cerrada/entregada.")
@@ -566,7 +571,8 @@ class WmdsQueuedTasks(models.Model):
                         log_lines.append(f"[{now_str}] Paquete {pack_id}: ERROR en procesamiento rápido - {str(e)}")
                         try:
                             with self.env.cr.savepoint():
-                                tag.write({'dispatch_status': 'failed'})
+                                if 'dispatch_status' in tag._fields:
+                                    tag.write({'dispatch_status': 'failed'})
                             self.env.cr.commit()
                         except Exception as write_err:
                             _logger.error(f"Error saving failed status on rapid dispatch tag {pack_id}: {write_err}")
@@ -585,12 +591,14 @@ class WmdsQueuedTasks(models.Model):
             try:
                 # 3. Solo iniciamos savepoint y transacción para los paquetes que realmente requieren despacho y tienen OUT pendiente
                 with self.env.cr.savepoint():
-                    tag.write({
+                    vals = {
                         'dispatched': True,
                         'on_dock': False,
                         'dock_id': False,
-                        'dispatch_status': 'success'
-                    })
+                    }
+                    if 'dispatch_status' in tag._fields:
+                        vals['dispatch_status'] = 'success'
+                    tag.write(vals)
                     
                     log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
                     
@@ -671,7 +679,8 @@ class WmdsQueuedTasks(models.Model):
                 # Escribir estado 'failed' para esta EI en su propia transacción y hacer commit
                 try:
                     with self.env.cr.savepoint():
-                        tag.write({'dispatch_status': 'failed'})
+                        if 'dispatch_status' in tag._fields:
+                            tag.write({'dispatch_status': 'failed'})
                     self.env.cr.commit()
                 except Exception as write_err:
                     _logger.error(f"Error saving failed status on tag {pack_id}: {write_err}")
