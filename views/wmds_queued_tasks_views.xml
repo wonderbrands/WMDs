@@ -71,6 +71,56 @@
         id="wmds_queued_tasks_menu"
         name="Tareas Encoladas"
         parent="wmds_menu"
-        action="action_wmds_queued_tasks"
         sequence="90"/>
+
+    <menuitem
+        id="wmds_queued_tasks_all_menu"
+        name="Cola Completa"
+        parent="wmds_queued_tasks_menu"
+        action="action_wmds_queued_tasks"
+        sequence="10"/>
+
+    <record id="view_wmds_queued_tasks_monitor_list" model="ir.ui.view">
+        <field name="name">wmds.queued_tasks.monitor.list</field>
+        <field name="model">wmds.queued_tasks</field>
+        <field name="arch" type="xml">
+            <list edit="false" create="false" delete="false" decoration-danger="status == 'failed'" decoration-warning="status == 'completed_with_errors'" decoration-info="status == 'running'" decoration-muted="status == 'pending'">
+                <header>
+                    <button name="action_retry_all_failed" string="Reintentar Todos los Fallidos" type="object" class="oe_highlight"/>
+                    <button name="action_stop_all_running" string="Detener Todos" type="object" class="btn-danger"/>
+                </header>
+                <field name="id"/>
+                <field name="task_type"/>
+                <field name="operator_login"/>
+                <field name="date_created"/>
+                <field name="status" widget="badge" decoration-danger="status == 'failed'" decoration-warning="status == 'completed_with_errors'" decoration-success="status == 'completed'" decoration-info="status == 'running'" decoration-muted="status == 'pending'"/>
+                <field name="error_message"/>
+                <button name="action_retry" string="Reintentar" type="object" class="oe_highlight" invisible="status not in ['failed', 'completed_with_errors']"/>
+                <button name="action_stop" string="Detener" type="object" class="btn-danger" invisible="status not in ['running', 'pending']"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="action_wmds_queued_tasks_monitor" model="ir.actions.act_window">
+        <field name="name">Panel de Errores (Cola)</field>
+        <field name="res_model">wmds.queued_tasks</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('status', 'in', ['pending', 'running', 'failed', 'completed_with_errors'])]</field>
+        <field name="view_id" ref="view_wmds_queued_tasks_monitor_list"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Sin tareas con problemas o en ejecución.
+            </p>
+            <p>
+                Aquí verás centralizadas todas las tareas encoladas que no han finalizado con éxito (pendientes, en ejecución, fallidas o completadas con errores).
+            </p>
+        </field>
+    </record>
+
+    <menuitem
+        id="wmds_queued_tasks_monitor_menu"
+        name="Panel de Errores (Cola)"
+        parent="wmds_queued_tasks_menu"
+        action="action_wmds_queued_tasks_monitor"
+        sequence="20"/>
 </odoo>

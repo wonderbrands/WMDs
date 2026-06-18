@@ -57,6 +57,30 @@ class WmdsQueuedTasks(models.Model):
             })
         return True
 
+    def action_retry_all_failed(self):
+        """Retries all failed or completed_with_errors tasks"""
+        tasks_to_retry = self.search([('status', 'in', ['failed', 'completed_with_errors'])])
+        if tasks_to_retry:
+            tasks_to_retry.write({
+                'status': 'pending',
+                'error_message': False,
+                'info_message': False,
+                'date_processed': False
+            })
+            tasks_to_retry[0]._trigger_async_process()
+        return True
+
+    def action_stop_all_running(self):
+        """Stops all running or pending tasks"""
+        tasks_to_stop = self.search([('status', 'in', ['running', 'pending'])])
+        if tasks_to_stop:
+            tasks_to_stop.write({
+                'status': 'completed_with_errors',
+                'error_message': 'Detenido manualmente por el operador.',
+                'date_processed': fields.Datetime.now()
+            })
+        return True
+
     def _trigger_async_process(self):
         """Launches a background thread to process the tasks immediately."""
         dbname = self.env.cr.dbname
@@ -487,9 +511,9 @@ class WmdsQueuedTasks(models.Model):
 
             so = tag.so_id
             if so and so.state == 'cancel':
-                err_msg = f"Paquete {pack_id}: No se puede despachar porque el pedido {so.name} está cancelado."
-                errors.append(err_msg)
-                log_lines.append(f"[{now_str}] {err_msg}")
+                warn_msg = f"Paquete {pack_id}: No se puede despachar porque el pedido {so.name} está cancelado."
+                success_packs.append(f"Paquete {pack_id} (Omitido: Pedido Cancelado)")
+                log_lines.append(f"[{now_str}] ADVERTENCIA: {warn_msg}")
                 try:
                     with self.env.cr.savepoint():
                         tag.write({'dispatch_status': 'failed'})
