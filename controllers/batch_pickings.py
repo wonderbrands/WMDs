@@ -230,16 +230,22 @@ class BatchPickController(http.Controller):
             if picking.batch_id.id != batch.id:
                 return {'error': True, 'error_msg': "El picking no pertenece a este lote."}
 
-            # Check if it was already being picked
+            # Check if it has reservations and if it was already being picked
+            has_move_lines = bool(picking.move_line_ids)
             was_picked = any(l.wmds_picked_qty > 0 for l in picking.move_line_ids)
-            if was_picked:
+
+            if has_move_lines:
+                # Reset picked quantities and delete all move lines to force re-reservation
                 picking.move_line_ids.sudo().write({'wmds_picked_qty': 0.0})
+                picking.move_line_ids.sudo().unlink()
 
             # Log the reason before removing
             log_msg = f"Orden {picking.name} removida del lote {batch.name}. Razón: {reason}"
             if was_picked:
-                log_msg += ". La orden ya tenía progreso de recolección; las cantidades fueron reiniciadas en sistema."
-            
+                log_msg += ". La orden ya tenía progreso de recolección; las cantidades recogidas y las reservas fueron reiniciadas."
+            elif has_move_lines:
+                log_msg += ". Las reservas de la orden fueron eliminadas."
+
             request.env['wmds.log'].sudo().create({
                 'pick': picking.id,
                 'batch_pick': batch.id,

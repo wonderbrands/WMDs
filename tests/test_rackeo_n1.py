@@ -279,3 +279,64 @@ class TestRackeoN1(TransactionCase):
             self.assertEqual("El SKU a rackear debe ser el mismo que ya contiene la ubicación.", res.get('message'))
         finally:
             bc.request = original_request
+
+    def test_remove_picking_from_batch_resets_reservations(self):
+        """Test that removing a picking from a batch unlinks its move lines and resets wmds_picked_qty."""
+        import odoo.addons.wmds.controllers.batch_pickings as bp
+
+        # Create batch
+        batch = self.env['stock.picking.batch'].create({
+            'name': 'Test Batch 001',
+        })
+
+        # Create picking and move
+        picking = self.env['stock.picking'].create({
+            'picking_type_id': self.picking_type_rackeo.id,
+            'location_id': self.loc_src.id,
+            'location_dest_id': self.loc_normal.id,
+            'batch_id': batch.id,
+        })
+        move = self.env['stock.move'].create({
+            'name': 'Move Test Batch',
+            'product_id': self.product_1.id,
+            'product_uom_qty': 10.0,
+            'product_uom': self.product_1.uom_id.id,
+            'picking_id': picking.id,
+            'location_id': self.loc_src.id,
+            'location_dest_id': self.loc_normal.id,
+            'quantity': 10.0,
+        })
+        picking.action_confirm()
+        picking.action_assign()
+
+        # Set wmds_picked_qty on the move line to simulate partial pick progress
+        self.assertTrue(picking.move_line_ids)
+        move_line = picking.move_line_ids[0]
+        move_line.wmds_picked_qty = 4.0
+        
+        # Verify initial state
+        self.assertEqual(picking.batch_id.id, batch.id)
+        self.assertEqual(move.wmds_picked_qty, 4.0)
+
+        # Call controller method to remove from batch
+        controller = bp.BatchPickController()
+        original_request = bp.request
+        mock_request = MagicMock()
+        mock_request.env = self.env
+        mock_request.env.user = self.env.user
+        bp.request = mock_request
+        try:
+            res = controller.remove_picking_from_batch(
+                picking_id=picking.id,
+                batch_id=batch.id,
+                reason="Testing removal"
+            )
+            self.assertEqual(res.get('status'), 'ok')
+        finally:
+            bp.request = original_request
+
+        # Verify final state
+        self.assertFalse(picking.batch_id)
+        self.assertFalse(picking.move_line_ids)
+        self.assertEqual(move.wmds_picked_qty, 0.0)
+
