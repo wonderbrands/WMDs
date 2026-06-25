@@ -310,7 +310,7 @@
                         <!-- Header changed to "Ajustar cantidad a:" -->
                         <Column header="Ajustar cantidad a:" headerStyle="width: 8rem">
                             <template #body="slotProps">
-                                <InputNumber v-model="proposedQuantities[slotProps.data.__uid]" :min="0" inputClass="input-center font-bold p-inputtext-sm" disable/>
+                                <InputNumber v-model="proposedQuantities[slotProps.data.__uid]" :min="0" inputClass="input-center font-bold p-inputtext-sm" disabled/>
                             </template>
                         </Column>
 
