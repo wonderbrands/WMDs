@@ -378,27 +378,19 @@ export default {
                             return partA.localeCompare(partB, undefined, { numeric: true, sensitivity: 'base' });
                         });
 
-                        // Pre-populate scannedLineIds for lines that already have picked quantity and a destination location
-                        res.lines.forEach(l => {
-                            if (l.picked > 0 && l.location_dest_id) {
-                                if (!this.scannedLineIds.includes(l.id)) {
-                                    this.scannedLineIds.push(l.id);
-                                }
-                            }
-                        });
-
-                        // Ignore default destination ID if scan_dest is on to force re-selection/validation
-                        if (this.localConfig.scan_dest) {
+                        // Pre-populate scannedLineIds only when scan_dest is NOT required (backend provides valid defaults)
+                        if (!this.localConfig.scan_dest) {
                             res.lines.forEach(l => {
-                                if (!this.scannedLineIds.includes(l.id)) {
-                                    // We keep the name from Odoo but clear ID if we want to force backend validation 
-                                    // or just keep it as a suggestion. The request says "muestra la que diga en stock move".
-                                    // If we clear l.location_dest_id, backend calls might fail if they expect it.
-                                    // However, the original code set it to null.
-                                    l.location_dest_id = null;
+                                if (l.picked > 0 && l.location_dest_id) {
+                                    if (!this.scannedLineIds.includes(l.id)) {
+                                        this.scannedLineIds.push(l.id);
+                                    }
                                 }
                             });
                         }
+
+                        // When scan_dest is on, we keep the move.line's destination ID for client-side validation.
+                        // The scanned barcode must match location_dest_id/location_dest_name/location_dest_barcode.
                     }
 
                     const currentLineId = this.currentLine?.id;
@@ -466,6 +458,15 @@ export default {
             } else if (this.currentStep === 'location_dest') {
                 if (!this.currentLine) return;
                 
+                const isValidDest = this.currentLine.location_dest_name === barcode 
+                    || this.currentLine.location_dest_barcode === barcode 
+                    || String(this.currentLine.location_dest_id) === barcode;
+                if (!isValidDest) {
+                    this.$toast.add({ severity: 'error', summary: 'Ubicación Destino Incorrecta', detail: `Debe escanear la ubicación destino asignada: ${this.currentLine.location_dest_name}`, life: 3000 });
+                    this.scannerKey++;
+                    return;
+                }
+
                 this.loading = true;
                 try {
                     const res = await this.store.callOdoo("process_dest_location_scan", "", {
