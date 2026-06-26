@@ -49,6 +49,10 @@ class PendingTasks(http.Controller):
                     search_domain.append('|')
                     search_domain.append(('picking_type_id.name', 'ilike', 'Storage'))
                     search_domain.append(('picking_type_id.name', 'ilike', 'Rackeo'))
+                elif task == "reabastecimiento":
+                    search_domain.append('|')
+                    search_domain.append(('picking_type_id.name', 'ilike', 'Reabastecimiento'))
+                    search_domain.append(('picking_type_id.name', 'ilike', 'Traslados internos'))
                 else:
                     search_domain.append(('picking_type_id.name', 'ilike', map_task[task]))
 
