@@ -389,8 +389,15 @@ export default {
                             });
                         }
 
-                        // When scan_dest is on, we keep the move.line's destination ID for client-side validation.
-                        // The scanned barcode must match location_dest_id/location_dest_name/location_dest_barcode.
+                        // When scan_dest=true and any_dest=true, clear location_dest_id so backend accepts any destination.
+                        // When any_dest=false, keep location_dest_id for client-side validation against move.line.
+                        if (this.localConfig.scan_dest && this.localConfig.any_dest) {
+                            res.lines.forEach(l => {
+                                if (!this.scannedLineIds.includes(l.id)) {
+                                    l.location_dest_id = null;
+                                }
+                            });
+                        }
                     }
 
                     const currentLineId = this.currentLine?.id;
@@ -458,13 +465,16 @@ export default {
             } else if (this.currentStep === 'location_dest') {
                 if (!this.currentLine) return;
                 
-                const isValidDest = this.currentLine.location_dest_name === barcode 
-                    || this.currentLine.location_dest_barcode === barcode 
-                    || String(this.currentLine.location_dest_id) === barcode;
-                if (!isValidDest) {
-                    this.$toast.add({ severity: 'error', summary: 'Ubicación Destino Incorrecta', detail: `Debe escanear la ubicación destino asignada: ${this.currentLine.location_dest_name}`, life: 3000 });
-                    this.scannerKey++;
-                    return;
+                // If any_dest is false, scanned barcode must match the move.line's destination
+                if (!this.localConfig.any_dest) {
+                    const isValidDest = this.currentLine.location_dest_name === barcode 
+                        || this.currentLine.location_dest_barcode === barcode 
+                        || String(this.currentLine.location_dest_id) === barcode;
+                    if (!isValidDest) {
+                        this.$toast.add({ severity: 'error', summary: 'Ubicación Destino Incorrecta', detail: `Debe escanear la ubicación destino asignada: ${this.currentLine.location_dest_name}`, life: 3000 });
+                        this.scannerKey++;
+                        return;
+                    }
                 }
 
                 this.loading = true;
