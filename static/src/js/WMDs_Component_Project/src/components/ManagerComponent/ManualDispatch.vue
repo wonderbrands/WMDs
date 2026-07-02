@@ -20,13 +20,25 @@
                         <AccordionHeader>
                             <div class="order-header-large">
                                 <span class="order-name-tag"><i class="fa fa-shopping-cart"></i> {{ order.name }}</span>
+                                <Tag v-if="order.is_wholesale" value="Mayoreo" severity="contrast" class="ml-2" />
                                 <span class="order-info-tag"><i class="fa fa-truck"></i> {{ order.carrier }}</span>
                                 <span class="order-info-tag tracking" v-if="order.tracking && order.tracking !== 'N/A'"><i class="fa fa-barcode"></i> {{ order.tracking }}</span>
                             </div>
                         </AccordionHeader>
                         <AccordionContent>
+                             <div v-if="order.is_wholesale" class="wholesale-dispatch-banner p-3 mb-3 border-round bg-blue-50 border-blue-200 border-1 flex justify-content-between align-items-center w-full">
+                                 <div>
+                                     <h4 class="m-0 text-blue-900 font-bold" style="font-size: 1.15rem;"><i class="fa fa-info-circle"></i> Pedido de Mayoreo</h4>
+                                     <p class="m-0 mt-1 text-sm text-blue-700">Este pedido se despacha a nivel de productos. Puedes despacharlo manualmente aquí o enviar el código de barras a la IoT Box para escanearlo.</p>
+                                 </div>
+                                 <div class="flex gap-2">
+                                     <Button label="Imprimir Hoja de Salida (IoT)" icon="fa fa-print" severity="info" @click="printWholesaleDispatchSheet(order)" :loading="printingWholesaleSheet[order.id]" />
+                                     <Button label="Despachar Pedido Completo" icon="fa fa-paper-plane" severity="success" @click="dispatchWholesaleOrder(order)" :loading="dispatchingWholesale[order.id]" />
+                                 </div>
+                             </div>
+
                              <div class="order-detail-container">
-                                 <div class="detail-column">
+                                 <div class="detail-column" v-if="!order.is_wholesale">
                                     <div class="detail-header">
                                         <i class="fa fa-cubes"></i>
                                         <h4>Paquetes (EIs)</h4>
@@ -233,7 +245,9 @@ export default {
             searching: false,
             searched: false,
             searchResults: [],
-            dispatching: false
+            dispatching: false,
+            printingWholesaleSheet: {},
+            dispatchingWholesale: {}
         }
     },
     async mounted() {
@@ -290,6 +304,70 @@ export default {
                 }
             } finally {
                 this.dispatching = false;
+            }
+        },
+        async printWholesaleDispatchSheet(order) {
+            this.printingWholesaleSheet[order.id] = true;
+            try {
+                const response = await this.store.callOdoo("print_wholesale_dispatch_sheet", "", {
+                    so_id: order.id,
+                    operator_login: this.store.role.email
+                });
+                if (response && response.ok && response.action) {
+                    console.log("Acción nativa recibida para Hoja de Salida. Buscando el puente con Odoo OWL...");
+                    let actionService = null;
+                    if (window.odoo && window.odoo.__WOWL_DEBUG__ && window.odoo.__WOWL_DEBUG__.root) {
+                        actionService = window.odoo.__WOWL_DEBUG__.root.env.services.action;
+                    }
+                    if (!actionService) {
+                        const webClient = document.querySelector('.o_web_client');
+                        if (webClient && webClient.__owl__) {
+                            const owlInstance = webClient.__owl__;
+                            if (owlInstance.app && owlInstance.app.env) {
+                                actionService = owlInstance.app.env.services.action;
+                            } else if (owlInstance.env) {
+                                actionService = owlInstance.env.services.action;
+                            }
+                        }
+                    }
+                    if (actionService) {
+                        console.log("Enviando silenciosamente a IoT Box / Impresora...");
+                        await actionService.doAction(response.action);
+                        this.store.toast.add({ severity: 'success', summary: 'Impresión enviada', detail: 'Hoja de salida enviada a la impresora.', life: 3000 });
+                    }
+                    
+                    // Abrir siempre la previsualización del PDF en una nueva pestaña
+                    const pdfUrl = window.location.origin + `/report/pdf/wmds.report_dispatch_sheet_document/${response.session_id}`;
+                    window.open(pdfUrl, '_blank');
+                } else {
+                    this.store.toast.add({ severity: 'error', summary: 'Error de impresión', detail: response?.error || 'No se pudo generar la acción de impresión.', life: 4000 });
+                }
+            } catch (e) {
+                console.error("Error printing wholesale dispatch sheet", e);
+                this.store.toast.add({ severity: 'error', summary: 'Error', detail: e.message || 'Error de conexión', life: 4000 });
+            } finally {
+                this.printingWholesaleSheet[order.id] = false;
+            }
+        },
+        async dispatchWholesaleOrder(order) {
+            this.dispatchingWholesale[order.id] = true;
+            try {
+                const res = await this.store.callOdoo("dispatch_wholesale_order", "", {
+                    so_id: order.id,
+                    operator_login: this.store.role.email
+                });
+                if (res.status === 'success') {
+                    this.store.toast.add({ severity: 'success', summary: 'Éxito', detail: res.message || 'Pedido de Mayoreo despachado correctamente.', life: 3000 });
+                    await this.searchOrders();
+                    await this.refreshAll();
+                } else {
+                    this.store.toast.add({ severity: 'error', summary: 'Error', detail: res.message, life: 5000 });
+                }
+            } catch (e) {
+                console.error("Error dispatching wholesale order", e);
+                this.store.toast.add({ severity: 'error', summary: 'Error', detail: e.message || 'Error de conexión', life: 4000 });
+            } finally {
+                this.dispatchingWholesale[order.id] = false;
             }
         },
         getStatusSeverity(status) {
@@ -409,9 +487,11 @@ export default {
 .manual-dispatch-container {
     width: 100%;
     max-width: 1200px;
-    height: 100%;
+    height: calc(100vh - var(--o-we-toolbar-height, 60px));
     display: flex;
     flex-direction: column;
+    overflow-y: auto;
+    padding-bottom: 2rem;
 }
 
 .header {

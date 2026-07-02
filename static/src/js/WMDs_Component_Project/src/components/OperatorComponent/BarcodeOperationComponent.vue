@@ -65,12 +65,12 @@
                     </div>
                     <div class="action-buttons">
                         <template v-if="localConfig.buttons_to_add">
-                            <Button label="+1" class="p-button-success" @click="incrementPicked(1)" :disabled="isLineComplete && !localConfig.extra_products" />
-                            <Button label="+5" class="p-button-success" @click="incrementPicked(5)" :disabled="isLineComplete && !localConfig.extra_products" />
-                            <Button label="Todo" class="p-button-success" @click="incrementPicked(currentLine.qty_demand - currentLine.picked)" :disabled="isLineComplete" />
+                            <Button label="+1" class="p-button-success" @click="incrementPicked(1)" :disabled="(isLineComplete && !localConfig.extra_products) || (localConfig.scan_source && currentStep === 'location_src')" />
+                            <Button label="+5" class="p-button-success" @click="incrementPicked(5)" :disabled="(isLineComplete && !localConfig.extra_products) || (localConfig.scan_source && currentStep === 'location_src')" />
+                            <Button label="Todo" class="p-button-success" @click="incrementPicked(currentLine.qty_demand - currentLine.picked)" :disabled="isLineComplete || (localConfig.scan_source && currentStep === 'location_src')" />
                         </template>
                         <template v-if="localConfig.buttons_to_subtract">
-                            <Button label="-1" class="p-button-warning" @click="incrementPicked(-1)" :disabled="currentLine.picked <= 0" />
+                            <Button label="-1" class="p-button-warning" @click="incrementPicked(-1)" :disabled="currentLine.picked <= 0 || (localConfig.scan_source && currentStep === 'location_src')" />
                         </template>
                     </div>
 
@@ -86,8 +86,9 @@
                                 buttonLayout="horizontal" 
                                 @focus="isManualInputFocused = true"
                                 @blur="isManualInputFocused = false"
+                                :disabled="localConfig.scan_source && currentStep === 'location_src'"
                             />
-                            <Button label="ESTABLECER" icon="fa fa-check" class="p-button-primary" @click="incrementTo(manualQty)" :disabled="manualQty <= 0" />
+                            <Button label="ESTABLECER" icon="fa fa-check" class="p-button-primary" @click="incrementTo(manualQty)" :disabled="manualQty <= 0 || (localConfig.scan_source && currentStep === 'location_src')" />
                         </div>
                     </div>
 

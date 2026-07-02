@@ -502,6 +502,8 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_available_docks: {url: '/wmds/v2/engine/get/available_docks', method: 'POST'},
             get_dock_contents: {url: '/wmds/v2/engine/get/dock_contents', method: 'POST'},
             search_manual_dispatch: {url: '/wmds/v2/engine/get/search_manual_dispatch', method: 'POST'},
+            dispatch_wholesale_order: {url: '/wmds/v2/engine/post/dispatch_wholesale_order', method: 'POST'},
+            print_wholesale_dispatch_sheet: {url: '/wmds/v2/engine/post/print_wholesale_dispatch_sheet', method: 'POST'},
             location_blocking_search: {url: '/wmds/v2/engine/location_blocking/search', method: 'POST'},
             location_blocking_get_adjacent: {url: '/wmds/v2/engine/location_blocking/get_adjacent', method: 'POST'},
             location_blocking_block: {url: '/wmds/v2/engine/location_blocking/block', method: 'POST'},

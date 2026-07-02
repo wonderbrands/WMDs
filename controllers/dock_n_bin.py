@@ -204,6 +204,33 @@ class DockNBin(http.Controller):
                         "bin_log_id": bin_log.id
                     })
 
+                # Auto-close PACK pickings for wholesale orders
+                for picking in pickings:
+                    if picking.sale_id and picking.sale_id.data_is_wholesale_sale:
+                        pack_pickings = request.env['stock.picking'].sudo().search([
+                            ('sale_id', '=', picking.sale_id.id),
+                            ('picking_type_id.name', 'ilike', 'Pack'),
+                            ('state', 'not in', ['done', 'cancel'])
+                        ])
+                        for pack_pick in pack_pickings:
+                            try:
+                                pack_pick.action_assign()
+                                for move in pack_pick.move_ids:
+                                    if move.state not in ('done', 'cancel'):
+                                        move.write({
+                                            'quantity': move.product_uom_qty,
+                                            'picked': True
+                                        })
+                                res = pack_pick.button_validate()
+                                if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
+                                    wizard = request.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
+                                        'pick_ids': [(4, pack_pick.id)]
+                                    })
+                                    wizard.process()
+                                _logger.info(f"Auto-validated wholesale PACK picking {pack_pick.name} for SO {picking.sale_id.name}")
+                            except Exception as pe:
+                                _logger.error(f"Error auto-validating wholesale PACK picking {pack_pick.name}: {pe}")
+
                 # Log General
                 log_vals = {
                     "log": f"{log_label} movido a BIN {bin_storage.name} por {operator_name}",
@@ -677,6 +704,7 @@ class DockNBin(http.Controller):
                 res.append({
                     "id": so.id,
                     "name": so.name,
+                    "is_wholesale": so.data_is_wholesale_sale,
                     "carrier": so.carrier_selection_relational.name if has_carrier_rel and so.carrier_selection_relational else "N/A",
                     "tracking": so.yuju_carrier_tracking_ref if has_tracking_field else "N/A",
                     "eis": eis,

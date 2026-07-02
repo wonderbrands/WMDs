@@ -70,6 +70,79 @@ class GetURLOfPick(http.Controller):
             if not pick_name:
                 return {"valid": False, "message": "Falta el nombre de la operación."}
             
+            # Check if this is a Sale Order barcode scan (Wholesale / Mayoreo)
+            so = request.env['sale.order'].sudo().search([('name', '=', pick_name)], limit=1)
+            if so:
+                if not so.data_is_wholesale_sale:
+                    return {"valid": False, "message": f"El pedido {pick_name} no es de tipo Mayoreo."}
+                if so.state == 'cancel':
+                    return {"valid": False, "message": f"El pedido {pick_name} está cancelado."}
+                
+                out_pickings = request.env['stock.picking'].sudo().search([
+                    ('sale_id', '=', so.id),
+                    '|',
+                    ('picking_type_id.code', '=', 'outgoing'),
+                    ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
+                ])
+                if not out_pickings:
+                    return {"valid": False, "message": f"No se encontraron transferencias de salida (OUT) para el pedido {pick_name}."}
+                
+                pending_out = out_pickings.filtered(lambda p: p.state not in ['done', 'cancel'])
+                if not pending_out:
+                    return {"valid": False, "message": f"El pedido {pick_name} ya fue despachado anteriormente (OUT cerrado)."}
+                
+                if not kw.get('confirm_dispatch', False):
+                    return {
+                        "valid": True,
+                        "is_wholesale_so": True,
+                        "need_confirmation": True,
+                        "so_id": so.id,
+                        "so_name": so.name,
+                        "message": f"Pedido de Mayoreo {so.name} listo para despachar."
+                    }
+                
+                # Close the OUT pickings
+                for picking_out in pending_out:
+                    picking_out.action_assign()
+                    for move in picking_out.move_ids:
+                        if move.state not in ('done', 'cancel'):
+                            move.write({
+                                'quantity': move.product_uom_qty,
+                                'picked': True
+                            })
+                    res = picking_out.button_validate()
+                    if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
+                        wizard = request.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
+                            'pick_ids': [(4, picking_out.id)]
+                        })
+                        wizard.process()
+                
+                # Remove all moves/picks of this SO from the DOCK
+                all_pickings = request.env['stock.picking'].sudo().search([('sale_id', '=', so.id)])
+                all_moves = all_pickings.mapped('move_ids')
+                dock_moves = all_moves.filtered(lambda m: m.on_dock or m.dock_id)
+                if dock_moves:
+                    dock_moves.write({
+                        'on_dock': False,
+                        'dock_id': False,
+                        'dispatched': True
+                    })
+
+                log_msg = f"Despacho Mayoreo: Pedido {so.name} validado por escaneo y OUT cerrado."
+                request.env["wmds.log"].sudo().create({
+                    "sale": so.id,
+                    "log": log_msg,
+                    "user": request.env.user.id,
+                })
+                
+                return {
+                    "valid": True,
+                    "is_wholesale_so": True,
+                    "so_id": so.id,
+                    "so_name": so.name,
+                    "message": f"Pedido de Mayoreo {so.name} despachado correctamente y traslado de salida OUT cerrado (picks removidos del dock)."
+                }
+
             pick = request.env['stock.picking'].sudo().search([('name', '=', pick_name)], limit=1)
             
             if not pick:

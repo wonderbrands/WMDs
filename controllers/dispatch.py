@@ -228,3 +228,143 @@ class Dispatch(http.Controller):
         except Exception as e:
             _logger.error(f"Excepcion: {e}")
             return {"status": "error", "message": str(e)}
+
+    @http.route('/wmds/v2/engine/post/dispatch_wholesale_order', type='json', auth='user', methods=['POST'], csrf=True)
+    def dispatch_wholesale_order(self, **kw):
+        try:
+            so_id = kw.get("so_id")
+            operator_login = kw.get("operator_login")
+            
+            if not so_id:
+                return {"status": "error", "message": "so_id requerido"}
+            
+            so = request.env["sale.order"].sudo().browse(int(so_id))
+            if not so.exists():
+                return {"status": "error", "message": "Pedido no encontrado"}
+                
+            if not so.data_is_wholesale_sale:
+                return {"status": "error", "message": "El pedido no es de tipo Mayoreo."}
+                
+            if so.state == 'cancel':
+                return {"status": "error", "message": "El pedido está cancelado."}
+                
+            out_pickings = request.env['stock.picking'].sudo().search([
+                ('sale_id', '=', so.id),
+                '|',
+                ('picking_type_id.code', '=', 'outgoing'),
+                ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
+            ])
+            if not out_pickings:
+                return {"status": "error", "message": "No se encontraron transferencias de salida (OUT) para este pedido."}
+                
+            pending_out = out_pickings.filtered(lambda p: p.state not in ['done', 'cancel'])
+            if not pending_out:
+                return {"status": "error", "message": "El pedido ya fue despachado anteriormente."}
+                
+            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            user_id = operator.id if operator else request.env.user.id
+            
+            # Validate OUT pickings
+            for picking_out in pending_out:
+                picking_out.action_assign()
+                for move in picking_out.move_ids:
+                    if move.state not in ('done', 'cancel'):
+                        move.write({
+                            'quantity': move.product_uom_qty,
+                            'picked': True
+                        })
+                res = picking_out.button_validate()
+                if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
+                    wizard = request.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
+                        'pick_ids': [(4, picking_out.id)]
+                    })
+                    wizard.process()
+            
+            # Remove all moves/picks of this SO from the DOCK
+            all_pickings = request.env['stock.picking'].sudo().search([('sale_id', '=', so.id)])
+            all_moves = all_pickings.mapped('move_ids')
+            dock_moves = all_moves.filtered(lambda m: m.on_dock or m.dock_id)
+            if dock_moves:
+                dock_moves.write({
+                    'on_dock': False,
+                    'dock_id': False,
+                    'dispatched': True
+                })
+
+            log_msg = f"Despacho Mayoreo: Pedido {so.name} despachado por {operator_login}."
+            request.env["wmds.log"].sudo().create({
+                "sale": so.id,
+                "log": log_msg,
+                "user": user_id,
+            })
+            
+            return {"status": "success", "message": f"Pedido de Mayoreo {so.name} despachado correctamente y picks removidos del dock."}
+        except Exception as e:
+            _logger.error(f"Error en dispatch_wholesale_order: {e}")
+            return {"status": "error", "message": str(e)}
+
+    @http.route('/wmds/v2/engine/post/print_wholesale_dispatch_sheet', type='json', auth='user', methods=['POST'], csrf=True)
+    def print_wholesale_dispatch_sheet(self, **kw):
+        try:
+            so_id = kw.get("so_id")
+            operator_login = kw.get("operator_login")
+            
+            if not so_id:
+                return {"ok": False, "error": "so_id requerido"}
+                
+            so = request.env["sale.order"].sudo().browse(int(so_id))
+            if not so.exists():
+                return {"ok": False, "error": "Pedido no encontrado"}
+                
+            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
+            user = operator if operator else request.env.user
+            
+            # Search if a completed dispatch session already exists for this SO
+            session = request.env["wmds.dispatch.session"].sudo().search([
+                ('operator_id', '=', user.id),
+                ('state', '=', 'completed'),
+                ('line_ids.so_name', '=', so.name)
+            ], limit=1)
+            
+            if not session:
+                # Create a new completed session dynamically for this wholesale order
+                session = request.env["wmds.dispatch.session"].sudo().create({
+                    'operator_id': user.id,
+                    'state': 'completed',
+                    'date_start': fields.Datetime.now(),
+                    'date_end': fields.Datetime.now(),
+                    'carrier_id': so.data_carrier_selection_relational.id if so.data_carrier_selection_relational else False,
+                })
+                
+                # Create session line
+                prod_names = ", ".join(so.order_line.filtered(lambda l: l.product_id).mapped('product_id.name'))
+                if len(prod_names) > 60:
+                    prod_names = prod_names[:57] + "..."
+                    
+                request.env["wmds.dispatch.session.line"].sudo().create({
+                    'session_id': session.id,
+                    'ei_name': so.name,
+                    'so_name': so.name,
+                    'product_name': prod_names or "Mayoreo",
+                    'carrier_name': so.data_carrier_selection_relational.name if so.data_carrier_selection_relational else "N/A",
+                    'total_ei': 1,
+                    'scan_datetime': fields.Datetime.now(),
+                    'sequence_number': 1,
+                    'dispatched_count': 1,
+                })
+                
+                # Create the dispatch sheet record
+                request.env["wmds.dispatch.sheet"].sudo().create_from_session(session)
+            
+            # Print Action
+            report = request.env.ref('wmds.action_report_dispatch_sheet')
+            action = report.sudo().report_action(session.id)
+            
+            return {
+                "ok": True,
+                "action": action,
+                "session_id": session.id
+            }
+        except Exception as e:
+            _logger.error(f"Error en print_wholesale_dispatch_sheet: {e}")
+            return {"ok": False, "error": str(e)}
