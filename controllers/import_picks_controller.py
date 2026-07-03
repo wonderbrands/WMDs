@@ -2,6 +2,8 @@
 import json
 import csv
 import io
+import base64
+import xlsxwriter
 import polars as pl
 from odoo import http
 from odoo.http import request
@@ -113,13 +115,38 @@ class ImportPicksController(http.Controller):
             loc = request.env['stock.location'].sudo().search([('barcode', '=', posicion)], limit=1)
             if not loc:
                 loc = request.env['stock.location'].sudo().search([('name', '=', posicion)], limit=1)
+            
             if not loc:
-                mapped_row['errors'].append({'field': 'PosicionN1', 'code': 'not_found', 'message': f'La ubicación "{posicion}" no existe.'})
+                if actual_loc_name:
+                    mapped_row['warnings'].append({
+                        'field': 'PosicionN1', 
+                        'code': 'not_found', 
+                        'message': f'La ubicación sugerida "{posicion}" no existe. Se usará la ubicación original de Odoo: "{actual_loc_name}".'
+                    })
+                    mapped_row['data']['PosicionN1'] = actual_loc_name
+                else:
+                    mapped_row['errors'].append({
+                        'field': 'PosicionN1', 
+                        'code': 'not_found', 
+                        'message': f'La ubicación "{posicion}" no existe.'
+                    })
             else:
                 mapped_row['location_id'] = loc.id
                 mapped_row['data']['PosicionN1'] = loc.barcode or loc.name
                 if loc.is_location_blocked():
-                    mapped_row['errors'].append({'field': 'PosicionN1', 'code': 'blocked', 'message': f'La ubicación "{loc.complete_name}" está bloqueada.'})
+                    if actual_loc_name:
+                        mapped_row['warnings'].append({
+                            'field': 'PosicionN1', 
+                            'code': 'blocked', 
+                            'message': f'La ubicación sugerida "{loc.complete_name}" está bloqueada. Se usará la ubicación original de Odoo: "{actual_loc_name}".'
+                        })
+                        mapped_row['data']['PosicionN1'] = actual_loc_name
+                    else:
+                        mapped_row['errors'].append({
+                            'field': 'PosicionN1', 
+                            'code': 'blocked', 
+                            'message': f'La ubicación "{loc.complete_name}" está bloqueada.'
+                        })
             
             prod = request.env['product.product'].sudo().search([('default_code', '=', sku)], limit=1)
             if not prod:
@@ -149,11 +176,19 @@ class ImportPicksController(http.Controller):
                                 units = move.product_uom_qty
                                 
                             if avail_stock < units:
-                                mapped_row['warnings'].append({
-                                    'field': 'PosicionN1', 
-                                    'code': 'no_stock', 
-                                    'message': f'Stock insuficiente en la ubicación (Disponible: {avail_stock}, Requerido: {units}).'
-                                })
+                                if actual_loc_name:
+                                    mapped_row['warnings'].append({
+                                        'field': 'PosicionN1', 
+                                        'code': 'no_stock', 
+                                        'message': f'Stock insuficiente en ubicación sugerida (Disponible: {avail_stock}, Requerido: {units}). Se usará la ubicación original de Odoo: "{actual_loc_name}".'
+                                    })
+                                    mapped_row['data']['PosicionN1'] = actual_loc_name
+                                else:
+                                    mapped_row['warnings'].append({
+                                        'field': 'PosicionN1', 
+                                        'code': 'no_stock', 
+                                        'message': f'Stock insuficiente en la ubicación (Disponible: {avail_stock}, Requerido: {units}).'
+                                    })
         elif (posicion and not sku) or (sku and not posicion):
             mapped_row['errors'].append({'field': 'SKU', 'code': 'partial', 'message': 'Debe proporcionar tanto la Posición como el SKU.'})
         
@@ -296,9 +331,30 @@ class ImportPicksController(http.Controller):
         if not rows:
             return {'error': True, 'error_msg': 'No hay datos para procesar.'}
             
-        picks_data = {}
+        # 1. Re-validate all rows to ensure we have the latest errors/warnings and IDs.
+        validated_rows = []
         for row in rows:
             if row.get('excluded', False):
+                row['errors'] = []
+                row['warnings'] = []
+                validated_rows.append(row)
+                continue
+                
+            row_data = row.get('data', {})
+            index = row.get('index', 0)
+            original_row = row.get('original_row', [])
+            
+            validated_row = self._validate_row_data(row_data, index, original_row)
+            validated_row['excluded'] = False
+            validated_rows.append(validated_row)
+
+        picks_data = {}
+        picking_to_batch = {}
+        picking_to_loc = {}
+        picking_to_operator = {}
+        
+        for row in validated_rows:
+            if row.get('excluded', False) or row.get('errors'):
                 continue
                 
             data = row.get('data', {})
@@ -313,6 +369,13 @@ class ImportPicksController(http.Controller):
             if not so_name or not oleada:
                 continue
                 
+            # Check if there is any warning about the location that requires fallback
+            use_odoo_fallback = False
+            for warn in row.get('warnings', []):
+                if warn.get('field') == 'PosicionN1' and warn.get('code') in ['not_found', 'blocked', 'no_stock']:
+                    use_odoo_fallback = True
+                    break
+                
             if so_name not in picks_data:
                 picks_data[so_name] = {
                     'so_name': so_name,
@@ -326,17 +389,19 @@ class ImportPicksController(http.Controller):
                 picks_data[so_name]['items'].append({
                     'posicion': posicion,
                     'sku': sku,
-                    'unidades': float(unidades_str) if unidades_str else None
+                    'unidades': float(unidades_str) if unidades_str else None,
+                    'use_odoo_fallback': use_odoo_fallback
                 })
-                
-        processed_pickings = []
+
         oleadas_batches = {}
         
         try:
             for so_name, p_info in picks_data.items():
                 so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
                 if not so:
-                    return {'error': True, 'error_msg': f'Error fatal: SO "{so_name}" no encontrada durante el procesamiento.'}
+                    so = request.env['sale.order'].sudo().search([('name', 'ilike', so_name)], limit=1)
+                if not so:
+                    continue
                     
                 pick_odoo = so.picking_ids.filtered_domain([
                     ('picking_type_id.name', '=', 'Pick'),
@@ -344,11 +409,13 @@ class ImportPicksController(http.Controller):
                 ])[:1]
                 
                 if not pick_odoo:
-                    return {'error': True, 'error_msg': f'Error fatal: No se encontró el pick de tipo "Pick" para la SO "{so_name}".'}
+                    continue
                 
                 if p_info['items']:
                     # Only delete/unlink existing move lines for the specific products being modified
                     for item in p_info['items']:
+                        if item.get('use_odoo_fallback'):
+                            continue
                         sku = item['sku']
                         product = request.env['product.product'].sudo().search([('default_code', '=', sku)], limit=1)
                         if not product:
@@ -360,6 +427,8 @@ class ImportPicksController(http.Controller):
                     
                     # Create the new move lines at the requested locations
                     for item in p_info['items']:
+                        if item.get('use_odoo_fallback'):
+                            continue
                         sku = item['sku']
                         posicion = item['posicion']
                         unidades = item['unidades']
@@ -368,17 +437,17 @@ class ImportPicksController(http.Controller):
                         if not loc:
                             loc = request.env['stock.location'].sudo().search([('name', '=', posicion)], limit=1)
                         if not loc:
-                            return {'error': True, 'error_msg': f'Error fatal: Ubicación "{posicion}" no encontrada.'}
+                            continue
                             
                         product = request.env['product.product'].sudo().search([('default_code', '=', sku)], limit=1)
                         if not product:
                             product = request.env['product.product'].sudo().search([('barcode', '=', sku)], limit=1)
                         if not product:
-                            return {'error': True, 'error_msg': f'Error fatal: Producto "{sku}" no encontrado.'}
+                            continue
                             
                         move = pick_odoo.move_ids.filtered(lambda m: m.product_id.id == product.id)[:1]
                         if not move:
-                            return {'error': True, 'error_msg': f'Error fatal: Producto "{product.display_name}" no forma parte del pick {pick_odoo.name}.'}
+                            continue
                             
                         qty_to_reserve = unidades if unidades is not None else move.product_uom_qty
                         
@@ -394,6 +463,13 @@ class ImportPicksController(http.Controller):
                         
                     pick_odoo.sudo().action_assign()
                     
+                # Store location names used
+                loc_names = []
+                for ml in pick_odoo.move_line_ids:
+                    if ml.quantity > 0:
+                        loc_names.append(ml.location_id.barcode or ml.location_id.name or '')
+                picking_to_loc[pick_odoo.id] = ", ".join(list(set(filter(None, loc_names))))
+                
                 oleada = p_info['oleada']
                 if oleada not in oleadas_batches:
                     oleadas_batches[oleada] = []
@@ -439,21 +515,96 @@ class ImportPicksController(http.Controller):
                         'log': f"Metido en el batch {new_batch.name} (Confirmado) via importación masiva, asignado al operador {op_name}"
                     })
                     
+                    picking_to_batch[pick.id] = new_batch.name
+                    picking_to_operator[pick.id] = op_name
+                    
                 created_batches_info.append({
                     'batch_name': new_batch.name,
                     'batch_id': new_batch.id,
                     'oleada': oleada,
                     'picks_count': len(picks_list)
                 })
-                
-            return {
-                'status': 'ok',
-                'message': f'Procesamiento completado exitosamente. Se crearon {len(created_batches_info)} planes de pickeo (batches).',
-                'batches': created_batches_info
-            }
-            
         except Exception as e:
-            return {'error': True, 'error_msg': f'Error de sistema durante el procesamiento: {str(e)}'}
+            # Allow continuing with whatever succeeded
+            pass
+
+        # Generate feedback Excel report using xlsxwriter
+        output_stream = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output_stream, {'in_memory': True})
+        worksheet = workbook.add_worksheet('Feedback')
+        
+        # Styles
+        header_format = workbook.add_format({
+            'bold': True,
+            'bg_color': '#1E293B',
+            'font_color': '#FFFFFF',
+            'border': 1,
+            'align': 'center'
+        })
+        cell_format = workbook.add_format({'border': 1})
+        error_format = workbook.add_format({'border': 1, 'font_color': '#DC2626'})
+        
+        original_headers = kw.get('headers', [])
+        if not original_headers:
+            max_col = max(len(row.get('original_row', [])) for row in validated_rows) if validated_rows else 0
+            original_headers = [f"Columna {i+1}" for i in range(max_col)]
+            
+        new_headers = original_headers + ['Ok', 'Batch', 'Ubicación', 'Operador']
+        for col_idx, h_text in enumerate(new_headers):
+            worksheet.write(0, col_idx, h_text, header_format)
+            
+        for row_idx, row in enumerate(validated_rows):
+            excel_row_num = row_idx + 1
+            orig_row = row.get('original_row', [])
+            
+            # Write original row columns
+            for col_idx, val in enumerate(orig_row):
+                worksheet.write(excel_row_num, col_idx, val, cell_format)
+                
+            is_excluded = row.get('excluded', False)
+            errors = row.get('errors', [])
+            
+            # Col Ok
+            if is_excluded:
+                ok_val = "Excluido"
+                fmt = cell_format
+            elif errors:
+                ok_val = ", ".join([err.get('message', '') for err in errors])
+                fmt = error_format
+            else:
+                ok_val = "✅"
+                fmt = cell_format
+                
+            # Col Batch, Location, Operator
+            pick_id = row.get('picking_id')
+            batch_val = ""
+            loc_val = ""
+            op_val = ""
+            
+            if not is_excluded and not errors and pick_id:
+                batch_val = picking_to_batch.get(pick_id, "")
+                loc_val = picking_to_loc.get(pick_id, row.get('data', {}).get('PosicionN1', ''))
+                op_val = picking_to_operator.get(pick_id, row.get('data', {}).get('Picker', ''))
+            
+            worksheet.write(excel_row_num, len(orig_row), ok_val, fmt)
+            worksheet.write(excel_row_num, len(orig_row) + 1, batch_val, cell_format)
+            worksheet.write(excel_row_num, len(orig_row) + 2, loc_val, cell_format)
+            worksheet.write(excel_row_num, len(orig_row) + 3, op_val, cell_format)
+            
+        workbook.close()
+        output_stream.seek(0)
+        xlsx_data = output_stream.read()
+        xlsx_base64 = base64.b64encode(xlsx_data).decode('utf-8')
+        
+        had_errors = any(len(r.get('errors', [])) > 0 for r in validated_rows if not r.get('excluded'))
+        
+        return {
+            'status': 'ok',
+            'message': 'Procesamiento completado.',
+            'xlsx_file': xlsx_base64,
+            'filename': 'retroalimentacion_picks.xlsx',
+            'had_errors': had_errors
+        }
 
     @http.route('/wmds/v2/picking/unreserve_and_reserve', type='json', auth='user', methods=['POST'], csrf=True)
     def unreserve_and_reserve(self, **kw):

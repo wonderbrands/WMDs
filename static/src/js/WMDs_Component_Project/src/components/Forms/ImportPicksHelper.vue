@@ -137,8 +137,6 @@
                 <th style="width: 80px;">Estado</th>
                 <th>SO *</th>
                 <th>Pick Asignado</th>
-                <th>Oleada *</th>
-                <th>Picker (Operador)</th>
                 <th>Posición</th>
                 <th>SKU</th>
                 <th>Unidades</th>
@@ -149,7 +147,7 @@
             <tbody v-for="wave in groupedRowsByWave" :key="wave.name">
               <!-- Wave Header Row -->
               <tr class="wave_group_header">
-                <td colspan="11">
+                <td colspan="9">
                   <div class="wave_header_content">
                     <div class="wave_header_left" @click="toggleWaveCollapse(wave.name)">
                       <i class="fa mr-2" :class="collapsedWaves[wave.name] ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
@@ -207,8 +205,8 @@
                   </td>
 
                   <!-- SO -->
-                  <td @click.stop>
-                    <InputText v-model="row.data.SO" @change="onRowEdit(row)" class="table_input" :disabled="row.excluded" />
+                  <td>
+                    <span class="text-xs text-slate-800">{{ row.data.SO }}</span>
                   </td>
 
                   <!-- Pick Asignado (Non-editable) -->
@@ -216,45 +214,24 @@
                     <span class="text-xs font-bold text-blue-600">{{ row.picking_name || 'Sin Pick' }}</span>
                   </td>
 
-                  <!-- Oleada -->
-                  <td @click.stop>
-                    <InputText v-model="row.data.Oleada" @change="onRowEdit(row)" class="table_input" :disabled="row.excluded" />
-                  </td>
-
-                  <!-- Picker (Operator) -->
-                  <td @click.stop>
-                    <Select 
-                      v-model="row.data.Picker" 
-                      :options="operators" 
-                      optionLabel="name" 
-                      optionValue="name" 
-                      filter 
-                      :showClear="true"
-                      placeholder="Elegir..." 
-                      @change="onRowEdit(row)"
-                      class="table_select" 
-                      :disabled="row.excluded"
-                    />
-                  </td>
-
                   <!-- PosicionN1 -->
-                  <td @click.stop>
-                    <InputText v-model="row.data.PosicionN1" @change="onRowEdit(row)" class="table_input" :disabled="row.excluded" />
+                  <td>
+                    <span class="text-xs text-slate-800">{{ row.data.PosicionN1 }}</span>
                   </td>
 
                   <!-- SKU -->
-                  <td @click.stop>
-                    <InputText v-model="row.data.SKU" @change="onRowEdit(row)" class="table_input" :disabled="row.excluded" />
+                  <td>
+                    <span class="text-xs text-slate-800">{{ row.data.SKU }}</span>
                   </td>
 
                   <!-- Unidades -->
-                  <td @click.stop>
-                    <InputText v-model="row.data.Unidades" @change="onRowEdit(row)" class="table_input text-right" :disabled="row.excluded" />
+                  <td>
+                    <span class="text-xs text-slate-800 text-right block">{{ row.data.Unidades }}</span>
                   </td>
 
                   <!-- OrdenPick -->
-                  <td @click.stop>
-                    <InputText v-model="row.data.OrdenPick" @change="onRowEdit(row)" class="table_input text-right" :disabled="row.excluded" />
+                  <td>
+                    <span class="text-xs text-slate-800 text-right block">{{ row.data.OrdenPick }}</span>
                   </td>
 
                   <!-- Actions -->
@@ -299,7 +276,7 @@
         <div class="action_buttons mt-6">
           <Button label="Reemplazar archivo" severity="danger" icon="fa fa-upload" outlined @click="resetImport" />
           <Button label="Volver a Validar" severity="info" icon="fa fa-refresh" :loading="store.loading" @click="revalidateRows" />
-          <Button label="Crear Planes de Pickeo" severity="success" icon="fa fa-check-double" :disabled="hasErrors || store.loading" @click="processImport" />
+          <Button label="Crear Planes de Pickeo" severity="success" icon="fa fa-check-double" :disabled="store.loading" @click="processImport" />
         </div>
       </section>
 
@@ -666,17 +643,7 @@ export default {
       return row.warnings.some(w => w.code === code);
     },
     async processImport() {
-      if (this.hasErrors) {
-        this.store.toast.add({
-          severity: 'error',
-          summary: 'Datos Incorrectos',
-          detail: 'Por favor, corrige los errores y asegúrate de que todas las olas tengan asignado un operador.',
-          life: 5000
-        });
-        return;
-      }
-      
-      const res = await this.store.callOdoo('import_picks_process', '', { rows: this.rows });
+      const res = await this.store.callOdoo('import_picks_process', '', { rows: this.rows, headers: this.headers });
       if (res.error) {
         this.store.toast.add({
           severity: 'error',
@@ -687,12 +654,41 @@ export default {
         return;
       }
 
-      this.store.toast.add({
-        severity: 'success',
-        summary: 'Importación Exitosa',
-        detail: res.message || 'Se han creado y confirmado los planes de pickeo.',
-        life: 6000
-      });
+      if (res.xlsx_file) {
+        try {
+          const byteCharacters = atob(res.xlsx_file);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+          const link = document.createElement('a');
+          link.href = window.URL.createObjectURL(blob);
+          link.download = res.filename || 'retroalimentacion_picks.xlsx';
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        } catch (e) {
+          console.error("Error al descargar excel de retroalimentación:", e);
+        }
+      }
+
+      if (res.had_errors) {
+        this.store.toast.add({
+          severity: 'warn',
+          summary: 'Importación con Advertencias',
+          detail: 'Se crearon planes de pickeo para los registros válidos. Se descargó el Excel de retroalimentación con los detalles de los errores.',
+          life: 8000
+        });
+      } else {
+        this.store.toast.add({
+          severity: 'success',
+          summary: 'Importación Exitosa',
+          detail: res.message || 'Se han creado y confirmado los planes de pickeo.',
+          life: 6000
+        });
+      }
 
       this.$emit('success');
     }
