@@ -1,7 +1,7 @@
 <template>
-    <div class="sidebar_manager">
-        <Button class="toggle_sidebar" icon="fa fa-bars" />
-        <div class="sidebar_content">
+    <div class="sidebar_manager" :class="{'collapsed': store.sidebar_collapsed}">
+        <Button class="toggle_sidebar" :icon="store.sidebar_collapsed ? 'fa fa-chevron-right' : 'fa fa-bars'" @click="store.sidebar_collapsed = !store.sidebar_collapsed" />
+        <div class="sidebar_content" v-show="!store.sidebar_collapsed">
             <div style="margin-top: 1em; width: 100%; margin-bottom: 5em;">
                 <img src="https://mma.prnewswire.com/media/1447948/LogoWonderBrands_Logo.jpg?p=facebook" style="max-width: 100%;">
                 <div class="options" v-for="option in Object.keys(store.available_main_manager_screens)" :key="option">
@@ -91,6 +91,15 @@
     flex-direction: column;
     overflow: visible !important; 
     z-index: 10;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.sidebar_manager.collapsed {
+    width: 15px !important;
+    min-width: 15px !important;
+    background-color: #facc15 !important;
+    border-right: 1px solid #cbd5e1;
 }
 
 .sidebar_content {

@@ -508,7 +508,12 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             location_blocking_get_adjacent: {url: '/wmds/v2/engine/location_blocking/get_adjacent', method: 'POST'},
             location_blocking_block: {url: '/wmds/v2/engine/location_blocking/block', method: 'POST'},
             location_blocking_unblock: {url: '/wmds/v2/engine/location_blocking/unblock', method: 'POST'},
+            import_picks_process: {url: '/wmds/v2/import_picks/process', method: 'POST'},
+            import_picks_validate_rows: {url: '/wmds/v2/import_picks/validate_rows', method: 'POST'},
+            unreserve_and_reserve: {url: '/wmds/v2/picking/unreserve_and_reserve', method: 'POST'},
         };
+
+
     }
 
     setRole(role){
