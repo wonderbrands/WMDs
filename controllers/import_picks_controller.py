@@ -93,6 +93,11 @@ class ImportPicksController(http.Controller):
                 mapped_row['picker_id'] = picker_user.id
                 mapped_row['data']['Picker'] = picker_user.name
         
+        # If all 3 fields (PosicionN1, SKU, Unidades) are empty, we ignore them completely
+        # and do not validate or modify stock.move.line.
+        if not posicion and not sku and not unidades_str:
+            return mapped_row
+
         # Get actual reservation from Odoo if possible
         actual_loc_name = ""
         if mapped_row['picking_id'] and sku:
@@ -270,12 +275,24 @@ class ImportPicksController(http.Controller):
                 pass
                 
         if not auto_mapping and has_header:
+            # 1. First pass: Exact match (case-insensitive) of header with key or any synonym
             for key, syn_list in SYNONYMS.items():
                 for idx, h in enumerate(headers):
                     h_clean = h.lower().strip()
-                    if h_clean in syn_list or any(syn in h_clean for syn in syn_list):
+                    if h_clean == key.lower() or h_clean in [s.lower().strip() for s in syn_list]:
                         auto_mapping[key] = idx
                         break
+            
+            # 2. Second pass: Substring match (only for keys that are not yet mapped, avoiding already mapped columns)
+            for key, syn_list in SYNONYMS.items():
+                if key not in auto_mapping:
+                    for idx, h in enumerate(headers):
+                        if idx in auto_mapping.values():
+                            continue
+                        h_clean = h.lower().strip()
+                        if any(syn in h_clean for syn in syn_list):
+                            auto_mapping[key] = idx
+                            break
                         
         mapped_results = []
         for row_idx, row in enumerate(data_rows):
