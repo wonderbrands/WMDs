@@ -662,7 +662,7 @@ export default {
       return row.warnings.some(w => w.code === code);
     },
     async processImport() {
-      const res = await this.store.callOdoo('import_picks_process', '', { rows: this.rows, headers: this.headers });
+      const res = await this.store.callOdoo('import_picks_process', '', { rows: this.rows, headers: this.headers, column_mapping: this.mapping });
       if (res.error) {
         this.store.toast.add({
           severity: 'error',

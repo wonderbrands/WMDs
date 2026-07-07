@@ -571,7 +571,9 @@ class ImportPicksController(http.Controller):
             'SO': ['so', 'sale order', 'orden', 'venta', 'pedido', 'sale_order', 'ref', 'reference'],
             'Oleada': ['oleada', 'ola', 'wave', 'grupo', 'lote', 'batch'],
             'Picker': ['picker', 'operador', 'operator', 'usuario', 'surtidor'],
-            'PosicionN1': ['posicionn1', 'posicion', 'posicion n1', 'ubicacion', 'ubicación', 'estanteria', 'shelf', 'location', 'ubicación origen'],
+            'picker_id': ['picker_id', 'picker id', 'id picker', 'id_picker', 'id operador', 'id_operador', 'id usuario', 'id_usuario'],
+            'PosicionN1': ['posicionn1', 'posicion', 'posicion n1', 'posicion_n1', 'ubicacion', 'ubicación', 'estanteria', 'shelf', 'location', 'ubicación origen'],
+            'posicion_N1_id': ['posicion_n1_id', 'posicion n1 id', 'id posicion n1', 'id_posicion_n1', 'id ubicacion', 'id_ubicacion', 'id ubicación', 'id_ubicación'],
             'SKU': ['sku', 'producto', 'product', 'codigo', 'código', 'default_code', 'referencia', 'artículo', 'articulo'],
             'Unidades': ['unidades', 'units', 'cantidad', 'qty', 'count', 'cant', 'unidades a pickear'],
             'OrdenPick': ['ordenpick', 'orden pick', 'secuencia', 'sequence', 'orden_pick', 'order', 'prioridad']
@@ -604,10 +606,10 @@ class ImportPicksController(http.Controller):
                             auto_mapping[key] = idx
                             break
                         
-        mapped_results = []
+        raw_rows = []
         for row_idx, row in enumerate(data_rows):
             row_data = {}
-            for key in ['SO', 'Oleada', 'Picker', 'PosicionN1', 'SKU', 'Unidades', 'OrdenPick']:
+            for key in ['SO', 'Oleada', 'Picker', 'picker_id', 'PosicionN1', 'posicion_N1_id', 'SKU', 'Unidades', 'OrdenPick']:
                 col_idx = auto_mapping.get(key)
                 if col_idx is not None and int(col_idx) < len(row):
                     val = str(row[int(col_idx)]).strip()
@@ -615,8 +617,15 @@ class ImportPicksController(http.Controller):
                 else:
                     row_data[key] = ''
             
-            mapped_row = self._validate_row_data(row_data, row_idx, row)
-            mapped_results.append(mapped_row)
+            raw_rows.append({
+                'index': row_idx,
+                'original_row': row,
+                'data': row_data,
+                'excluded': False,
+                'not_in_excel': False
+            })
+            
+        mapped_results = self._validate_and_match_rows(raw_rows)
             
         result = {
             'status': 'ok',

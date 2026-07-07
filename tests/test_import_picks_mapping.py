@@ -2,7 +2,7 @@
 from odoo.tests.common import TransactionCase
 from odoo.tests import tagged
 from unittest.mock import MagicMock
-import odoo.addons.wmds.controllers.import_picks_controller as ipc
+import sys
 from odoo.addons.wmds.controllers.import_picks_controller import ImportPicksController
 
 @tagged('post_install', '-at_install')
@@ -108,12 +108,12 @@ class TestImportPicksMapping(TransactionCase):
         mock_so.picking_ids = mock_pick
         mock_env['sale.order'].sudo().search.return_value = mock_so
         
-        mock_request = MagicMock()
-        mock_request.env = mock_env
-        
-        original_request = getattr(ipc, 'request', None)
+        # Access active module dynamically
+        ipc_module = sys.modules['odoo.addons.wmds.controllers.import_picks_controller']
+        original_env = getattr(ipc_module.request, 'env', None)
         try:
-            ipc.request = mock_request
+            ipc_module.request.env = mock_env
+            
             raw_rows = [{
                 'index': 1,
                 'original_row': [],
@@ -129,13 +129,8 @@ class TestImportPicksMapping(TransactionCase):
             self.assertEqual(res[0]['data']['SKU'], '')
             self.assertEqual(res[0]['data']['Unidades'], '')
         finally:
-            if original_request is not None:
-                ipc.request = original_request
-            else:
-                try:
-                    del ipc.request
-                except AttributeError:
-                    pass
+            if original_env is not None:
+                ipc_module.request.env = original_env
 
     def test_multiple_lines_matching_and_virtual_rows(self):
         controller = ImportPicksController()
@@ -258,12 +253,12 @@ class TestImportPicksMapping(TransactionCase):
         mock_quant.reserved_quantity = 0.0
         mock_env['stock.quant'].sudo().search.return_value = mock_quant
         
-        mock_request = MagicMock()
-        mock_request.env = mock_env
-        
-        original_request = getattr(ipc, 'request', None)
+        # Access active module dynamically
+        ipc_module = sys.modules['odoo.addons.wmds.controllers.import_picks_controller']
+        original_env = getattr(ipc_module.request, 'env', None)
         try:
-            ipc.request = mock_request
+            ipc_module.request.env = mock_env
+            
             raw_rows = [{
                 'index': 0,
                 'original_row': [],
@@ -292,10 +287,5 @@ class TestImportPicksMapping(TransactionCase):
             self.assertTrue(any(w['code'] == 'not_in_excel' for w in res[2]['warnings']))
             
         finally:
-            if original_request is not None:
-                ipc.request = original_request
-            else:
-                try:
-                    del ipc.request
-                except AttributeError:
-                    pass
+            if original_env is not None:
+                ipc_module.request.env = original_env
