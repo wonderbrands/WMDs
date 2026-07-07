@@ -695,7 +695,13 @@ class ImportPicksController(http.Controller):
                         self._validate_units_in_row(val_row)
                         validated_rows.append(val_row)
                         
-        validated_rows.sort(key=lambda x: x.get('index', 0))
+        def get_sort_key(row):
+            oleada = str(row.get('data', {}).get('Oleada') or '').strip().lower()
+            so = str(row.get('data', {}).get('SO') or '').strip().lower()
+            idx = int(row.get('index', 0) or 0)
+            return (oleada, so, idx)
+            
+        validated_rows.sort(key=get_sort_key)
         return validated_rows
 
     @http.route('/wmds/v2/import_picks/validate_file', type='http', auth='user', methods=['POST'], csrf=False)
