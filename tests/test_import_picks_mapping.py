@@ -24,7 +24,7 @@ class TestImportPicksMapping(TransactionCase):
             'posicion_N1_id': ['posicion_n1_id', 'posicion n1 id', 'id posicion n1', 'id_posicion_n1', 'id ubicacion', 'id_ubicacion', 'id ubicación', 'id_ubicación'],
             'SKU': ['sku', 'producto', 'product', 'codigo', 'código', 'default_code', 'referencia', 'artículo', 'articulo'],
             'Unidades': ['unidades', 'units', 'cantidad', 'qty', 'count', 'cant', 'unidades a pickear'],
-            'OrdenPick': ['ordenpick', 'orden pick', 'orden_pick', 'secuencia', 'sequence', 'order', 'prioridad']
+            'OrdenPick': ['ordenpick', 'orden pick', 'secuencia', 'sequence', 'orden_pick', 'order', 'prioridad']
         }
         
         auto_mapping = {}
@@ -88,7 +88,7 @@ class TestImportPicksMapping(TransactionCase):
         mock_user = MagicMock()
         mock_user.id = 42
         mock_user.name = 'Operador 1'
-        mock_env['res.users'].sudo().search.return_value = mock_user
+        mock_env['res.users'].sudo().search.return_value = [mock_user]
         
         mock_so = MagicMock()
         mock_so.name = 'SO001'
@@ -106,7 +106,7 @@ class TestImportPicksMapping(TransactionCase):
         mock_pick.filtered_domain.return_value = mock_filtered
         
         mock_so.picking_ids = mock_pick
-        mock_env['sale.order'].sudo().search.return_value = mock_so
+        mock_env['sale.order'].sudo().search.return_value = [mock_so]
         
         # Access active module dynamically
         ipc_module = sys.modules['odoo.addons.wmds.controllers.import_picks_controller']
@@ -228,30 +228,65 @@ class TestImportPicksMapping(TransactionCase):
         
         def mock_search(model, domain, limit=None):
             if model == 'sale.order':
-                return mock_so
+                return [mock_so]
             elif model == 'res.users':
-                return mock_user
+                return [mock_user]
             elif model == 'stock.location':
-                val = domain[0][2]
-                if val == 'W':
-                    return loc_w
-                elif val == 'X':
-                    return loc_x
-                elif val == 'Y':
-                    return loc_y
-                elif val == 'Z':
-                    return loc_z
-            return MagicMock()
+                domain_str = str(domain)
+                res_locs = []
+                if 'W' in domain_str or '13' in domain_str:
+                    res_locs.append(loc_w)
+                if 'X' in domain_str or '10' in domain_str:
+                    res_locs.append(loc_x)
+                if 'Y' in domain_str or '11' in domain_str:
+                    res_locs.append(loc_y)
+                if 'Z' in domain_str or '12' in domain_str:
+                    res_locs.append(loc_z)
+                return res_locs
+            elif model == 'product.product':
+                return [prod_a, prod_b]
+            return []
             
         mock_env.user = mock_user
         mock_env['sale.order'].sudo().search = MagicMock(side_effect=lambda d, limit=None: mock_search('sale.order', d, limit))
         mock_env['res.users'].sudo().search = MagicMock(side_effect=lambda d, limit=None: mock_search('res.users', d, limit))
         mock_env['stock.location'].sudo().search = MagicMock(side_effect=lambda d, limit=None: mock_search('stock.location', d, limit))
+        mock_env['product.product'].sudo().search = MagicMock(side_effect=lambda d, limit=None: mock_search('product.product', d, limit))
         
-        mock_quant = MagicMock()
-        mock_quant.quantity = 5.0
-        mock_quant.reserved_quantity = 0.0
-        mock_env['stock.quant'].sudo().search.return_value = mock_quant
+        def mock_quant_search(domain):
+            quants = []
+            
+            q_aw = MagicMock()
+            q_aw.location_id.id = 13
+            q_aw.product_id.id = 1
+            q_aw.quantity = 5.0
+            q_aw.reserved_quantity = 0.0
+            quants.append(q_aw)
+            
+            q_ax = MagicMock()
+            q_ax.location_id.id = 10
+            q_ax.product_id.id = 1
+            q_ax.quantity = 5.0
+            q_ax.reserved_quantity = 0.0
+            quants.append(q_ax)
+
+            q_ay = MagicMock()
+            q_ay.location_id.id = 11
+            q_ay.product_id.id = 1
+            q_ay.quantity = 5.0
+            q_ay.reserved_quantity = 0.0
+            quants.append(q_ay)
+
+            q_bz = MagicMock()
+            q_bz.location_id.id = 12
+            q_bz.product_id.id = 2
+            q_bz.quantity = 5.0
+            q_bz.reserved_quantity = 0.0
+            quants.append(q_bz)
+
+            return quants
+            
+        mock_env['stock.quant'].sudo().search = MagicMock(side_effect=mock_quant_search)
         
         # Access active module dynamically
         ipc_module = sys.modules['odoo.addons.wmds.controllers.import_picks_controller']

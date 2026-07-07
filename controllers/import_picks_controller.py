@@ -29,23 +29,35 @@ class ImportPicksController(http.Controller):
         res = self._validate_and_match_rows(raw_rows)
         return res[0] if res else {}
 
-    def _validate_picker_in_row(self, val_row):
+    def _validate_picker_in_row(self, val_row, user_maps=None):
         picker_name = val_row['data'].get('Picker')
         picker_id = val_row['data'].get('picker_id')
         picker_user = None
         
-        if picker_id:
-            try:
-                picker_user = request.env['res.users'].sudo().browse(int(float(picker_id)))
-                if not picker_user.exists():
-                    picker_user = None
-            except Exception:
-                pass
-                
-        if not picker_user and picker_name:
-            picker_user = request.env['res.users'].sudo().search([('name', '=', picker_name)], limit=1)
-            if not picker_user:
-                picker_user = request.env['res.users'].sudo().search([('login', '=', picker_name)], limit=1)
+        if user_maps:
+            user_map_by_id, user_map_by_name, user_map_by_login = user_maps
+            if picker_id:
+                try:
+                    pid_int = int(float(picker_id))
+                    picker_user = user_map_by_id.get(pid_int)
+                except Exception:
+                    pass
+            if not picker_user and picker_name:
+                pn_clean = picker_name.strip().lower()
+                picker_user = user_map_by_name.get(pn_clean) or user_map_by_login.get(pn_clean)
+        else:
+            if picker_id:
+                try:
+                    picker_user = request.env['res.users'].sudo().browse(int(float(picker_id)))
+                    if not picker_user.exists():
+                        picker_user = None
+                except Exception:
+                    pass
+                    
+            if not picker_user and picker_name:
+                picker_user = request.env['res.users'].sudo().search([('name', '=', picker_name)], limit=1)
+                if not picker_user:
+                    picker_user = request.env['res.users'].sudo().search([('login', '=', picker_name)], limit=1)
                 
         if picker_user:
             val_row['picker_id'] = picker_user.id
@@ -54,7 +66,7 @@ class ImportPicksController(http.Controller):
         elif picker_name or picker_id:
             val_row['errors'].append({'field': 'Picker', 'code': 'not_found', 'message': f'El operador "{picker_name or picker_id}" no existe.'})
 
-    def _validate_location_and_stock(self, val_row, stock_cache, ml=None, prod=None, pick_odoo=None):
+    def _validate_location_and_stock(self, val_row, stock_cache, ml=None, prod=None, pick_odoo=None, loc_maps=None):
         suggested_loc_name = val_row['data'].get('PosicionN1')
         suggested_loc_id = val_row['data'].get('posicion_N1_id')
         unidades_str = val_row['data'].get('Unidades')
@@ -67,18 +79,30 @@ class ImportPicksController(http.Controller):
             return
             
         loc = None
-        if suggested_loc_id:
-            try:
-                loc = request.env['stock.location'].sudo().browse(int(float(suggested_loc_id)))
-                if not loc.exists():
-                    loc = None
-            except Exception:
-                pass
-                
-        if not loc and suggested_loc_name:
-            loc = request.env['stock.location'].sudo().search([('barcode', '=', suggested_loc_name)], limit=1)
-            if not loc:
-                loc = request.env['stock.location'].sudo().search([('name', '=', suggested_loc_name)], limit=1)
+        if loc_maps:
+            loc_map_by_id, loc_map_by_barcode, loc_map_by_name = loc_maps
+            if suggested_loc_id:
+                try:
+                    lid_int = int(float(suggested_loc_id))
+                    loc = loc_map_by_id.get(lid_int)
+                except Exception:
+                    pass
+            if not loc and suggested_loc_name:
+                ln_clean = suggested_loc_name.strip().lower()
+                loc = loc_map_by_barcode.get(ln_clean) or loc_map_by_name.get(ln_clean)
+        else:
+            if suggested_loc_id:
+                try:
+                    loc = request.env['stock.location'].sudo().browse(int(float(suggested_loc_id)))
+                    if not loc.exists():
+                        loc = None
+                except Exception:
+                    pass
+                    
+            if not loc and suggested_loc_name:
+                loc = request.env['stock.location'].sudo().search([('barcode', '=', suggested_loc_name)], limit=1)
+                if not loc:
+                    loc = request.env['stock.location'].sudo().search([('name', '=', suggested_loc_name)], limit=1)
                 
         if not loc:
             if original_loc_name:
@@ -168,6 +192,97 @@ class ImportPicksController(http.Controller):
             except ValueError:
                 val_row['errors'].append({'field': 'Unidades', 'code': 'invalid', 'message': 'Las unidades deben un número válido.'})
 
+    def _prefetch_sale_orders(self, so_names):
+        so_map = {}
+        if not so_names:
+            return so_map
+        so_names_list = list(set(filter(None, [n.strip() for n in so_names])))
+        if not so_names_list:
+            return so_map
+        sales_orders = request.env['sale.order'].sudo().search([('name', 'in', so_names_list)])
+        for so in sales_orders:
+            so_map[so.name.strip().lower()] = so
+            
+        missing_so_names = [n for n in so_names_list if n.strip().lower() not in so_map]
+        for missing_name in missing_so_names:
+            so_found = request.env['sale.order'].sudo().search([('name', '=ilike', missing_name)], limit=1)
+            if not so_found:
+                so_found = request.env['sale.order'].sudo().search([('name', 'ilike', missing_name)], limit=1)
+            if so_found:
+                so_map[missing_name.strip().lower()] = so_found
+        return so_map
+
+    def _prefetch_products(self, skus):
+        product_map = {}
+        if not skus:
+            return product_map
+        skus_list = list(set(filter(None, [s.strip() for s in skus])))
+        if not skus_list:
+            return product_map
+        products = request.env['product.product'].sudo().search(['|', ('default_code', 'in', skus_list), ('barcode', 'in', skus_list)])
+        for prod in products:
+            if prod.default_code:
+                product_map[prod.default_code.strip().lower()] = prod
+            if prod.barcode:
+                product_map[prod.barcode.strip().lower()] = prod
+        return product_map
+
+    def _prefetch_locations(self, loc_names, loc_ids=None):
+        loc_map_by_id = {}
+        loc_map_by_barcode = {}
+        loc_map_by_name = {}
+        
+        loc_names_list = list(set(filter(None, [ln.strip() for ln in loc_names])))
+        loc_ids_list = list(set(filter(None, loc_ids))) if loc_ids else []
+        
+        if not loc_names_list and not loc_ids_list:
+            return loc_map_by_id, loc_map_by_barcode, loc_map_by_name
+            
+        domain = []
+        if loc_ids_list and loc_names_list:
+            domain = ['|', ('id', 'in', loc_ids_list), '|', ('barcode', 'in', loc_names_list), ('name', 'in', loc_names_list)]
+        elif loc_ids_list:
+            domain = [('id', 'in', loc_ids_list)]
+        else:
+            domain = ['|', ('barcode', 'in', loc_names_list), ('name', 'in', loc_names_list)]
+            
+        locations = request.env['stock.location'].sudo().search(domain)
+        for l in locations:
+            loc_map_by_id[l.id] = l
+            if l.barcode:
+                loc_map_by_barcode[l.barcode.strip().lower()] = l
+            if l.name:
+                loc_map_by_name[l.name.strip().lower()] = l
+                
+        return loc_map_by_id, loc_map_by_barcode, loc_map_by_name
+
+    def _prefetch_users(self, user_names, user_ids=None):
+        user_map_by_id = {}
+        user_map_by_name = {}
+        user_map_by_login = {}
+        
+        names_list = list(set(filter(None, [un.strip() for un in user_names])))
+        ids_list = list(set(filter(None, user_ids))) if user_ids else []
+        
+        if not names_list and not ids_list:
+            return user_map_by_id, user_map_by_name, user_map_by_login
+            
+        domain = []
+        if ids_list and names_list:
+            domain = ['|', ('id', 'in', ids_list), '|', ('name', 'in', names_list), ('login', 'in', names_list)]
+        elif ids_list:
+            domain = [('id', 'in', ids_list)]
+        else:
+            domain = ['|', ('name', 'in', names_list), ('login', 'in', names_list)]
+            
+        users = request.env['res.users'].sudo().search(domain)
+        for u in users:
+            user_map_by_id[u.id] = u
+            user_map_by_name[u.name.strip().lower()] = u
+            user_map_by_login[u.login.strip().lower()] = u
+            
+        return user_map_by_id, user_map_by_name, user_map_by_login
+
     def _validate_and_match_rows(self, raw_rows):
         validated_rows = []
         location_product_stock = {}
@@ -207,6 +322,78 @@ class ImportPicksController(http.Controller):
             
         all_so_names = set(excel_rows_by_so.keys()).union(set(virtual_rows_by_so.keys())).union(set(ignored_rows_by_so.keys()))
         
+        # 1. Pre-fetch sale.order
+        so_map = self._prefetch_sale_orders(list(all_so_names))
+        
+        # 2. Pre-fetch res.users (pickers)
+        picker_names = set()
+        picker_ids = set()
+        for r in raw_rows:
+            pn = r.get('data', {}).get('Picker', '').strip()
+            pid = r.get('data', {}).get('picker_id', '').strip()
+            if pn:
+                picker_names.add(pn)
+            if pid:
+                try:
+                    picker_ids.add(int(float(pid)))
+                except ValueError:
+                    pass
+        user_maps = self._prefetch_users(list(picker_names), list(picker_ids))
+        
+        # 3. Pre-fetch stock.location (suggested locations)
+        loc_names = set()
+        loc_ids = set()
+        for r in raw_rows:
+            ln = r.get('data', {}).get('PosicionN1', '').strip()
+            lid = r.get('data', {}).get('posicion_N1_id', '').strip()
+            if ln:
+                loc_names.add(ln)
+            if lid:
+                try:
+                    loc_ids.add(int(float(lid)))
+                except ValueError:
+                    pass
+        loc_maps = self._prefetch_locations(list(loc_names), list(loc_ids))
+        
+        # 4. Pre-fetch products
+        skus = set()
+        for r in raw_rows:
+            sku = r.get('data', {}).get('SKU', '').strip()
+            if sku:
+                skus.add(sku)
+        product_map = self._prefetch_products(list(skus))
+        
+        # 5. Pre-fetch stock.quant
+        all_resolved_loc_ids = set()
+        all_resolved_prod_ids = set()
+        
+        for so_name in all_so_names:
+            so = so_map.get(so_name.strip().lower())
+            if so:
+                pick_odoo = so.picking_ids.filtered_domain([
+                    ('picking_type_id.name', '=', 'Pick'),
+                    ('state', '!=', 'cancel')
+                ])[:1]
+                if pick_odoo:
+                    for ml in pick_odoo.move_line_ids:
+                        all_resolved_prod_ids.add(ml.product_id.id)
+                        all_resolved_loc_ids.add(ml.location_id.id)
+                        
+        for l in loc_maps[0].values():
+            all_resolved_loc_ids.add(l.id)
+            
+        for p in product_map.values():
+            all_resolved_prod_ids.add(p.id)
+            
+        if all_resolved_loc_ids and all_resolved_prod_ids:
+            quants = request.env['stock.quant'].sudo().search([
+                ('location_id', 'in', list(all_resolved_loc_ids)),
+                ('product_id', 'in', list(all_resolved_prod_ids))
+            ])
+            for q in quants:
+                location_product_stock[(q.location_id.id, q.product_id.id)] = max(0.0, q.quantity - q.reserved_quantity)
+                
+        # Main matching and validation loops
         for so_name in all_so_names:
             group_excel = excel_rows_by_so.get(so_name, [])
             group_ignored = ignored_rows_by_so.get(so_name, [])
@@ -232,9 +419,7 @@ class ImportPicksController(http.Controller):
                 if not so_name:
                     val_row['errors'].append({'field': 'SO', 'code': 'missing', 'message': 'El campo SO es obligatorio.'})
                 else:
-                    so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
-                    if not so:
-                        so = request.env['sale.order'].sudo().search([('name', 'ilike', so_name)], limit=1)
+                    so = so_map.get(so_name.strip().lower())
                     if not so:
                         val_row['errors'].append({'field': 'SO', 'code': 'not_found', 'message': f'La SO "{so_name}" no existe.'})
                     else:
@@ -256,7 +441,7 @@ class ImportPicksController(http.Controller):
                             if pick_odoo.batch_id:
                                 val_row['errors'].append({'field': 'SO', 'code': 'already_in_batch', 'message': f'El pick {pick_odoo.name} ya pertenece al plan de pickeo (lote) "{pick_odoo.batch_id.name}".'})
                                 
-                self._validate_picker_in_row(val_row)
+                self._validate_picker_in_row(val_row, user_maps=user_maps)
                 if not val_row['data'].get('Oleada'):
                     val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
                 validated_rows.append(val_row)
@@ -278,14 +463,11 @@ class ImportPicksController(http.Controller):
                         'picker_id': False,
                         'not_in_excel': False
                     }
-                    self._validate_picker_in_row(val_row)
+                    self._validate_picker_in_row(val_row, user_maps=user_maps)
                     validated_rows.append(val_row)
                 continue
                 
-            so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
-            if not so:
-                so = request.env['sale.order'].sudo().search([('name', 'ilike', so_name)], limit=1)
-                
+            so = so_map.get(so_name.strip().lower())
             if not so:
                 for r in group_excel:
                     val_row = {
@@ -303,7 +485,7 @@ class ImportPicksController(http.Controller):
                         'picker_id': False,
                         'not_in_excel': False
                     }
-                    self._validate_picker_in_row(val_row)
+                    self._validate_picker_in_row(val_row, user_maps=user_maps)
                     validated_rows.append(val_row)
                 continue
                 
@@ -356,7 +538,7 @@ class ImportPicksController(http.Controller):
                         'picker_id': False,
                         'not_in_excel': False
                     }
-                    self._validate_picker_in_row(val_row)
+                    self._validate_picker_in_row(val_row, user_maps=user_maps)
                     validated_rows.append(val_row)
                 continue
                 
@@ -411,10 +593,10 @@ class ImportPicksController(http.Controller):
                             }
                         }
                         
-                        self._validate_picker_in_row(val_row)
+                        self._validate_picker_in_row(val_row, user_maps=user_maps)
                         if not val_row['data'].get('Oleada'):
                             val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
-                        self._validate_location_and_stock(val_row, location_product_stock, ml=ml, pick_odoo=pick_odoo)
+                        self._validate_location_and_stock(val_row, location_product_stock, ml=ml, pick_odoo=pick_odoo, loc_maps=loc_maps)
                         self._validate_units_in_row(val_row)
                         validated_rows.append(val_row)
                         
@@ -437,14 +619,12 @@ class ImportPicksController(http.Controller):
                             'not_in_excel': False
                         }
                         
-                        self._validate_picker_in_row(val_row)
+                        self._validate_picker_in_row(val_row, user_maps=user_maps)
                         if not val_row['data'].get('Oleada'):
                             val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
                             
                         prod_sku = val_row['data'].get('SKU', '')
-                        prod = request.env['product.product'].sudo().search([('default_code', '=', prod_sku)], limit=1)
-                        if not prod:
-                            prod = request.env['product.product'].sudo().search([('barcode', '=', prod_sku)], limit=1)
+                        prod = product_map.get(prod_sku.strip().lower())
                             
                         if not prod:
                             val_row['errors'].append({'field': 'SKU', 'code': 'not_found', 'message': f'El producto/SKU "{prod_sku}" no existe.'})
@@ -456,7 +636,7 @@ class ImportPicksController(http.Controller):
                             if not move:
                                 val_row['errors'].append({'field': 'SKU', 'code': 'not_in_pick', 'message': f'El producto "{prod.display_name}" no forma parte del pick {pick_odoo.name}.'})
                             else:
-                                self._validate_location_and_stock(val_row, location_product_stock, prod=prod, pick_odoo=pick_odoo)
+                                self._validate_location_and_stock(val_row, location_product_stock, prod=prod, pick_odoo=pick_odoo, loc_maps=loc_maps)
                                 
                         self._validate_units_in_row(val_row)
                         validated_rows.append(val_row)
@@ -509,7 +689,7 @@ class ImportPicksController(http.Controller):
                             }
                         }
                         
-                        self._validate_picker_in_row(val_row)
+                        self._validate_picker_in_row(val_row, user_maps=user_maps)
                         if not val_row['data'].get('Oleada'):
                             val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
                         self._validate_units_in_row(val_row)
@@ -667,22 +847,17 @@ class ImportPicksController(http.Controller):
         if not rows:
             return {'error': True, 'error_msg': 'No hay datos para procesar.'}
             
-        # 1. Re-validate all rows to ensure we have the latest errors/warnings and IDs.
-        validated_rows = []
+        # 1. Re-validate all rows to ensure we have the latest errors/warnings and IDs using the bulk match.
+        raw_rows = []
         for row in rows:
-            if row.get('excluded', False):
-                row['errors'] = []
-                row['warnings'] = []
-                validated_rows.append(row)
-                continue
-                
-            row_data = row.get('data', {})
-            index = row.get('index', 0)
-            original_row = row.get('original_row', [])
-            
-            validated_row = self._validate_row_data(row_data, index, original_row)
-            validated_row['excluded'] = False
-            validated_rows.append(validated_row)
+            raw_rows.append({
+                'index': row.get('index', 0),
+                'original_row': row.get('original_row', []),
+                'data': row.get('data', {}),
+                'excluded': row.get('excluded', False),
+                'not_in_excel': row.get('not_in_excel', False)
+            })
+        validated_rows = self._validate_and_match_rows(raw_rows)
 
         picks_data = {}
         picking_to_batch = {}
@@ -732,10 +907,28 @@ class ImportPicksController(http.Controller):
         oleadas_batches = {}
         
         try:
+            # Pre-collect values for bulk prefetching
+            so_names = set(picks_data.keys())
+            skus = set()
+            loc_names = set()
+            picker_names = set()
+            for p_info in picks_data.values():
+                if p_info['picker_name']:
+                    picker_names.add(p_info['picker_name'])
+                for item in p_info['items']:
+                    if item.get('sku'):
+                        skus.add(item['sku'])
+                    if item.get('posicion'):
+                        loc_names.add(item['posicion'])
+                        
+            # Execute bulk prefetches
+            so_map = self._prefetch_sale_orders(list(so_names))
+            product_map = self._prefetch_products(list(skus))
+            loc_map_by_id, loc_map_by_barcode, loc_map_by_name = self._prefetch_locations(list(loc_names))
+            user_map_by_id, user_map_by_name, user_map_by_login = self._prefetch_users(list(picker_names))
+            
             for so_name, p_info in picks_data.items():
-                so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
-                if not so:
-                    so = request.env['sale.order'].sudo().search([('name', 'ilike', so_name)], limit=1)
+                so = so_map.get(so_name.strip().lower())
                 if not so:
                     continue
                     
@@ -753,9 +946,7 @@ class ImportPicksController(http.Controller):
                         if item.get('use_odoo_fallback'):
                             continue
                         sku = item['sku']
-                        product = request.env['product.product'].sudo().search([('default_code', '=', sku)], limit=1)
-                        if not product:
-                            product = request.env['product.product'].sudo().search([('barcode', '=', sku)], limit=1)
+                        product = product_map.get(sku.strip().lower())
                         if product:
                             mls = pick_odoo.move_line_ids.filtered(lambda l: l.product_id.id == product.id)
                             if mls:
@@ -769,15 +960,12 @@ class ImportPicksController(http.Controller):
                         posicion = item['posicion']
                         unidades = item['unidades']
                         
-                        loc = request.env['stock.location'].sudo().search([('barcode', '=', posicion)], limit=1)
-                        if not loc:
-                            loc = request.env['stock.location'].sudo().search([('name', '=', posicion)], limit=1)
+                        pos_clean = posicion.strip().lower()
+                        loc = loc_map_by_barcode.get(pos_clean) or loc_map_by_name.get(pos_clean)
                         if not loc:
                             continue
                             
-                        product = request.env['product.product'].sudo().search([('default_code', '=', sku)], limit=1)
-                        if not product:
-                            product = request.env['product.product'].sudo().search([('barcode', '=', sku)], limit=1)
+                        product = product_map.get(sku.strip().lower())
                         if not product:
                             continue
                             
@@ -800,11 +988,11 @@ class ImportPicksController(http.Controller):
                     pick_odoo.sudo().action_assign()
                     
                 # Store location names used
-                loc_names = []
+                loc_names_used = []
                 for ml in pick_odoo.move_line_ids:
                     if ml.quantity > 0:
-                        loc_names.append(ml.location_id.barcode or ml.location_id.name or '')
-                picking_to_loc[pick_odoo.id] = ", ".join(list(set(filter(None, loc_names))))
+                        loc_names_used.append(ml.location_id.barcode or ml.location_id.name or '')
+                picking_to_loc[pick_odoo.id] = ", ".join(list(set(filter(None, loc_names_used))))
                 
                 oleada = p_info['oleada']
                 if oleada not in oleadas_batches:
@@ -823,9 +1011,8 @@ class ImportPicksController(http.Controller):
                 picker_user = None
                 picker_name = picks_list[0]['picker_name']
                 if picker_name:
-                    picker_user = request.env['res.users'].sudo().search([('name', '=', picker_name)], limit=1)
-                    if not picker_user:
-                        picker_user = request.env['res.users'].sudo().search([('login', '=', picker_name)], limit=1)
+                    pn_clean = picker_name.strip().lower()
+                    picker_user = user_map_by_name.get(pn_clean) or user_map_by_login.get(pn_clean)
                 
                 batch_vals = {
                     'user_id': request.env.user.id,
