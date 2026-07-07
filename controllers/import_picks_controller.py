@@ -565,87 +565,9 @@ class ImportPicksController(http.Controller):
                 e_list = excel_rows_by_sku.get(sku, [])
                 o_list = odoo_lines_by_sku.get(sku, [])
                 
-                for i in range(max(len(e_list), len(o_list))):
-                    if i < len(e_list) and i < len(o_list):
-                        e_row = e_list[i]
-                        ml = o_list[i]
-                        
-                        val_row = {
-                            'index': e_row.get('index', 0),
-                            'original_row': e_row.get('original_row', []),
-                            'data': dict(e_row.get('data', {})),
-                            'excluded': e_row.get('excluded', False),
-                            'errors': [],
-                            'warnings': [],
-                            'picking_id': pick_odoo.id,
-                            'picking_name': pick_odoo.name,
-                            'picking_state': pick_odoo.state,
-                            'product_id': ml.product_id.id,
-                            'location_id': False,
-                            'picker_id': False,
-                            'not_in_excel': False,
-                            'odoo_data': {
-                                'move_line_id': ml.id,
-                                'location_name': ml.location_id.barcode or ml.location_id.name or '',
-                                'location_id': ml.location_id.id,
-                                'quantity': ml.quantity,
-                                'product_id': ml.product_id.id
-                            }
-                        }
-                        
-                        self._validate_picker_in_row(val_row, user_maps=user_maps)
-                        if not val_row['data'].get('Oleada'):
-                            val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
-                        self._validate_location_and_stock(val_row, location_product_stock, ml=ml, pick_odoo=pick_odoo, loc_maps=loc_maps)
-                        self._validate_units_in_row(val_row)
-                        validated_rows.append(val_row)
-                        
-                    elif i < len(e_list):
-                        e_row = e_list[i]
-                        
-                        val_row = {
-                            'index': e_row.get('index', 0),
-                            'original_row': e_row.get('original_row', []),
-                            'data': dict(e_row.get('data', {})),
-                            'excluded': e_row.get('excluded', False),
-                            'errors': [],
-                            'warnings': [{'field': 'PosicionN1', 'code': 'no_match', 'message': 'Esta línea de Excel no tiene una línea de reserva correspondiente en Odoo.'}],
-                            'picking_id': pick_odoo.id,
-                            'picking_name': pick_odoo.name,
-                            'picking_state': pick_odoo.state,
-                            'product_id': False,
-                            'location_id': False,
-                            'picker_id': False,
-                            'not_in_excel': False
-                        }
-                        
-                        self._validate_picker_in_row(val_row, user_maps=user_maps)
-                        if not val_row['data'].get('Oleada'):
-                            val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
-                            
-                        prod_sku = val_row['data'].get('SKU', '')
-                        prod = product_map.get(prod_sku.strip().lower())
-                            
-                        if not prod:
-                            val_row['errors'].append({'field': 'SKU', 'code': 'not_found', 'message': f'El producto/SKU "{prod_sku}" no existe.'})
-                        else:
-                            val_row['product_id'] = prod.id
-                            val_row['data']['SKU'] = prod.default_code
-                            
-                            move = pick_odoo.move_ids.filtered(lambda m: m.product_id.id == prod.id)[:1]
-                            if not move:
-                                val_row['errors'].append({'field': 'SKU', 'code': 'not_in_pick', 'message': f'El producto "{prod.display_name}" no forma parte del pick {pick_odoo.name}.'})
-                            else:
-                                self._validate_location_and_stock(val_row, location_product_stock, prod=prod, pick_odoo=pick_odoo, loc_maps=loc_maps)
-                                
-                        self._validate_units_in_row(val_row)
-                        validated_rows.append(val_row)
-                        
-                    else:
-                        ml = o_list[i]
-                        
-                        existing_v_row = next((vr for vr in group_virtual if vr.get('odoo_data', {}).get('move_line_id') == ml.id), None)
-                        
+                if not e_list:
+                    # Case 1: SKU not in Excel sheet. All Odoo lines become virtual rows.
+                    for ml in o_list:
                         default_oleada = ''
                         default_picker_name = ''
                         default_picker_id = ''
@@ -657,20 +579,20 @@ class ImportPicksController(http.Controller):
                             default_orden_pick = next((r['data'].get('OrdenPick') for r in group_excel if r['data'].get('OrdenPick')), '9999')
                             
                         val_row = {
-                            'index': existing_v_row.get('index') if existing_v_row else 10000 + ml.id,
+                            'index': 10000 + ml.id,
                             'original_row': [],
                             'data': {
                                 'SO': so.name,
-                                'Oleada': existing_v_row['data'].get('Oleada') if existing_v_row else default_oleada,
-                                'Picker': existing_v_row['data'].get('Picker') if existing_v_row else default_picker_name,
-                                'picker_id': existing_v_row['data'].get('picker_id') if existing_v_row else default_picker_id,
+                                'Oleada': default_oleada,
+                                'Picker': default_picker_name,
+                                'picker_id': default_picker_id,
                                 'PosicionN1': ml.location_id.barcode or ml.location_id.name or '',
                                 'posicion_N1_id': str(ml.location_id.id),
                                 'SKU': ml.product_id.default_code or ml.product_id.barcode or '',
                                 'Unidades': str(ml.quantity),
-                                'OrdenPick': existing_v_row['data'].get('OrdenPick') if existing_v_row else default_orden_pick
+                                'OrdenPick': default_orden_pick
                             },
-                            'excluded': existing_v_row.get('excluded', False) if existing_v_row else False,
+                            'excluded': False,
                             'errors': [],
                             'warnings': [{'field': 'PosicionN1', 'code': 'not_in_excel', 'message': 'No contemplado en el Excel. Se mantiene la reserva de Odoo.'}],
                             'picking_id': pick_odoo.id,
@@ -688,12 +610,222 @@ class ImportPicksController(http.Controller):
                                 'product_id': ml.product_id.id
                             }
                         }
-                        
                         self._validate_picker_in_row(val_row, user_maps=user_maps)
                         if not val_row['data'].get('Oleada'):
                             val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
                         self._validate_units_in_row(val_row)
                         validated_rows.append(val_row)
+                    continue
+
+                # Case 2: SKU has Excel suggestions. Check if total quantity matches Odoo.
+                total_excel_qty = 0.0
+                for r in e_list:
+                    qty_str = r.get('data', {}).get('Unidades', '')
+                    try:
+                        total_excel_qty += float(qty_str) if qty_str else 0.0
+                    except ValueError:
+                        pass
+                total_odoo_qty = sum(ml.quantity for ml in o_list)
+                
+                qty_mismatch = abs(total_excel_qty - total_odoo_qty) > 0.0001
+                
+                if qty_mismatch:
+                    # Rollback case: Revert all Excel rows and Odoo lines to Odoo's original configuration.
+                    for i in range(max(len(e_list), len(o_list))):
+                        if i < len(e_list) and i < len(o_list):
+                            e_row = e_list[i]
+                            ml = o_list[i]
+                            
+                            # Force fallback
+                            e_row['data']['PosicionN1'] = ml.location_id.barcode or ml.location_id.name or ''
+                            e_row['data']['posicion_N1_id'] = str(ml.location_id.id)
+                            e_row['data']['Unidades'] = str(ml.quantity)
+                            
+                            val_row = {
+                                'index': e_row.get('index', 0),
+                                'original_row': e_row.get('original_row', []),
+                                'data': dict(e_row.get('data', {})),
+                                'excluded': e_row.get('excluded', False),
+                                'errors': [],
+                                'warnings': [{
+                                    'field': 'Unidades',
+                                    'code': 'qty_mismatch',
+                                    'message': f"La cantidad sugerida total ({total_excel_qty}) no coincide con la reserva de Odoo ({total_odoo_qty}). Se revirtió a la ubicación y cantidad original."
+                                }],
+                                'picking_id': pick_odoo.id,
+                                'picking_name': pick_odoo.name,
+                                'picking_state': pick_odoo.state,
+                                'product_id': ml.product_id.id,
+                                'location_id': ml.location_id.id,
+                                'picker_id': False,
+                                'not_in_excel': False,
+                                'odoo_data': {
+                                    'move_line_id': ml.id,
+                                    'location_name': ml.location_id.barcode or ml.location_id.name or '',
+                                    'location_id': ml.location_id.id,
+                                    'quantity': ml.quantity,
+                                    'product_id': ml.product_id.id
+                                }
+                            }
+                            self._validate_picker_in_row(val_row, user_maps=user_maps)
+                            if not val_row['data'].get('Oleada'):
+                                val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
+                            self._validate_units_in_row(val_row)
+                            validated_rows.append(val_row)
+                            
+                        elif i < len(e_list):
+                            e_row = e_list[i]
+                            val_row = {
+                                'index': e_row.get('index', 0),
+                                'original_row': e_row.get('original_row', []),
+                                'data': dict(e_row.get('data', {})),
+                                'excluded': True,
+                                'errors': [],
+                                'warnings': [{
+                                    'field': 'Unidades',
+                                    'code': 'qty_mismatch',
+                                    'message': f"Fila excluida: la cantidad sugerida total ({total_excel_qty}) no coincide con la reserva de Odoo ({total_odoo_qty})."
+                                }],
+                                'picking_id': pick_odoo.id,
+                                'picking_name': pick_odoo.name,
+                                'picking_state': pick_odoo.state,
+                                'product_id': False,
+                                'location_id': False,
+                                'picker_id': False,
+                                'not_in_excel': False
+                            }
+                            self._validate_picker_in_row(val_row, user_maps=user_maps)
+                            validated_rows.append(val_row)
+                            
+                        else:
+                            ml = o_list[i]
+                            existing_v_row = next((vr for vr in group_virtual if vr.get('odoo_data', {}).get('move_line_id') == ml.id), None)
+                            default_oleada = ''
+                            default_picker_name = ''
+                            default_picker_id = ''
+                            default_orden_pick = '9999'
+                            if group_excel:
+                                default_oleada = next((r['data'].get('Oleada') for r in group_excel if r['data'].get('Oleada')), '')
+                                default_picker_name = next((r['data'].get('Picker') for r in group_excel if r['data'].get('Picker')), '')
+                                default_picker_id = next((r['data'].get('picker_id') for r in group_excel if r['data'].get('picker_id')), '')
+                                default_orden_pick = next((r['data'].get('OrdenPick') for r in group_excel if r['data'].get('OrdenPick')), '9999')
+                                
+                            val_row = {
+                                'index': existing_v_row.get('index') if existing_v_row else 10000 + ml.id,
+                                'original_row': [],
+                                'data': {
+                                    'SO': so.name,
+                                    'Oleada': existing_v_row['data'].get('Oleada') if existing_v_row else default_oleada,
+                                    'Picker': existing_v_row['data'].get('Picker') if existing_v_row else default_picker_name,
+                                    'picker_id': existing_v_row['data'].get('picker_id') if existing_v_row else default_picker_id,
+                                    'PosicionN1': ml.location_id.barcode or ml.location_id.name or '',
+                                    'posicion_N1_id': str(ml.location_id.id),
+                                    'SKU': ml.product_id.default_code or ml.product_id.barcode or '',
+                                    'Unidades': str(ml.quantity),
+                                    'OrdenPick': existing_v_row['data'].get('OrdenPick') if existing_v_row else default_orden_pick
+                                },
+                                'excluded': existing_v_row.get('excluded', False) if existing_v_row else False,
+                                'errors': [],
+                                'warnings': [{
+                                    'field': 'Unidades',
+                                    'code': 'qty_mismatch',
+                                    'message': f"Línea recuperada de Odoo: la cantidad sugerida total ({total_excel_qty}) no coincide con la reserva de Odoo ({total_odoo_qty})."
+                                }],
+                                'picking_id': pick_odoo.id,
+                                'picking_name': pick_odoo.name,
+                                'picking_state': pick_odoo.state,
+                                'product_id': ml.product_id.id,
+                                'location_id': ml.location_id.id,
+                                'picker_id': False,
+                                'not_in_excel': True,
+                                'odoo_data': {
+                                    'move_line_id': ml.id,
+                                    'location_name': ml.location_id.barcode or ml.location_id.name or '',
+                                    'location_id': ml.location_id.id,
+                                    'quantity': ml.quantity,
+                                    'product_id': ml.product_id.id
+                                }
+                            }
+                            self._validate_picker_in_row(val_row, user_maps=user_maps)
+                            if not val_row['data'].get('Oleada'):
+                                val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
+                            self._validate_units_in_row(val_row)
+                            validated_rows.append(val_row)
+                else:
+                    # Perfect quantity match case!
+                    # Only process Excel rows. Unmatched Odoo lines are discarded (no virtual rows generated)
+                    # because the Excel rows fully account for 100% of Odoo's demand.
+                    for i in range(len(e_list)):
+                        e_row = e_list[i]
+                        
+                        if i < len(o_list):
+                            ml = o_list[i]
+                            val_row = {
+                                'index': e_row.get('index', 0),
+                                'original_row': e_row.get('original_row', []),
+                                'data': dict(e_row.get('data', {})),
+                                'excluded': e_row.get('excluded', False),
+                                'errors': [],
+                                'warnings': [],
+                                'picking_id': pick_odoo.id,
+                                'picking_name': pick_odoo.name,
+                                'picking_state': pick_odoo.state,
+                                'product_id': ml.product_id.id,
+                                'location_id': False,
+                                'picker_id': False,
+                                'not_in_excel': False,
+                                'odoo_data': {
+                                    'move_line_id': ml.id,
+                                    'location_name': ml.location_id.barcode or ml.location_id.name or '',
+                                    'location_id': ml.location_id.id,
+                                    'quantity': ml.quantity,
+                                    'product_id': ml.product_id.id
+                                }
+                            }
+                            self._validate_picker_in_row(val_row, user_maps=user_maps)
+                            if not val_row['data'].get('Oleada'):
+                                val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
+                            self._validate_location_and_stock(val_row, location_product_stock, ml=ml, pick_odoo=pick_odoo, loc_maps=loc_maps)
+                            self._validate_units_in_row(val_row)
+                            validated_rows.append(val_row)
+                        else:
+                            val_row = {
+                                'index': e_row.get('index', 0),
+                                'original_row': e_row.get('original_row', []),
+                                'data': dict(e_row.get('data', {})),
+                                'excluded': e_row.get('excluded', False),
+                                'errors': [],
+                                'warnings': [{'field': 'PosicionN1', 'code': 'no_match', 'message': 'Esta línea de Excel no tiene una línea de reserva correspondiente en Odoo.'}],
+                                'picking_id': pick_odoo.id,
+                                'picking_name': pick_odoo.name,
+                                'picking_state': pick_odoo.state,
+                                'product_id': False,
+                                'location_id': False,
+                                'picker_id': False,
+                                'not_in_excel': False
+                            }
+                            
+                            self._validate_picker_in_row(val_row, user_maps=user_maps)
+                            if not val_row['data'].get('Oleada'):
+                                val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
+                                
+                            prod_sku = val_row['data'].get('SKU', '')
+                            prod = product_map.get(prod_sku.strip().lower())
+                                
+                            if not prod:
+                                val_row['errors'].append({'field': 'SKU', 'code': 'not_found', 'message': f'El producto/SKU "{prod_sku}" no existe.'})
+                            else:
+                                val_row['product_id'] = prod.id
+                                val_row['data']['SKU'] = prod.default_code
+                                
+                                move = pick_odoo.move_ids.filtered(lambda m: m.product_id.id == prod.id)[:1]
+                                if not move:
+                                    val_row['errors'].append({'field': 'SKU', 'code': 'not_in_pick', 'message': f'El producto "{prod.display_name}" no forma parte del pick {pick_odoo.name}.'})
+                                else:
+                                    self._validate_location_and_stock(val_row, location_product_stock, prod=prod, pick_odoo=pick_odoo, loc_maps=loc_maps)
+                                    
+                            self._validate_units_in_row(val_row)
+                            validated_rows.append(val_row)
                         
         def get_sort_key(row):
             oleada = str(row.get('data', {}).get('Oleada') or '').strip().lower()
@@ -889,7 +1021,7 @@ class ImportPicksController(http.Controller):
             # Check if there is any warning about the location that requires fallback
             use_odoo_fallback = False
             for warn in row.get('warnings', []):
-                if warn.get('field') == 'PosicionN1' and warn.get('code') in ['not_found', 'blocked', 'no_stock']:
+                if warn.get('code') in ['not_found', 'blocked', 'no_stock', 'qty_mismatch']:
                     use_odoo_fallback = True
                     break
                 
