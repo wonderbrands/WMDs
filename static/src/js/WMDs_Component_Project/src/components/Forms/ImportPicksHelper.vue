@@ -217,6 +217,10 @@
                   <!-- PosicionN1 -->
                   <td>
                     <span class="text-xs text-slate-800">{{ row.data.PosicionN1 }}</span>
+                    <span v-if="row.not_in_excel" class="badge badge-secondary ml-2" style="font-size: 0.65rem; padding: 0.1rem 0.25rem; display: inline-block;">No en Excel</span>
+                    <div v-else-if="row.odoo_data && row.odoo_data.location_name && row.odoo_data.location_name !== row.data.PosicionN1" class="text-muted" style="font-size: 0.7rem; margin-top: 0.1rem;">
+                      Odoo: {{ row.odoo_data.location_name }}
+                    </div>
                   </td>
 
                   <!-- SKU -->
@@ -227,6 +231,9 @@
                   <!-- Unidades -->
                   <td>
                     <span class="text-xs text-slate-800 text-right block">{{ row.data.Unidades }}</span>
+                    <div v-if="!row.not_in_excel && row.odoo_data && row.odoo_data.quantity !== undefined && parseFloat(row.odoo_data.quantity) !== parseFloat(row.data.Unidades)" class="text-muted text-right" style="font-size: 0.7rem; margin-top: 0.1rem;">
+                      Odoo: {{ row.odoo_data.quantity }}
+                    </div>
                   </td>
 
                   <!-- OrdenPick -->
@@ -308,7 +315,9 @@ export default {
         SO: null,
         Oleada: null,
         Picker: null,
+        picker_id: null,
         PosicionN1: null,
+        posicion_N1_id: null,
         SKU: null,
         Unidades: null,
         OrdenPick: null
@@ -317,7 +326,9 @@ export default {
         { key: 'SO', label: 'Sale Order (SO)', required: true },
         { key: 'Oleada', label: 'Oleada (Ola)', required: true },
         { key: 'Picker', label: 'Picker (Operador)', required: false },
+        { key: 'picker_id', label: 'ID Picker (Operador)', required: false },
         { key: 'PosicionN1', label: 'Posición N1', required: false },
+        { key: 'posicion_N1_id', label: 'ID Posición N1', required: false },
         { key: 'SKU', label: 'SKU (Producto)', required: false },
         { key: 'Unidades', label: 'Unidades', required: false },
         { key: 'OrdenPick', label: 'Orden Pick', required: false }
@@ -333,7 +344,9 @@ export default {
         { label: 'SO (Pedido) * Obligatorio', value: 'SO' },
         { label: 'Oleada (Ola) * Obligatorio', value: 'Oleada' },
         { label: 'Picker (Operador)', value: 'Picker' },
+        { label: 'ID Picker (Operador)', value: 'picker_id' },
         { label: 'Posición N1', value: 'PosicionN1' },
+        { label: 'ID Posición N1', value: 'posicion_N1_id' },
         { label: 'SKU (Producto)', value: 'SKU' },
         { label: 'Unidades', value: 'Unidades' },
         { label: 'Orden Pick', value: 'OrdenPick' }
@@ -479,7 +492,9 @@ export default {
           SO: res.mapping.SO,
           Oleada: res.mapping.Oleada,
           Picker: res.mapping.Picker ?? null,
+          picker_id: res.mapping.picker_id ?? null,
           PosicionN1: res.mapping.PosicionN1 ?? null,
+          posicion_N1_id: res.mapping.posicion_N1_id ?? null,
           SKU: res.mapping.SKU ?? null,
           Unidades: res.mapping.Unidades ?? null,
           OrdenPick: res.mapping.OrdenPick ?? null
@@ -490,7 +505,9 @@ export default {
           SO: res.mapping?.SO ?? null,
           Oleada: res.mapping?.Oleada ?? null,
           Picker: res.mapping?.Picker ?? null,
+          picker_id: res.mapping?.picker_id ?? null,
           PosicionN1: res.mapping?.PosicionN1 ?? null,
+          posicion_N1_id: res.mapping?.posicion_N1_id ?? null,
           SKU: res.mapping?.SKU ?? null,
           Unidades: res.mapping?.Unidades ?? null,
           OrdenPick: res.mapping?.OrdenPick ?? null
@@ -623,7 +640,9 @@ export default {
         SO: null,
         Oleada: null,
         Picker: null,
+        picker_id: null,
         PosicionN1: null,
+        posicion_N1_id: null,
         SKU: null,
         Unidades: null,
         OrdenPick: null

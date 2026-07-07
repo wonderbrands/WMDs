@@ -19,194 +19,504 @@ class ImportPicksController(http.Controller):
             return default
 
     def _validate_row_data(self, row_data, index, original_row):
-        mapped_row = {
+        raw_rows = [{
             'index': index,
             'original_row': original_row,
             'data': row_data,
             'excluded': False,
-            'errors': [],
-            'warnings': [],
-            'picking_id': False,
-            'picking_name': '',
-            'picking_state': '',
-            'product_id': False,
-            'location_id': False,
-            'picker_id': False
-        }
+            'not_in_excel': False
+        }]
+        res = self._validate_and_match_rows(raw_rows)
+        return res[0] if res else {}
+
+    def _validate_picker_in_row(self, val_row):
+        picker_name = val_row['data'].get('Picker')
+        picker_id = val_row['data'].get('picker_id')
+        picker_user = None
         
-        so_name = row_data.get('SO')
-        oleada = row_data.get('Oleada')
-        picker_name = row_data.get('Picker')
-        posicion = row_data.get('PosicionN1')
-        sku = row_data.get('SKU')
-        unidades_str = row_data.get('Unidades')
-        
-        # Validate SO
-        if not so_name:
-            mapped_row['errors'].append({'field': 'SO', 'code': 'missing', 'message': 'El campo SO es obligatorio.'})
-        else:
-            so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
-            if not so:
-                so = request.env['sale.order'].sudo().search([('name', 'ilike', so_name)], limit=1)
-            if not so:
-                mapped_row['errors'].append({'field': 'SO', 'code': 'not_found', 'message': f'La SO "{so_name}" no existe.'})
-            else:
-                mapped_row['data']['SO'] = so.name
-                if not so.data_ready_to_pick:
-                    mapped_row['errors'].append({'field': 'SO', 'code': 'not_ready', 'message': f'La SO "{so.name}" no está lista para recolectar (data_ready_to_pick es falso).'})
+        if picker_id:
+            try:
+                picker_user = request.env['res.users'].sudo().browse(int(float(picker_id)))
+                if not picker_user.exists():
+                    picker_user = None
+            except Exception:
+                pass
                 
-                pick_odoo = so.picking_ids.filtered_domain([
-                    ('picking_type_id.name', '=', 'Pick'),
-                    ('state', '!=', 'cancel')
-                ])[:1]
-                
-                if not pick_odoo:
-                    mapped_row['errors'].append({'field': 'SO', 'code': 'no_pick', 'message': f'La SO "{so.name}" no tiene un pick de tipo "Pick" válido.'})
-                else:
-                    mapped_row['picking_id'] = pick_odoo.id
-                    mapped_row['picking_name'] = pick_odoo.name
-                    mapped_row['picking_state'] = pick_odoo.state
-                    
-                    # Validate if picking is already in a batch (lote)
-                    if pick_odoo.batch_id:
-                        mapped_row['errors'].append({
-                            'field': 'SO', 
-                            'code': 'already_in_batch', 
-                            'message': f'El pick {pick_odoo.name} ya pertenece al plan de pickeo (lote) "{pick_odoo.batch_id.name}".'
-                        })
-                    
-                    if pick_odoo.state != 'assigned':
-                        mapped_row['warnings'].append({'field': 'SO', 'code': 'not_assigned', 'message': f'El pick {pick_odoo.name} no está en estado disponible (Estado actual: {pick_odoo.state}).'})
-        
-        # Validate Oleada
-        if not oleada:
-            mapped_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
-        
-        # Validate Picker
-        if picker_name:
+        if not picker_user and picker_name:
             picker_user = request.env['res.users'].sudo().search([('name', '=', picker_name)], limit=1)
             if not picker_user:
                 picker_user = request.env['res.users'].sudo().search([('login', '=', picker_name)], limit=1)
-            if not picker_user:
-                mapped_row['errors'].append({'field': 'Picker', 'code': 'not_found', 'message': f'El operador/usuario "{picker_name}" no existe.'})
-            else:
-                mapped_row['picker_id'] = picker_user.id
-                mapped_row['data']['Picker'] = picker_user.name
-        
-        # If all 3 fields (PosicionN1, SKU, Unidades) are empty, we ignore them completely
-        # and do not validate or modify stock.move.line.
-        if not posicion and not sku and not unidades_str:
-            return mapped_row
-
-        # Get actual reservation from Odoo if possible
-        actual_loc_name = ""
-        if mapped_row['picking_id'] and sku:
-            pick_odoo_record = request.env['stock.picking'].sudo().browse(mapped_row['picking_id'])
-            prod_record = request.env['product.product'].sudo().search([('default_code', '=', sku)], limit=1)
-            if not prod_record:
-                prod_record = request.env['product.product'].sudo().search([('barcode', '=', sku)], limit=1)
-            if prod_record:
-                ml = pick_odoo_record.move_line_ids.filtered(lambda l: l.product_id.id == prod_record.id)[:1]
-                if ml:
-                    actual_loc_name = ml.location_id.barcode or ml.location_id.name
-
-        # Auto-fill empty position from Odoo's actual reservation
-        if not posicion and actual_loc_name:
-            mapped_row['data']['PosicionN1'] = actual_loc_name
-            posicion = actual_loc_name
-
-        # Validate PosicionN1 and SKU
-        if posicion and sku:
-            loc = request.env['stock.location'].sudo().search([('barcode', '=', posicion)], limit=1)
-            if not loc:
-                loc = request.env['stock.location'].sudo().search([('name', '=', posicion)], limit=1)
-            
-            if not loc:
-                if actual_loc_name:
-                    mapped_row['warnings'].append({
-                        'field': 'PosicionN1', 
-                        'code': 'not_found', 
-                        'message': f'La ubicación sugerida "{posicion}" no existe. Se usará la ubicación original de Odoo: "{actual_loc_name}".'
-                    })
-                    mapped_row['data']['PosicionN1'] = actual_loc_name
-                else:
-                    mapped_row['errors'].append({
-                        'field': 'PosicionN1', 
-                        'code': 'not_found', 
-                        'message': f'La ubicación "{posicion}" no existe.'
-                    })
-            else:
-                mapped_row['location_id'] = loc.id
-                mapped_row['data']['PosicionN1'] = loc.barcode or loc.name
-                if loc.is_location_blocked():
-                    if actual_loc_name:
-                        mapped_row['warnings'].append({
-                            'field': 'PosicionN1', 
-                            'code': 'blocked', 
-                            'message': f'La ubicación sugerida "{loc.complete_name}" está bloqueada. Se usará la ubicación original de Odoo: "{actual_loc_name}".'
-                        })
-                        mapped_row['data']['PosicionN1'] = actual_loc_name
-                    else:
-                        mapped_row['errors'].append({
-                            'field': 'PosicionN1', 
-                            'code': 'blocked', 
-                            'message': f'La ubicación "{loc.complete_name}" está bloqueada.'
-                        })
-            
-            prod = request.env['product.product'].sudo().search([('default_code', '=', sku)], limit=1)
-            if not prod:
-                prod = request.env['product.product'].sudo().search([('barcode', '=', sku)], limit=1)
-            if not prod:
-                mapped_row['errors'].append({'field': 'SKU', 'code': 'not_found', 'message': f'El producto/SKU "{sku}" no existe.'})
-            else:
-                mapped_row['product_id'] = prod.id
-                mapped_row['data']['SKU'] = prod.default_code
                 
-                if mapped_row['picking_id']:
-                    pick_odoo = request.env['stock.picking'].sudo().browse(mapped_row['picking_id'])
-                    move = pick_odoo.move_ids.filtered(lambda m: m.product_id.id == prod.id)[:1]
-                    if not move:
-                        mapped_row['errors'].append({'field': 'SKU', 'code': 'not_in_pick', 'message': f'El producto "{prod.display_name}" no forma parte del pick {pick_odoo.name}.'})
-                    else:
-                        if loc:
-                            quant = request.env['stock.quant'].sudo().search([('location_id', '=', loc.id), ('product_id', '=', prod.id)], limit=1)
-                            avail_stock = quant.quantity - quant.reserved_quantity if quant else 0.0
-                            units = 0.0
-                            if unidades_str:
-                                try:
-                                    units = float(unidades_str)
-                                except ValueError:
-                                    pass
-                            else:
-                                units = move.product_uom_qty
-                                
-                            if avail_stock < units:
-                                if actual_loc_name:
-                                    mapped_row['warnings'].append({
-                                        'field': 'PosicionN1', 
-                                        'code': 'no_stock', 
-                                        'message': f'Stock insuficiente en ubicación sugerida (Disponible: {avail_stock}, Requerido: {units}). Se usará la ubicación original de Odoo: "{actual_loc_name}".'
-                                    })
-                                    mapped_row['data']['PosicionN1'] = actual_loc_name
-                                else:
-                                    mapped_row['warnings'].append({
-                                        'field': 'PosicionN1', 
-                                        'code': 'no_stock', 
-                                        'message': f'Stock insuficiente en la ubicación (Disponible: {avail_stock}, Requerido: {units}).'
-                                    })
-        elif (posicion and not sku) or (sku and not posicion):
-            mapped_row['errors'].append({'field': 'SKU', 'code': 'partial', 'message': 'Debe proporcionar tanto la Posición como el SKU.'})
+        if picker_user:
+            val_row['picker_id'] = picker_user.id
+            val_row['data']['Picker'] = picker_user.name
+            val_row['data']['picker_id'] = str(picker_user.id)
+        elif picker_name or picker_id:
+            val_row['errors'].append({'field': 'Picker', 'code': 'not_found', 'message': f'El operador "{picker_name or picker_id}" no existe.'})
+
+    def _validate_location_and_stock(self, val_row, stock_cache, ml=None, prod=None, pick_odoo=None):
+        suggested_loc_name = val_row['data'].get('PosicionN1')
+        suggested_loc_id = val_row['data'].get('posicion_N1_id')
+        unidades_str = val_row['data'].get('Unidades')
         
-        # Validate Units
+        original_loc_name = val_row['odoo_data']['location_name'] if val_row.get('odoo_data') else ""
+        original_loc_id = val_row['odoo_data']['location_id'] if val_row.get('odoo_data') else None
+        
+        product_record = ml.product_id if ml else prod
+        if not product_record:
+            return
+            
+        loc = None
+        if suggested_loc_id:
+            try:
+                loc = request.env['stock.location'].sudo().browse(int(float(suggested_loc_id)))
+                if not loc.exists():
+                    loc = None
+            except Exception:
+                pass
+                
+        if not loc and suggested_loc_name:
+            loc = request.env['stock.location'].sudo().search([('barcode', '=', suggested_loc_name)], limit=1)
+            if not loc:
+                loc = request.env['stock.location'].sudo().search([('name', '=', suggested_loc_name)], limit=1)
+                
+        if not loc:
+            if original_loc_name:
+                val_row['warnings'].append({
+                    'field': 'PosicionN1', 
+                    'code': 'not_found', 
+                    'message': f"La ubicación sugerida '{suggested_loc_name}' no existe. Se usará la ubicación original de Odoo: '{original_loc_name}'."
+                })
+                val_row['data']['PosicionN1'] = original_loc_name
+                val_row['data']['posicion_N1_id'] = str(original_loc_id)
+                val_row['location_id'] = original_loc_id
+            else:
+                val_row['errors'].append({
+                    'field': 'PosicionN1', 
+                    'code': 'not_found', 
+                    'message': f"La ubicación '{suggested_loc_name}' no existe."
+                })
+        else:
+            if loc.is_location_blocked():
+                if original_loc_name:
+                    val_row['warnings'].append({
+                        'field': 'PosicionN1', 
+                        'code': 'blocked', 
+                        'message': f"La ubicación sugerida '{loc.complete_name}' está bloqueada. Se usará la ubicación original de Odoo: '{original_loc_name}'."
+                    })
+                    val_row['data']['PosicionN1'] = original_loc_name
+                    val_row['data']['posicion_N1_id'] = str(original_loc_id)
+                    val_row['location_id'] = original_loc_id
+                else:
+                    val_row['errors'].append({
+                        'field': 'PosicionN1', 
+                        'code': 'blocked', 
+                        'message': f"La ubicación '{loc.complete_name}' está bloqueada."
+                    })
+            else:
+                units = ml.quantity if ml else 0.0
+                if unidades_str:
+                    try:
+                        units = float(unidades_str)
+                    except ValueError:
+                        pass
+                if not units and pick_odoo:
+                    move = pick_odoo.move_ids.filtered(lambda m: m.product_id.id == product_record.id)[:1]
+                    units = move.product_uom_qty if move else 1.0
+                    
+                if original_loc_id and loc.id == original_loc_id:
+                    val_row['location_id'] = loc.id
+                    val_row['data']['PosicionN1'] = loc.barcode or loc.name
+                    val_row['data']['posicion_N1_id'] = str(loc.id)
+                else:
+                    stock_key = (loc.id, product_record.id)
+                    if stock_key not in stock_cache:
+                        quant = request.env['stock.quant'].sudo().search([('location_id', '=', loc.id), ('product_id', '=', product_record.id)], limit=1)
+                        avail_stock = quant.quantity - quant.reserved_quantity if quant else 0.0
+                        stock_cache[stock_key] = max(0.0, avail_stock)
+                        
+                    avail = stock_cache[stock_key]
+                    if avail < units:
+                        if original_loc_name:
+                            val_row['warnings'].append({
+                                'field': 'PosicionN1', 
+                                'code': 'no_stock', 
+                                'message': f"Stock insuficiente en ubicación sugerida (Disponible: {avail}, Requerido: {units}). Se usará la original de Odoo: '{original_loc_name}'."
+                            })
+                            val_row['data']['PosicionN1'] = original_loc_name
+                            val_row['data']['posicion_N1_id'] = str(original_loc_id)
+                            val_row['location_id'] = original_loc_id
+                        else:
+                            val_row['warnings'].append({
+                                'field': 'PosicionN1', 
+                                'code': 'no_stock', 
+                                'message': f"Stock insuficiente en la ubicación sugerida '{loc.barcode or loc.name}' (Disponible: {avail}, Requerido: {units})."
+                            })
+                    else:
+                        stock_cache[stock_key] -= units
+                        val_row['location_id'] = loc.id
+                        val_row['data']['PosicionN1'] = loc.barcode or loc.name
+                        val_row['data']['posicion_N1_id'] = str(loc.id)
+
+    def _validate_units_in_row(self, val_row):
+        unidades_str = val_row['data'].get('Unidades')
         if unidades_str:
             try:
                 u_float = float(unidades_str)
                 if u_float <= 0:
-                    mapped_row['errors'].append({'field': 'Unidades', 'code': 'invalid', 'message': 'Las unidades deben ser mayores a cero.'})
+                    val_row['errors'].append({'field': 'Unidades', 'code': 'invalid', 'message': 'Las unidades deben ser mayores a cero.'})
             except ValueError:
-                mapped_row['errors'].append({'field': 'Unidades', 'code': 'invalid', 'message': 'Las unidades deben un número válido.'})
+                val_row['errors'].append({'field': 'Unidades', 'code': 'invalid', 'message': 'Las unidades deben un número válido.'})
+
+    def _validate_and_match_rows(self, raw_rows):
+        validated_rows = []
+        location_product_stock = {}
+        
+        excel_rows = [r for r in raw_rows if not r.get('not_in_excel', False)]
+        virtual_rows = [r for r in raw_rows if r.get('not_in_excel', False)]
+        
+        # Split excel rows into active and ignored
+        active_excel_rows = []
+        ignored_excel_rows = []
+        for r in excel_rows:
+            pos = r.get('data', {}).get('PosicionN1', '').strip()
+            sku = r.get('data', {}).get('SKU', '').strip()
+            uni = r.get('data', {}).get('Unidades', '').strip()
+            if not pos and not sku and not uni:
+                ignored_excel_rows.append(r)
+            else:
+                active_excel_rows.append(r)
                 
-        return mapped_row
+        # Group active excel rows by SO name
+        excel_rows_by_so = {}
+        for r in active_excel_rows:
+            so_name = r.get('data', {}).get('SO', '').strip()
+            excel_rows_by_so.setdefault(so_name, []).append(r)
+            
+        # Group ignored excel rows by SO name
+        ignored_rows_by_so = {}
+        for r in ignored_excel_rows:
+            so_name = r.get('data', {}).get('SO', '').strip()
+            ignored_rows_by_so.setdefault(so_name, []).append(r)
+            
+        # Group virtual rows by SO name
+        virtual_rows_by_so = {}
+        for r in virtual_rows:
+            so_name = r.get('data', {}).get('SO', '').strip()
+            virtual_rows_by_so.setdefault(so_name, []).append(r)
+            
+        all_so_names = set(excel_rows_by_so.keys()).union(set(virtual_rows_by_so.keys())).union(set(ignored_rows_by_so.keys()))
+        
+        for so_name in all_so_names:
+            group_excel = excel_rows_by_so.get(so_name, [])
+            group_ignored = ignored_rows_by_so.get(so_name, [])
+            group_virtual = virtual_rows_by_so.get(so_name, [])
+            
+            # Process ignored rows first
+            for r in group_ignored:
+                val_row = {
+                    'index': r.get('index', 0),
+                    'original_row': r.get('original_row', []),
+                    'data': dict(r.get('data', {})),
+                    'excluded': r.get('excluded', False),
+                    'errors': [],
+                    'warnings': [],
+                    'picking_id': False,
+                    'picking_name': '',
+                    'picking_state': '',
+                    'product_id': False,
+                    'location_id': False,
+                    'picker_id': False,
+                    'not_in_excel': False
+                }
+                if not so_name:
+                    val_row['errors'].append({'field': 'SO', 'code': 'missing', 'message': 'El campo SO es obligatorio.'})
+                else:
+                    so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
+                    if not so:
+                        so = request.env['sale.order'].sudo().search([('name', 'ilike', so_name)], limit=1)
+                    if not so:
+                        val_row['errors'].append({'field': 'SO', 'code': 'not_found', 'message': f'La SO "{so_name}" no existe.'})
+                    else:
+                        val_row['data']['SO'] = so.name
+                        if not so.data_ready_to_pick:
+                            val_row['errors'].append({'field': 'SO', 'code': 'not_ready', 'message': f'La SO "{so.name}" no está lista para recolectar (data_ready_to_pick es falso).'})
+                        
+                        pick_odoo = so.picking_ids.filtered_domain([
+                            ('picking_type_id.name', '=', 'Pick'),
+                            ('state', '!=', 'cancel')
+                        ])[:1]
+                        
+                        if not pick_odoo:
+                            val_row['errors'].append({'field': 'SO', 'code': 'no_pick', 'message': f'La SO "{so.name}" no tiene un pick de tipo "Pick" válido.'})
+                        else:
+                            val_row['picking_id'] = pick_odoo.id
+                            val_row['picking_name'] = pick_odoo.name
+                            val_row['picking_state'] = pick_odoo.state
+                            if pick_odoo.batch_id:
+                                val_row['errors'].append({'field': 'SO', 'code': 'already_in_batch', 'message': f'El pick {pick_odoo.name} ya pertenece al plan de pickeo (lote) "{pick_odoo.batch_id.name}".'})
+                                
+                self._validate_picker_in_row(val_row)
+                if not val_row['data'].get('Oleada'):
+                    val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
+                validated_rows.append(val_row)
+                
+            if not so_name:
+                for r in group_excel:
+                    val_row = {
+                        'index': r.get('index', 0),
+                        'original_row': r.get('original_row', []),
+                        'data': dict(r.get('data', {})),
+                        'excluded': r.get('excluded', False),
+                        'errors': [{'field': 'SO', 'code': 'missing', 'message': 'El campo SO es obligatorio.'}],
+                        'warnings': [],
+                        'picking_id': False,
+                        'picking_name': '',
+                        'picking_state': '',
+                        'product_id': False,
+                        'location_id': False,
+                        'picker_id': False,
+                        'not_in_excel': False
+                    }
+                    self._validate_picker_in_row(val_row)
+                    validated_rows.append(val_row)
+                continue
+                
+            so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
+            if not so:
+                so = request.env['sale.order'].sudo().search([('name', 'ilike', so_name)], limit=1)
+                
+            if not so:
+                for r in group_excel:
+                    val_row = {
+                        'index': r.get('index', 0),
+                        'original_row': r.get('original_row', []),
+                        'data': dict(r.get('data', {})),
+                        'excluded': r.get('excluded', False),
+                        'errors': [{'field': 'SO', 'code': 'not_found', 'message': f'La SO "{so_name}" no existe.'}],
+                        'warnings': [],
+                        'picking_id': False,
+                        'picking_name': '',
+                        'picking_state': '',
+                        'product_id': False,
+                        'location_id': False,
+                        'picker_id': False,
+                        'not_in_excel': False
+                    }
+                    self._validate_picker_in_row(val_row)
+                    validated_rows.append(val_row)
+                continue
+                
+            for r in group_excel:
+                r['data']['SO'] = so.name
+            for r in group_virtual:
+                r['data']['SO'] = so.name
+                
+            so_errors = []
+            if not so.data_ready_to_pick:
+                so_errors.append({
+                    'field': 'SO', 
+                    'code': 'not_ready', 
+                    'message': f'La SO "{so.name}" no está lista para recolectar (data_ready_to_pick es falso).'
+                })
+                
+            pick_odoo = so.picking_ids.filtered_domain([
+                ('picking_type_id.name', '=', 'Pick'),
+                ('state', '!=', 'cancel')
+            ])[:1]
+            
+            if not pick_odoo:
+                so_errors.append({
+                    'field': 'SO', 
+                    'code': 'no_pick', 
+                    'message': f'La SO "{so.name}" no tiene un pick de tipo "Pick" válido.'
+                })
+            else:
+                if pick_odoo.batch_id:
+                    so_errors.append({
+                        'field': 'SO', 
+                        'code': 'already_in_batch', 
+                        'message': f'El pick {pick_odoo.name} ya pertenece al plan de pickeo (lote) "{pick_odoo.batch_id.name}".'
+                    })
+                    
+            if so_errors:
+                for r in group_excel:
+                    val_row = {
+                        'index': r.get('index', 0),
+                        'original_row': r.get('original_row', []),
+                        'data': dict(r.get('data', {})),
+                        'excluded': r.get('excluded', False),
+                        'errors': list(so_errors),
+                        'warnings': [],
+                        'picking_id': pick_odoo.id if pick_odoo else False,
+                        'picking_name': pick_odoo.name if pick_odoo else '',
+                        'picking_state': pick_odoo.state if pick_odoo else '',
+                        'product_id': False,
+                        'location_id': False,
+                        'picker_id': False,
+                        'not_in_excel': False
+                    }
+                    self._validate_picker_in_row(val_row)
+                    validated_rows.append(val_row)
+                continue
+                
+            # Match active lines
+            move_lines = pick_odoo.move_line_ids
+            
+            odoo_lines_by_sku = {}
+            for ml in move_lines:
+                sku_key = ml.product_id.default_code or ml.product_id.barcode
+                if sku_key:
+                    sku_key_clean = sku_key.strip().lower()
+                    odoo_lines_by_sku.setdefault(sku_key_clean, []).append(ml)
+                    
+            excel_rows_by_sku = {}
+            for r in group_excel:
+                sku_key = r.get('data', {}).get('SKU', '').strip()
+                if sku_key:
+                    sku_key_clean = sku_key.lower()
+                    excel_rows_by_sku.setdefault(sku_key_clean, []).append(r)
+                    
+            all_skus = set(excel_rows_by_sku.keys()).union(set(odoo_lines_by_sku.keys()))
+            
+            for sku in all_skus:
+                e_list = excel_rows_by_sku.get(sku, [])
+                o_list = odoo_lines_by_sku.get(sku, [])
+                
+                for i in range(max(len(e_list), len(o_list))):
+                    if i < len(e_list) and i < len(o_list):
+                        e_row = e_list[i]
+                        ml = o_list[i]
+                        
+                        val_row = {
+                            'index': e_row.get('index', 0),
+                            'original_row': e_row.get('original_row', []),
+                            'data': dict(e_row.get('data', {})),
+                            'excluded': e_row.get('excluded', False),
+                            'errors': [],
+                            'warnings': [],
+                            'picking_id': pick_odoo.id,
+                            'picking_name': pick_odoo.name,
+                            'picking_state': pick_odoo.state,
+                            'product_id': ml.product_id.id,
+                            'location_id': False,
+                            'picker_id': False,
+                            'not_in_excel': False,
+                            'odoo_data': {
+                                'move_line_id': ml.id,
+                                'location_name': ml.location_id.barcode or ml.location_id.name or '',
+                                'location_id': ml.location_id.id,
+                                'quantity': ml.quantity,
+                                'product_id': ml.product_id.id
+                            }
+                        }
+                        
+                        self._validate_picker_in_row(val_row)
+                        if not val_row['data'].get('Oleada'):
+                            val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
+                        self._validate_location_and_stock(val_row, location_product_stock, ml=ml, pick_odoo=pick_odoo)
+                        self._validate_units_in_row(val_row)
+                        validated_rows.append(val_row)
+                        
+                    elif i < len(e_list):
+                        e_row = e_list[i]
+                        
+                        val_row = {
+                            'index': e_row.get('index', 0),
+                            'original_row': e_row.get('original_row', []),
+                            'data': dict(e_row.get('data', {})),
+                            'excluded': e_row.get('excluded', False),
+                            'errors': [],
+                            'warnings': [{'field': 'PosicionN1', 'code': 'no_match', 'message': 'Esta línea de Excel no tiene una línea de reserva correspondiente en Odoo.'}],
+                            'picking_id': pick_odoo.id,
+                            'picking_name': pick_odoo.name,
+                            'picking_state': pick_odoo.state,
+                            'product_id': False,
+                            'location_id': False,
+                            'picker_id': False,
+                            'not_in_excel': False
+                        }
+                        
+                        self._validate_picker_in_row(val_row)
+                        if not val_row['data'].get('Oleada'):
+                            val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
+                            
+                        prod_sku = val_row['data'].get('SKU', '')
+                        prod = request.env['product.product'].sudo().search([('default_code', '=', prod_sku)], limit=1)
+                        if not prod:
+                            prod = request.env['product.product'].sudo().search([('barcode', '=', prod_sku)], limit=1)
+                            
+                        if not prod:
+                            val_row['errors'].append({'field': 'SKU', 'code': 'not_found', 'message': f'El producto/SKU "{prod_sku}" no existe.'})
+                        else:
+                            val_row['product_id'] = prod.id
+                            val_row['data']['SKU'] = prod.default_code
+                            
+                            move = pick_odoo.move_ids.filtered(lambda m: m.product_id.id == prod.id)[:1]
+                            if not move:
+                                val_row['errors'].append({'field': 'SKU', 'code': 'not_in_pick', 'message': f'El producto "{prod.display_name}" no forma parte del pick {pick_odoo.name}.'})
+                            else:
+                                self._validate_location_and_stock(val_row, location_product_stock, prod=prod, pick_odoo=pick_odoo)
+                                
+                        self._validate_units_in_row(val_row)
+                        validated_rows.append(val_row)
+                        
+                    else:
+                        ml = o_list[i]
+                        
+                        existing_v_row = next((vr for vr in group_virtual if vr.get('odoo_data', {}).get('move_line_id') == ml.id), None)
+                        
+                        default_oleada = ''
+                        default_picker_name = ''
+                        default_picker_id = ''
+                        default_orden_pick = '9999'
+                        if group_excel:
+                            default_oleada = next((r['data'].get('Oleada') for r in group_excel if r['data'].get('Oleada')), '')
+                            default_picker_name = next((r['data'].get('Picker') for r in group_excel if r['data'].get('Picker')), '')
+                            default_picker_id = next((r['data'].get('picker_id') for r in group_excel if r['data'].get('picker_id')), '')
+                            default_orden_pick = next((r['data'].get('OrdenPick') for r in group_excel if r['data'].get('OrdenPick')), '9999')
+                            
+                        val_row = {
+                            'index': existing_v_row.get('index') if existing_v_row else 10000 + ml.id,
+                            'original_row': [],
+                            'data': {
+                                'SO': so.name,
+                                'Oleada': existing_v_row['data'].get('Oleada') if existing_v_row else default_oleada,
+                                'Picker': existing_v_row['data'].get('Picker') if existing_v_row else default_picker_name,
+                                'picker_id': existing_v_row['data'].get('picker_id') if existing_v_row else default_picker_id,
+                                'PosicionN1': ml.location_id.barcode or ml.location_id.name or '',
+                                'posicion_N1_id': str(ml.location_id.id),
+                                'SKU': ml.product_id.default_code or ml.product_id.barcode or '',
+                                'Unidades': str(ml.quantity),
+                                'OrdenPick': existing_v_row['data'].get('OrdenPick') if existing_v_row else default_orden_pick
+                            },
+                            'excluded': existing_v_row.get('excluded', False) if existing_v_row else False,
+                            'errors': [],
+                            'warnings': [{'field': 'PosicionN1', 'code': 'not_in_excel', 'message': 'No contemplado en el Excel. Se mantiene la reserva de Odoo.'}],
+                            'picking_id': pick_odoo.id,
+                            'picking_name': pick_odoo.name,
+                            'picking_state': pick_odoo.state,
+                            'product_id': ml.product_id.id,
+                            'location_id': ml.location_id.id,
+                            'picker_id': False,
+                            'not_in_excel': True,
+                            'odoo_data': {
+                                'move_line_id': ml.id,
+                                'location_name': ml.location_id.barcode or ml.location_id.name or '',
+                                'location_id': ml.location_id.id,
+                                'quantity': ml.quantity,
+                                'product_id': ml.product_id.id
+                            }
+                        }
+                        
+                        self._validate_picker_in_row(val_row)
+                        if not val_row['data'].get('Oleada'):
+                            val_row['errors'].append({'field': 'Oleada', 'code': 'missing', 'message': 'El campo Oleada es obligatorio.'})
+                        self._validate_units_in_row(val_row)
+                        validated_rows.append(val_row)
+                        
+        validated_rows.sort(key=lambda x: x.get('index', 0))
+        return validated_rows
 
     @http.route('/wmds/v2/import_picks/validate_file', type='http', auth='user', methods=['POST'], csrf=False)
     def validate_file(self, **post):
