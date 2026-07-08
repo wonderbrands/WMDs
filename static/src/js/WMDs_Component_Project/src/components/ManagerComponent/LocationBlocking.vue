@@ -77,10 +77,18 @@
           <Column header="Estado" headerStyle="width: 8rem">
             <template #body="slotProps">
               <span 
-                v-if="isLocationAvailableForBlocking(slotProps.data)"
+                v-if="isLocationAvailableForBlocking(slotProps.data) && isLocationEmpty(slotProps.data)"
                 class="badge badge-success"
               >
                 Disponible
+              </span>
+              <span 
+                v-else-if="isLocationAvailableForBlocking(slotProps.data) && !isLocationEmpty(slotProps.data)"
+                class="badge badge-info"
+                title="Contiene producto. Solo se puede usar como origen para bloqueo por sobredimensionado."
+                style="cursor: help;"
+              >
+                Ocupada (Apta Sobredim.)
               </span>
               <span 
                 v-else
@@ -248,7 +256,7 @@
                 <label class="form-label">Motivo de Bloqueo:</label>
                 <Select 
                   v-model="blockReasonType" 
-                  :options="reasonOptions" 
+                  :options="availableReasonOptions" 
                   optionLabel="label" 
                   optionValue="value" 
                   class="w-full" 
@@ -516,6 +524,12 @@ export default {
     massiveReasonOptions() {
       return this.reasonOptions.filter(opt => opt.value !== 'sobredimensionada');
     },
+    availableReasonOptions() {
+      if (this.activeLocation && (this.activeLocation.is_empty_location === false || this.activeLocation.has_product)) {
+        return this.reasonOptions.filter(opt => opt.value === 'sobredimensionada');
+      }
+      return this.reasonOptions;
+    },
     adjacentsGrouped() {
       return this.adjacencies.map(adj => {
         let labels = [];
@@ -573,16 +587,15 @@ export default {
       const isQuarantine = (loc.complete_name && loc.complete_name.toLowerCase().includes('cuarentena')) ||
                            (loc.name && loc.name.toLowerCase().includes('cuarentena')) ||
                            loc.block_reason_type === 'cuarentena';
-      const isEmpty = loc.is_empty_location !== false;
-      return !loc.is_blocked && !isQuarantine && isEmpty;
+      return !loc.is_blocked && !isQuarantine;
+    },
+    isLocationEmpty(loc) {
+      return loc.is_empty_location !== false;
     },
     getNotAvailableReason(loc) {
       const reasons = [];
       if (loc.is_blocked) {
         reasons.push("Ya está bloqueada");
-      }
-      if (loc.is_empty_location === false) {
-        reasons.push("Contiene producto");
       }
       const isQuarantine = (loc.complete_name && loc.complete_name.toLowerCase().includes('cuarentena')) ||
                            (loc.name && loc.name.toLowerCase().includes('cuarentena')) ||
@@ -593,7 +606,8 @@ export default {
       return reasons.join(", ") || "No disponible";
     },
     canSelectRow(event) {
-      return this.isLocationAvailableForBlocking(event.data);
+      const loc = event.data;
+      return this.isLocationAvailableForBlocking(loc) && this.isLocationEmpty(loc);
     },
     async performSearch() {
       const res = await this.store.callOdoo("location_blocking_search", "", {
@@ -619,7 +633,11 @@ export default {
       this.selectAllSearch = false;
 
       // Reset form fields
-      this.blockReasonType = null;
+      if (loc && (loc.is_empty_location === false || loc.has_product)) {
+        this.blockReasonType = 'sobredimensionada';
+      } else {
+        this.blockReasonType = null;
+      }
       this.comment = "";
       this.expirationDate = "";
       this.adjacencies = [];
