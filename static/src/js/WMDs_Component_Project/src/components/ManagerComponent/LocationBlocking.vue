@@ -373,18 +373,67 @@
                   <!-- Custom Location Search to add manually -->
                   <div class="custom-location-addition mt-3 border-t pt-3">
                     <h4 class="text-dark font-bold mb-2">Agregar posiciones adicionales a bloquear:</h4>
-                    <div class="flex gap-small">
-                      <InputText 
-                        v-model="customSearchTerm" 
-                        placeholder="Buscar por código (ej. B-P04-F1-N2)..." 
-                        class="flex-grow"
-                        @keyup.enter="searchCustomLocation"
+                    
+                    <!-- Compact Range Filters Grid -->
+                    <div class="custom-range-filters grid grid-cols-2 gap-small mb-3">
+                      <div class="filter-group">
+                        <label class="filter-label text-xs">Pasillo (De - A)</label>
+                        <div class="flex gap-xs">
+                          <InputText v-model="customFilters.aisle_from" maxlength="2" @input="customFilters.aisle_from = customFilters.aisle_from.toUpperCase()" class="w-full p-inputtext-sm" />
+                          <InputText v-model="customFilters.aisle_to" maxlength="2" @input="customFilters.aisle_to = customFilters.aisle_to.toUpperCase()" class="w-full p-inputtext-sm" />
+                        </div>
+                      </div>
+                      
+                      <div class="filter-group">
+                        <label class="filter-label text-xs">Posición (De - A)</label>
+                        <div class="flex gap-xs">
+                          <InputNumber v-model="customFilters.position_from" :min="1" :max="99" class="w-full p-inputnumber-sm" />
+                          <InputNumber v-model="customFilters.position_to" :min="1" :max="99" class="w-full p-inputnumber-sm" />
+                        </div>
+                      </div>
+
+                      <div class="filter-group">
+                        <label class="filter-label text-xs">Nivel (De - A)</label>
+                        <div class="flex gap-xs">
+                          <InputNumber v-model="customFilters.level_from" :min="1" :max="5" class="w-full p-inputnumber-sm" />
+                          <InputNumber v-model="customFilters.level_to" :min="1" :max="5" class="w-full p-inputnumber-sm" />
+                        </div>
+                      </div>
+
+                      <div class="filter-group">
+                        <label class="filter-label text-xs">Frente (De - A)</label>
+                        <div class="flex gap-xs">
+                          <InputNumber v-model="customFilters.front_from" :min="1" :max="2" class="w-full p-inputnumber-sm" />
+                          <InputNumber v-model="customFilters.front_to" :min="1" :max="2" class="w-full p-inputnumber-sm" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex justify-end gap-small mb-3">
+                      <Button 
+                        label="Buscar por Rangos" 
+                        icon="fa fa-search" 
+                        @click="searchCustomLocation" 
+                        severity="secondary" 
+                        size="small" 
+                        :loading="searchingCustom" 
+                        class="w-full"
                       />
-                      <Button label="Buscar" icon="fa fa-plus" @click="searchCustomLocation" severity="secondary" size="small" :loading="searchingCustom" />
                     </div>
                     
                     <!-- Custom Search Results dropdown -->
                     <div v-if="customSearchResults && customSearchResults.length > 0" class="custom-search-results-box mt-2">
+                      <div class="flex justify-between items-center mb-2 px-2">
+                        <span class="text-xs text-muted font-bold">Resultados: {{ customSearchResults.length }} encontrados</span>
+                        <Button 
+                          label="Agregar todas" 
+                          icon="fa fa-plus-square-o" 
+                          severity="secondary" 
+                          size="small" 
+                          text 
+                          @click="addAllCustomLocations" 
+                        />
+                      </div>
                       <div 
                         v-for="cand in customSearchResults" 
                         :key="cand.id" 
@@ -403,7 +452,7 @@
                       </div>
                     </div>
                     <div v-else-if="customSearched && customSearchResults.length === 0" class="text-muted text-xs mt-1">
-                      No se encontraron ubicaciones disponibles.
+                      No se encontraron ubicaciones disponibles en este rango.
                     </div>
 
                     <!-- Selected Custom Locations List -->
@@ -513,7 +562,16 @@ export default {
       loadingAdjacencies: false,
 
       // Manual/Custom addition for oversized
-      customSearchTerm: "",
+      customFilters: {
+        aisle_from: "A",
+        aisle_to: "Z",
+        position_from: 1,
+        position_to: 99,
+        level_from: 1,
+        level_to: 5,
+        front_from: 1,
+        front_to: 2
+      },
       customSearchResults: [],
       customSelectedLocations: [],
       searchingCustom: false,
@@ -706,12 +764,11 @@ export default {
       }
     },
     async searchCustomLocation() {
-      if (!this.customSearchTerm.trim()) return;
       this.searchingCustom = true;
       this.customSearched = false;
       try {
         const res = await this.store.callOdoo("location_blocking_search", "", {
-          term: this.customSearchTerm,
+          ...this.customFilters,
           only_blocked: false
         });
         if (res && !res.error) {
@@ -733,6 +790,26 @@ export default {
         this.searchingCustom = false;
       }
     },
+    addAllCustomLocations() {
+      const validLocs = this.customSearchResults.filter(loc => {
+        const isBlocked = loc.is_blocked;
+        const hasProduct = loc.has_product || loc.is_empty_location === false;
+        return !isBlocked && !hasProduct;
+      });
+      validLocs.forEach(loc => {
+        if (!this.customSelectedLocations.some(l => l.id === loc.id)) {
+          this.customSelectedLocations.push(loc);
+        }
+      });
+      this.customSearchResults = [];
+      this.customSearched = false;
+      this.store.toast.add({
+        severity: "success",
+        summary: "Ubicaciones Agregadas",
+        detail: `Se agregaron ${validLocs.length} posiciones adicionales válidas.`,
+        life: 3000
+      });
+    },
     addCustomLocation(loc) {
       if (loc.is_blocked) {
         this.store.toast.add({
@@ -753,7 +830,6 @@ export default {
         return;
       }
       this.customSelectedLocations.push(loc);
-      this.customSearchTerm = "";
       this.customSearchResults = [];
       this.customSearched = false;
     },
