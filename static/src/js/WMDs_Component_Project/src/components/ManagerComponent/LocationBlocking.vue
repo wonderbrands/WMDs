@@ -318,13 +318,13 @@
                       v-for="adj in adjacentsGrouped" 
                       :key="adj.id"
                       class="adjacency-item"
-                      :class="{'opacity-50': adj.is_blocked || adj.has_product}"
+                      :class="{'opacity-50': adj.is_blocked}"
                     >
-                      <label class="flex items-center gap-small cursor-pointer w-full" :style="(adj.is_blocked || adj.has_product) ? 'cursor: not-allowed' : ''">
+                      <label class="flex items-center gap-small cursor-pointer w-full" :style="adj.is_blocked ? 'cursor: not-allowed' : ''">
                         <Checkbox 
                           v-model="selectedAdjacents" 
                           :value="adj.id" 
-                          :disabled="adj.is_blocked || adj.has_product"
+                          :disabled="adj.is_blocked"
                         />
                         <div class="adj-info flex-grow">
                           <span class="font-bold">{{ adj.name }}</span>
@@ -335,7 +335,7 @@
                             <i class="fa fa-ban"></i> No disponible: Ya está bloqueada
                           </span>
                           <span v-else-if="adj.has_product" class="text-warning font-bold text-xs block">
-                            <i class="fa fa-cubes"></i> No disponible: Contiene producto
+                            <i class="fa fa-cubes"></i> Contiene producto (Se bloqueará)
                           </span>
                           <span v-else class="text-success font-bold text-xs block">
                             <i class="fa fa-check"></i> Disponible (vacía)
@@ -646,7 +646,7 @@ export default {
     },
     selectAllAdjacents() {
       const availableIds = this.adjacentsGrouped
-        .filter(adj => !adj.is_blocked && !adj.has_product)
+        .filter(adj => !adj.is_blocked)
         .map(adj => adj.id);
       
       const merged = new Set([...this.selectedAdjacents, ...availableIds]);
@@ -680,11 +680,9 @@ export default {
             const isQuarantine = (loc.complete_name && loc.complete_name.toLowerCase().includes('cuarentena')) ||
                                  (loc.name && loc.name.toLowerCase().includes('cuarentena')) ||
                                  loc.block_reason_type === 'cuarentena';
-            const isEmpty = loc.is_empty_location !== false;
             return loc.id !== this.activeLocation.id && 
                    !loc.is_blocked &&
                    !isQuarantine &&
-                   isEmpty &&
                    !this.selectedAdjacents.includes(loc.id) &&
                    !this.customSelectedLocations.some(l => l.id === loc.id);
           });
@@ -706,12 +704,11 @@ export default {
       }
       if (loc.has_product || loc.is_empty_location === false) {
         this.store.toast.add({
-          severity: "error",
+          severity: "warn",
           summary: "Ubicación con Producto",
-          detail: `La ubicación ${loc.name} contiene producto. Debe vaciarla antes de bloquearla por sobredimensionado.`,
+          detail: `La ubicación ${loc.name} contiene producto. Se registrará el bloqueo de todos modos.`,
           life: 4000
         });
-        return;
       }
       this.customSelectedLocations.push(loc);
       this.customSearchTerm = "";
