@@ -18,6 +18,17 @@ class ImportPicksController(http.Controller):
         except ValueError:
             return default
 
+    def _format_qty(self, val):
+        if val is None or val == '':
+            return ''
+        try:
+            q_float = float(val)
+            if q_float.is_integer():
+                return str(int(q_float))
+            return str(q_float)
+        except (ValueError, TypeError):
+            return str(val)
+
     def _validate_row_data(self, row_data, index, original_row):
         raw_rows = [{
             'index': index,
@@ -589,7 +600,7 @@ class ImportPicksController(http.Controller):
                                 'PosicionN1': ml.location_id.barcode or ml.location_id.name or '',
                                 'posicion_N1_id': str(ml.location_id.id),
                                 'SKU': ml.product_id.default_code or ml.product_id.barcode or '',
-                                'Unidades': str(ml.quantity),
+                                'Unidades': self._format_qty(ml.quantity),
                                 'OrdenPick': default_orden_pick
                             },
                             'excluded': False,
@@ -639,7 +650,7 @@ class ImportPicksController(http.Controller):
                             # Force fallback
                             e_row['data']['PosicionN1'] = ml.location_id.barcode or ml.location_id.name or ''
                             e_row['data']['posicion_N1_id'] = str(ml.location_id.id)
-                            e_row['data']['Unidades'] = str(ml.quantity)
+                            e_row['data']['Unidades'] = self._format_qty(ml.quantity)
                             
                             val_row = {
                                 'index': e_row.get('index', 0),
@@ -721,7 +732,7 @@ class ImportPicksController(http.Controller):
                                     'PosicionN1': ml.location_id.barcode or ml.location_id.name or '',
                                     'posicion_N1_id': str(ml.location_id.id),
                                     'SKU': ml.product_id.default_code or ml.product_id.barcode or '',
-                                    'Unidades': str(ml.quantity),
+                                    'Unidades': self._format_qty(ml.quantity),
                                     'OrdenPick': existing_v_row['data'].get('OrdenPick') if existing_v_row else default_orden_pick
                                 },
                                 'excluded': existing_v_row.get('excluded', False) if existing_v_row else False,
