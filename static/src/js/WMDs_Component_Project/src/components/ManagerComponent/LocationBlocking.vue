@@ -42,6 +42,16 @@
               <InputNumber v-model="filters.front_to" :min="1" :max="2" class="w-full p-inputnumber-sm" />
             </div>
           </div>
+          <div class="filter-group">
+            <label class="filter-label">Mostrar:</label>
+            <Select 
+              v-model="showFilterType" 
+              :options="showFilterOptions" 
+              optionLabel="label" 
+              optionValue="value" 
+              class="w-full p-select-sm" 
+            />
+          </div>
           <div class="filter-actions mt-2">
             <Button label="Buscar" icon="fa fa-search" @click="performSearch" :loading="store.loading" class="w-full" />
           </div>
@@ -56,6 +66,7 @@
           class="p-datatable-sm custom-border mt-2" 
           dataKey="id"
           @row-click="onRowClick"
+          :rowSelectable="canSelectRow"
         >
           <Column selectionMode="multiple" headerStyle="width: 3rem"></Column>
           <Column field="complete_name" header="Ubicación">
@@ -66,10 +77,18 @@
           <Column header="Estado" headerStyle="width: 8rem">
             <template #body="slotProps">
               <span 
-                class="badge" 
-                :class="slotProps.data.is_blocked ? 'badge-danger' : 'badge-success'"
+                v-if="isLocationAvailableForBlocking(slotProps.data)"
+                class="badge badge-success"
               >
-                {{ slotProps.data.is_blocked ? 'Bloqueada' : 'Disponible' }}
+                Disponible
+              </span>
+              <span 
+                v-else
+                class="badge badge-danger"
+                :title="'No disponible para bloqueo: ' + getNotAvailableReason(slotProps.data)"
+                style="cursor: help;"
+              >
+                No disponible
               </span>
             </template>
           </Column>
@@ -107,7 +126,7 @@
                 <label class="form-label">Motivo de Bloqueo:</label>
                 <Select 
                   v-model="blockReasonType" 
-                  :options="reasonOptions" 
+                  :options="massiveReasonOptions" 
                   optionLabel="label" 
                   optionValue="value" 
                   class="w-full" 
@@ -222,7 +241,7 @@
             </div>
 
             <!-- STATE 2: AVAILABLE (ALLOW BLOCKING) -->
-            <div v-else class="available-status-box">
+            <div v-else-if="isLocationAvailableForBlocking(activeLocation)" class="available-status-box">
               <h4 class="text-success mb-3"><i class="fa fa-check-circle"></i> Ubicación disponible para bloqueo</h4>
               
               <div class="form-group">
@@ -394,6 +413,15 @@
                 />
               </div>
             </div>
+
+            <!-- STATE 3: NOT AVAILABLE FOR BLOCKING (BUT NOT BLOCKED) -->
+            <div v-else class="not-available-status-box">
+              <h4 class="text-danger mb-3"><i class="fa fa-ban"></i> Ubicación no disponible para bloqueo</h4>
+              <div class="info-alert error-alert" style="margin-bottom: 0;">
+                <i class="fa fa-exclamation-triangle"></i>
+                <span>Esta ubicación no puede ser bloqueada por la siguiente razón: <strong>{{ getNotAvailableReason(activeLocation) }}</strong>.</span>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -476,10 +504,18 @@ export default {
         { label: "Dañada", value: "danado" },
         { label: "Onsite", value: "onsite" },
         { label: "Sobredimensionada", value: "sobredimensionada" }
+      ],
+      showFilterType: 'available',
+      showFilterOptions: [
+        { label: "Disponibles para bloqueo", value: "available" },
+        { label: "Todas las ubicaciones", value: "all" }
       ]
     };
   },
   computed: {
+    massiveReasonOptions() {
+      return this.reasonOptions.filter(opt => opt.value !== 'sobredimensionada');
+    },
     adjacentsGrouped() {
       return this.adjacencies.map(adj => {
         let labels = [];
@@ -533,6 +569,32 @@ export default {
       if (val === 'cuarentena') return 'Cuarentena';
       return val || '';
     },
+    isLocationAvailableForBlocking(loc) {
+      const isQuarantine = (loc.complete_name && loc.complete_name.toLowerCase().includes('cuarentena')) ||
+                           (loc.name && loc.name.toLowerCase().includes('cuarentena')) ||
+                           loc.block_reason_type === 'cuarentena';
+      const isEmpty = loc.is_empty_location !== false;
+      return !loc.is_blocked && !isQuarantine && isEmpty;
+    },
+    getNotAvailableReason(loc) {
+      const reasons = [];
+      if (loc.is_blocked) {
+        reasons.push("Ya está bloqueada");
+      }
+      if (loc.is_empty_location === false) {
+        reasons.push("Contiene producto");
+      }
+      const isQuarantine = (loc.complete_name && loc.complete_name.toLowerCase().includes('cuarentena')) ||
+                           (loc.name && loc.name.toLowerCase().includes('cuarentena')) ||
+                           loc.block_reason_type === 'cuarentena';
+      if (isQuarantine) {
+        reasons.push("Es de cuarentena");
+      }
+      return reasons.join(", ") || "No disponible";
+    },
+    canSelectRow(event) {
+      return this.isLocationAvailableForBlocking(event.data);
+    },
     async performSearch() {
       const res = await this.store.callOdoo("location_blocking_search", "", {
         ...this.filters,
@@ -540,14 +602,11 @@ export default {
       });
 
       if (res && !res.error) {
-        // Filter out already blocked, quarantine, and non-empty locations
-        this.searchResults = res.filter(loc => {
-          const isQuarantine = (loc.complete_name && loc.complete_name.toLowerCase().includes('cuarentena')) ||
-                               (loc.name && loc.name.toLowerCase().includes('cuarentena')) ||
-                               loc.block_reason_type === 'cuarentena';
-          const isEmpty = loc.is_empty_location !== false; // If undefined, default to true
-          return !loc.is_blocked && !isQuarantine && isEmpty;
-        });
+        if (this.showFilterType === 'available') {
+          this.searchResults = res.filter(loc => this.isLocationAvailableForBlocking(loc));
+        } else {
+          this.searchResults = res;
+        }
         this.searched = true;
         this.clearSelection();
       }
@@ -973,6 +1032,14 @@ export default {
 .available-status-box {
   background-color: #f0fdf4;
   border: 1px solid #d1fae5;
+  border-radius: 8px;
+  padding: 1.25rem;
+  margin-top: 0.5rem;
+}
+
+.not-available-status-box {
+  background-color: #fffaf0;
+  border: 1px solid #ffedd5;
   border-radius: 8px;
   padding: 1.25rem;
   margin-top: 0.5rem;
