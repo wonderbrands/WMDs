@@ -120,8 +120,15 @@
             <div class="selected-locations-preview">
               <span class="text-xs text-muted font-bold block mb-1">Ubicaciones a bloquear:</span>
               <div class="tags-container">
-                <span v-for="id in selectedLocationIds" :key="id" class="loc-tag">
+                <span 
+                  v-for="id in selectedLocationIds" 
+                  :key="id" 
+                  class="loc-tag"
+                  :class="{'loc-tag-warning': !isLocationEmptyById(id)}"
+                  :title="!isLocationEmptyById(id) ? 'Esta ubicación contiene producto' : ''"
+                >
                   {{ getLocNameById(id) }}
+                  <span v-if="!isLocationEmptyById(id)" class="text-xs font-bold" style="margin-left: 2px;">(Con producto)</span>
                   <i class="fa fa-times cursor-pointer remove-tag-icon" @click="removeSelectedId(id)"></i>
                 </span>
               </div>
@@ -659,6 +666,10 @@ export default {
     getLocNameById(id) {
       const loc = this.searchResults.find(l => l.id === id);
       return loc ? loc.name : '';
+    },
+    isLocationEmptyById(id) {
+      const loc = this.searchResults.find(l => l.id === id);
+      return loc ? loc.is_empty_location !== false : true;
     },
     removeSelectedId(id) {
       this.selectedLocations = this.selectedLocations.filter(loc => loc.id !== id);
@@ -1267,6 +1278,11 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+}
+.loc-tag-warning {
+  background-color: #fffbeb;
+  color: #b45309;
+  border: 1px solid #fde68a;
 }
 .remove-tag-icon {
   font-size: 0.75rem;
