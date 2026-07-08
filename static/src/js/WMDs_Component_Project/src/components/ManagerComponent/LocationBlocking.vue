@@ -127,7 +127,13 @@
               </div>
             </div>
 
-            <div class="available-status-box">
+            <!-- ALERT IF MASSIVE BLOCKING IS DISABLED -->
+            <div v-if="isMassiveBlockingDisabled" class="info-alert error-alert" style="margin-top: 1rem; margin-bottom: 0;">
+              <i class="fa fa-exclamation-triangle"></i>
+              <span>No se puede realizar el bloqueo masivo porque una o más de las ubicaciones seleccionadas contienen producto y solo pueden ser bloqueadas por sobredimensionamiento de forma individual.</span>
+            </div>
+
+            <div v-else class="available-status-box">
               <h4 class="text-success mb-3"><i class="fa fa-check-circle"></i> Configurar Bloqueo Masivo</h4>
               
               <div class="form-group">
@@ -530,6 +536,10 @@ export default {
       }
       return this.reasonOptions;
     },
+    isMassiveBlockingDisabled() {
+      if (this.selectedLocations.length === 0) return false;
+      return this.selectedLocations.some(loc => loc.is_empty_location === false || loc.has_product);
+    },
     adjacentsGrouped() {
       return this.adjacencies.map(adj => {
         let labels = [];
@@ -742,6 +752,16 @@ export default {
     async blockLocation() {
       if (!this.activeLocation && this.selectedLocationIds.length === 0) return;
       if (!this.blockReasonType) return;
+      
+      if (this.selectedLocationIds.length > 0 && this.isMassiveBlockingDisabled) {
+        this.store.toast.add({
+          severity: "error",
+          summary: "Error de Validación",
+          detail: "No se puede realizar el bloqueo masivo porque una o más de las ubicaciones seleccionadas contienen producto.",
+          life: 5000
+        });
+        return;
+      }
       
       let locationIds = [];
       if (this.blockReasonType === 'sobredimensionada') {
