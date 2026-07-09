@@ -102,7 +102,28 @@ class WmdsQueuedTasks(models.Model):
 
             try:
                 env = api.Environment(cr, SUPERUSER_ID, {})
-                # Find any pending tasks
+
+                # Acquiring the lock guarantees no other processor is alive.
+                # Any task still in 'running' is an orphan from a dead thread — reset it so
+                # the queue below picks it up and retries. _execute_dispatch_package skips
+                # already-dispatched packages, making the retry fully idempotent.
+                orphaned = env['wmds.queued_tasks'].search([('status', '=', 'running')])
+                if orphaned:
+                    _logger.warning(
+                        "wmds.queued_tasks: %d tarea(s) huérfana(s) en estado 'running' detectadas. "
+                        "Reiniciando a 'pending' para reintento automático.",
+                        len(orphaned)
+                    )
+                    for task in orphaned:
+                        task.write({
+                            'status': 'pending',
+                            'info_message': (task.info_message or '') +
+                                '\n\n[AUTO-RECOVERY] Hilo de proceso anterior terminó de forma inesperada. '
+                                'Tarea reiniciada automáticamente; los paquetes ya despachados serán omitidos.',
+                        })
+                    cr.commit()
+
+                # Find any pending tasks (includes tasks just recovered above)
                 pending_tasks = env['wmds.queued_tasks'].search([('status', '=', 'pending')], order='id asc')
                 for task in pending_tasks:
                     task._process_task()
@@ -483,10 +504,41 @@ class WmdsQueuedTasks(models.Model):
         ])
         tag_by_name = {t.display_name_custom: t for t in ei_tags}
 
+        # SO IDs presentes en este lote; usados por H-3 y H-5
+        all_so_ids = list({t.so_id.id for t in ei_tags if t.so_id})
+
+        # H-3: Búsqueda masiva de pickings PICK para todos los SOs del lote.
+        # Una sola consulta reemplaza la búsqueda individual por paquete dentro del savepoint.
+        so_pick_picking = {}
+        if all_so_ids:
+            pick_pickings = self.env['stock.picking'].sudo().search([
+                ('sale_id', 'in', all_so_ids),
+                ('state', 'in', ['assigned', 'done']),
+                ('picking_type_id.name', 'ilike', 'Pick')
+            ], order='date_done desc')
+            for p in pick_pickings:
+                sid = p.sale_id.id
+                if sid not in so_pick_picking:
+                    so_pick_picking[sid] = p
+
+        # H-5: Conteo de EI despachadas por SO; sustituye el search_count por paquete.
+        # read_group emite un único GROUP BY en vez de N COUNT(*) individuales.
+        so_dispatched_count = {}
+        if all_so_ids:
+            count_data = self.env['sale.order.ei'].sudo().read_group(
+                [('so_id', 'in', all_so_ids), ('dispatched', '=', True)],
+                ['so_id'],
+                ['so_id']
+            )
+            so_dispatched_count = {d['so_id'][0]: d['so_id_count'] for d in count_data}
+
         errors = []
         success_packs = []
-        so_out_closed = {} # Caché en memoria para almacenar si el OUT de una Sale Order ya está cerrado
+        so_out_closed = {}       # Caché en memoria para almacenar si el OUT de una Sale Order ya está cerrado
+        so_pending_pickings = {} # H-2: recordset OUT pendiente por SO, evita re-búsqueda dentro del savepoint
+        so_ei_total = {}         # H-4: ei_total por SO; sobrevive a invalidate_all() al ser un dict Python plano
         log_lines = []
+        PROGRESS_INTERVAL = 10   # H-1: número de paquetes entre cada escritura de progreso a la BD
         
         for idx, pack_id in enumerate(packs_ids):
             now_str = fields.Datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -498,16 +550,15 @@ class WmdsQueuedTasks(models.Model):
                 err_msg = f"Paquete {pack_id}: No se encontró la etiqueta sale.order.ei en el sistema."
                 errors.append(err_msg)
                 log_lines.append(f"[{now_str}] {err_msg}")
-                
-                progress_msg = (
-                    f"Procesando lote de despachos...\n"
-                    f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
-                    f" - Exitosos/Omitidos: {len(success_packs)}\n"
-                    f" - Fallidos: {len(errors)}\n\n"
-                    f"=== DETALLE DE EJECUCIÓN ===\n" +
-                    "\n".join(log_lines)
-                )
-                self._update_progress(progress_msg)
+                if (idx + 1) % PROGRESS_INTERVAL == 0 or idx == total_packs - 1:
+                    self._update_progress(
+                        f"Procesando lote de despachos...\n"
+                        f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                        f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                        f" - Fallidos: {len(errors)}\n\n"
+                        f"=== DETALLE DE EJECUCIÓN ===\n" +
+                        "\n".join(log_lines)
+                    )
                 continue
 
 
@@ -526,16 +577,15 @@ class WmdsQueuedTasks(models.Model):
                 _logger.info(f"Package {tag.display_name_custom} is already successfully dispatched. Skipping.")
                 success_packs.append(f"Paquete {pack_id} (Omitido: Ya despachado)")
                 log_lines.append(f"[{now_str}] Paquete {pack_id}: Omitido - Ya se encontraba despachado anteriormente.")
-                
-                progress_msg = (
-                    f"Procesando lote de despachos...\n"
-                    f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
-                    f" - Exitosos/Omitidos: {len(success_packs)}\n"
-                    f" - Fallidos: {len(errors)}\n\n"
-                    f"=== DETALLE DE EJECUCIÓN ===\n" +
-                    "\n".join(log_lines)
-                )
-                self._update_progress(progress_msg)
+                if (idx + 1) % PROGRESS_INTERVAL == 0 or idx == total_packs - 1:
+                    self._update_progress(
+                        f"Procesando lote de despachos...\n"
+                        f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                        f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                        f" - Fallidos: {len(errors)}\n\n"
+                        f"=== DETALLE DE EJECUCIÓN ===\n" +
+                        "\n".join(log_lines)
+                    )
                 continue
 
             so = tag.so_id
@@ -550,16 +600,15 @@ class WmdsQueuedTasks(models.Model):
                     self.env.cr.commit()
                 except Exception as write_err:
                     _logger.error(f"Error saving failed status for cancelled order tag {pack_id}: {write_err}")
-                
-                progress_msg = (
-                    f"Procesando lote de despachos...\n"
-                    f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
-                    f" - Exitosos/Omitidos: {len(success_packs)}\n"
-                    f" - Fallidos: {len(errors)}\n\n"
-                    f"=== DETALLE DE EJECUCIÓN ===\n" +
-                    "\n".join(log_lines)
-                )
-                self._update_progress(progress_msg)
+                if (idx + 1) % PROGRESS_INTERVAL == 0 or idx == total_packs - 1:
+                    self._update_progress(
+                        f"Procesando lote de despachos...\n"
+                        f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                        f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                        f" - Fallidos: {len(errors)}\n\n"
+                        f"=== DETALLE DE EJECUCIÓN ===\n" +
+                        "\n".join(log_lines)
+                    )
                 continue
 
             # 2. Optimización rápida: Si el OUT de la SO ya está cerrado, marcar y continuar inmediatamente
@@ -575,6 +624,7 @@ class WmdsQueuedTasks(models.Model):
                     ])
                     # Si no hay pickings de salida pendientes, el OUT ya está cerrado
                     so_out_closed[so.id] = not bool(pending_out_pickings)
+                    so_pending_pickings[so.id] = pending_out_pickings  # H-2: cachear para reutilizar dentro del savepoint
 
                 if so_out_closed[so.id]:
                     # Marcar etiqueta como despachada de forma directa y rápida (sin logs ni validaciones de stock)
@@ -603,16 +653,15 @@ class WmdsQueuedTasks(models.Model):
                             self.env.cr.commit()
                         except Exception as write_err:
                             _logger.error(f"Error saving failed status on rapid dispatch tag {pack_id}: {write_err}")
-                    
-                    progress_msg = (
-                        f"Procesando lote de despachos...\n"
-                        f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
-                        f" - Exitosos/Omitidos: {len(success_packs)}\n"
-                        f" - Fallidos: {len(errors)}\n\n"
-                        f"=== DETALLE DE EJECUCIÓN ===\n" +
-                        "\n".join(log_lines)
-                    )
-                    self._update_progress(progress_msg)
+                    if (idx + 1) % PROGRESS_INTERVAL == 0 or idx == total_packs - 1:
+                        self._update_progress(
+                            f"Procesando lote de despachos...\n"
+                            f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                            f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                            f" - Fallidos: {len(errors)}\n\n"
+                            f"=== DETALLE DE EJECUCIÓN ===\n" +
+                            "\n".join(log_lines)
+                        )
                     continue
 
             try:
@@ -628,13 +677,10 @@ class WmdsQueuedTasks(models.Model):
                     tag.write(vals)
                     
                     log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
-                    
-                    picking = self.env['stock.picking'].sudo().search([
-                        ('sale_id', '=', so.id) if so else ('id', '=', False),
-                        ('state', 'in', ['assigned', 'done']),
-                        ('picking_type_id.name', 'ilike', 'Pick')
-                    ], order='date_done desc', limit=1)
-                    
+
+                    # H-3: lookup en memoria en vez de búsqueda individual por paquete
+                    picking = so_pick_picking.get(so.id) if so else None
+
                     if picking:
                         self.env["wmds.log"].sudo().create({
                             "pick": picking.id,
@@ -650,34 +696,29 @@ class WmdsQueuedTasks(models.Model):
                         })
 
                     if so:
-                        # Sabemos que hay pickings de salida pendientes porque so_out_closed[so.id] es False
-                        pending_out_pickings = self.env['stock.picking'].sudo().search([
-                            ('sale_id', '=', so.id),
-                            '|',
-                            ('picking_type_id.code', '=', 'outgoing'),
-                            ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
-                            ('state', 'not in', ['done', 'cancel'])
-                        ])
-                        
+                        # H-2: reutilizar el recordset capturado antes del savepoint
+                        pending_out_pickings = so_pending_pickings.get(so.id, self.env['stock.picking'])
+
                         if pending_out_pickings:
-                            total_ei = so.ei_total
-                            dispatched_ei_count = self.env['sale.order.ei'].sudo().search_count([
-                                ('so_id', '=', so.id),
-                                ('dispatched', '=', True)
-                            ])
-                            
-                            if dispatched_ei_count >= total_ei:
+                            if so.id not in so_ei_total:
+                                # H-4: cachear ei_total; _compute_ei_total dispara 1-2 búsquedas en stock.picking
+                                so_ei_total[so.id] = so.ei_total
+                            total_ei = so_ei_total[so.id]
+                            # H-5: +1 incluye la etiqueta actual ya escrita en el savepoint
+                            new_dispatched_count = so_dispatched_count.get(so.id, 0) + 1
+                            if new_dispatched_count >= total_ei:
                                 for picking_out in pending_out_pickings:
-                                    picking_out.action_assign()
-                                    
+                                    # H-6: suprimir logs de wmds durante la validación masiva
+                                    picking_out.with_context(wmds_dispatch_in_progress=True).action_assign()
+
                                     for move in picking_out.move_ids:
                                         if move.state not in ('done', 'cancel'):
-                                            move.write({
+                                            move.with_context(wmds_dispatch_in_progress=True).write({
                                                 'quantity': move.product_uom_qty,
                                                 'picked': True
                                             })
-                                    
-                                    res = picking_out.button_validate()
+
+                                    res = picking_out.with_context(wmds_dispatch_in_progress=True).button_validate()
                                     if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
                                         wizard = self.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
                                             'pick_ids': [(4, picking_out.id)]
@@ -687,7 +728,7 @@ class WmdsQueuedTasks(models.Model):
                                 # Si acabamos de validar con éxito todos los pickings OUT, actualizamos la caché
                                 so_out_closed[so.id] = True
                             else:
-                                _logger.info(f"Faltan de despachar etiquetas para SO {so.name} ({dispatched_ei_count}/{total_ei}).")
+                                _logger.info(f"Faltan de despachar etiquetas para SO {so.name} ({new_dispatched_count}/{total_ei}).")
                         else:
                             _logger.info(f"No hay pickings OUT pendientes para SO {so.name}. Se salta la validación.")
                             so_out_closed[so.id] = True
@@ -696,6 +737,9 @@ class WmdsQueuedTasks(models.Model):
                 self.env.cr.commit()
                 success_packs.append(f"Paquete {pack_id} (Procesado con éxito)")
                 log_lines.append(f"[{now_str}] Paquete {pack_id}: Despachado y validado con éxito.")
+                # H-5: commit confirmado — persistir el incremento en el contador en memoria
+                if so:
+                    so_dispatched_count[so.id] = so_dispatched_count.get(so.id, 0) + 1
 
             except Exception as e:
                 err_detail = str(e) or repr(e)
@@ -718,15 +762,15 @@ class WmdsQueuedTasks(models.Model):
                     self.env.invalidate_all()
                     break
 
-            progress_msg = (
-                f"Procesando lote de despachos...\n"
-                f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
-                f" - Exitosos/Omitidos: {len(success_packs)}\n"
-                f" - Fallidos: {len(errors)}\n\n"
-                f"=== DETALLE DE EJECUCIÓN ===\n" +
-                "\n".join(log_lines)
-            )
-            self._update_progress(progress_msg)
+            if (idx + 1) % PROGRESS_INTERVAL == 0 or idx == total_packs - 1:
+                self._update_progress(
+                    f"Procesando lote de despachos...\n"
+                    f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                    f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                    f" - Fallidos: {len(errors)}\n\n"
+                    f"=== DETALLE DE EJECUCIÓN ===\n" +
+                    "\n".join(log_lines)
+                )
 
             # Invalida el caché de Odoo en cada iteración para liberar memoria y evitar MemoryError
             self.env.invalidate_all()

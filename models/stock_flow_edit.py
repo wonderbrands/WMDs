@@ -358,22 +358,23 @@ class StockMoveWMDS(models.Model):
     _inherit = 'stock.move'
 
     def write(self, vals):
-        for move in self:
-            changes = []
-            if 'location_id' in vals:
-                new_loc = self.env['stock.location'].sudo().browse(vals['location_id'])
-                changes.append(f"Origen: {move.location_id.display_name} -> {new_loc.display_name}")
-            if 'location_dest_id' in vals:
-                new_loc = self.env['stock.location'].sudo().browse(vals['location_dest_id'])
-                changes.append(f"Destino: {move.location_dest_id.display_name} -> {new_loc.display_name}")
-            
-            if changes and move.picking_id:
-                msg = f"Movimiento modificado ({move.product_id.name}): " + ", ".join(changes)
-                self.env['wmds.log'].sudo().create({
-                    'pick': move.picking_id.id,
-                    'log': msg,
-                    'user': self.env.user.id,
-                })
+        if not self.env.context.get('wmds_dispatch_in_progress'):
+            for move in self:
+                changes = []
+                if 'location_id' in vals:
+                    new_loc = self.env['stock.location'].sudo().browse(vals['location_id'])
+                    changes.append(f"Origen: {move.location_id.display_name} -> {new_loc.display_name}")
+                if 'location_dest_id' in vals:
+                    new_loc = self.env['stock.location'].sudo().browse(vals['location_dest_id'])
+                    changes.append(f"Destino: {move.location_dest_id.display_name} -> {new_loc.display_name}")
+
+                if changes and move.picking_id:
+                    msg = f"Movimiento modificado ({move.product_id.name}): " + ", ".join(changes)
+                    self.env['wmds.log'].sudo().create({
+                        'pick': move.picking_id.id,
+                        'log': msg,
+                        'user': self.env.user.id,
+                    })
         return super(StockMoveWMDS, self).write(vals)
 
 class StockMoveLineWMDS(models.Model):
