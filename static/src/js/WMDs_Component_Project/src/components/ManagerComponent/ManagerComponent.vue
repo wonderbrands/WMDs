@@ -55,10 +55,11 @@
 }
 
 .main_manager_screen_container {
-    width: 75vw;
+    flex: 1;
     height: calc(100vh - var(--o-we-toolbar-height, 46px));
     display: flex;
     flex-direction: column-reverse;
     align-items: center;
+    overflow: hidden;
 }
 </style>

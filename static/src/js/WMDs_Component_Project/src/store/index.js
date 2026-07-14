@@ -10,6 +10,7 @@ export const useGeneralStore = defineStore('general_store', {
       role: reactive(RolePickerEngine()),
       current_role: null,
       loading: false,
+      sidebar_collapsed: true,
       current_screen:"role_picker",
       modal_open: false,
       modal_context: null,
@@ -695,6 +696,36 @@ export const useGeneralStore = defineStore('general_store', {
 
         if (actionsMap[context]) {
             actionsMap[context](data, extra);
+        }
+    },
+    async uploadPicksFile(file, hasHeader, columnMapping) {
+        this.loading = true;
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('has_header', hasHeader ? 'true' : 'false');
+            if (columnMapping) {
+                formData.append('column_mapping', JSON.stringify(columnMapping));
+            }
+            const response = await fetch('/wmds/v2/import_picks/validate_file', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            return result;
+        } catch (e) {
+            console.error("Upload picks file error:", e);
+            if (this.toast) {
+                this.toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Red', 
+                    detail: 'No se pudo contactar al servidor para validar el archivo.', 
+                    life: 5000 
+                });
+            }
+            return { error: true, error_msg: 'Fallo de red o servidor no disponible.' };
+        } finally {
+            this.loading = false;
         }
     }
   }

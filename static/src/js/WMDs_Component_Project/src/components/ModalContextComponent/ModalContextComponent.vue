@@ -80,6 +80,7 @@
             BatchDetailView,
             CycleCount
         }
+
     }
 </script>
 

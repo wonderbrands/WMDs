@@ -8,7 +8,15 @@
         </div>
         <div class="flex-row gap-small">
           <Button icon="fa fa-refresh" severity="secondary" rounded text @click="fetchFilteredData" :loading="store.loading" title="Actualizar lista" />
-          <div v-if="store.main_manager_screen.create_by_aggregate">
+          <div v-if="store.main_manager_screen.create_by_aggregate" class="flex-row gap-small">
+            <Button 
+              v-if="store.main_manager_screen.value === 'batch_pick'"
+              label="Importar archivo" 
+              icon="fa fa-upload" 
+              severity="info" 
+              @click="showImportHelper = true" 
+              class="mr-2"
+            />
             <Button 
             :label="store.main_manager_screen.create_by_aggregate.button_string" 
             @click="onRowClick($event, store.main_manager_screen)"/> 
@@ -94,12 +102,14 @@
         </Column>
       </DataTable>
     </div>
+    <ImportPicksHelper v-if="showImportHelper" @close="showImportHelper = false" @success="onImportSuccess" />
   </div>
 </template>
 
 <script>
 import { useGeneralStore } from "../../store";
 import DataTable from "primevue/datatable";
+import ImportPicksHelper from "../Forms/ImportPicksHelper.vue";
 import Column from "primevue/column";
 import InputText from "primevue/inputtext";
 import Select from "primevue/select";
@@ -115,7 +125,8 @@ export default {
     InputText,
     Select, 
     Button,
-    Tag
+    Tag,
+    ImportPicksHelper
   },
 
   data() {
@@ -123,6 +134,7 @@ export default {
       store: useGeneralStore(),
 
       server_data: null,
+      showImportHelper: false,
 
       filters: {
         sort_by: null,
@@ -160,6 +172,10 @@ export default {
       
       const modalContext = modal.form_context_key || modal.value;
       this.store.openModal(modalContext, event);
+    },
+    onImportSuccess() {
+      this.showImportHelper = false;
+      this.fetchFilteredData();
     },
     onRowClick(event, modal) {
       const data = (event && event.data) ? event.data : {};
