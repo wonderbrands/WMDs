@@ -4,7 +4,7 @@ from odoo.exceptions import UserError
 import json
 import logging
 import traceback
-import threading
+from collections import deque
 
 _logger = logging.getLogger(__name__)
 
@@ -82,14 +82,19 @@ class WmdsQueuedTasks(models.Model):
         return True
 
     def _trigger_async_process(self):
-        """Launches a background thread to process the tasks immediately."""
-        dbname = self.env.cr.dbname
-        registry = self.env.registry
-        
-        # We start a new thread to process the queued task
-        thread = threading.Thread(target=self._process_tasks_thread, args=(registry, dbname))
-        thread.daemon = True
-        thread.start()
+        """Schedules the queue processor to run ASAP in the cron worker.
+
+        Antes esto lanzaba un threading.Thread DENTRO del worker HTTP, de modo que
+        el despacho pesado corría en el espacio de memoria de ese worker y su RSS
+        contaba contra el límite de memoria por worker de Odoo.sh (limit_memory_hard),
+        provocando que el worker fuera terminado con SIGKILL (signal 9) en lotes grandes.
+
+        En su lugar, disparamos el cron dedicado (_trigger), que ejecuta el mismo
+        procesador '_process_tasks_thread' en el worker de cron —con su propio ciclo de
+        vida y presupuesto de memoria—. El cron ya corre cada minuto como respaldo; este
+        disparo hace que arranque de inmediato en la siguiente pasada del cron.
+        """
+        self.env.ref('wmds.ir_cron_process_wmds_queued_tasks').sudo()._trigger()
 
     @classmethod
     def _process_tasks_thread(cls, registry, dbname):
@@ -537,7 +542,14 @@ class WmdsQueuedTasks(models.Model):
         so_out_closed = {}       # Caché en memoria para almacenar si el OUT de una Sale Order ya está cerrado
         so_pending_pickings = {} # H-2: recordset OUT pendiente por SO, evita re-búsqueda dentro del savepoint
         so_ei_total = {}         # H-4: ei_total por SO; sobrevive a invalidate_all() al ser un dict Python plano
-        log_lines = []
+        # H-7: ventana deslizante acotada para el detalle de ejecución.
+        # Antes log_lines era una lista sin límite y cada actualización de progreso
+        # re-unía TODAS las líneas acumuladas ("\n".join) escribiéndolas en la BD cada
+        # 10 paquetes: coste O(n²) en memoria y CPU que en lotes grandes contribuía al
+        # agotamiento de memoria del worker. Con deque(maxlen=...) sólo se conservan las
+        # últimas MAX_DETAIL_LINES; append/len/join siguen funcionando igual.
+        MAX_DETAIL_LINES = 200
+        log_lines = deque(maxlen=MAX_DETAIL_LINES)
         PROGRESS_INTERVAL = 10   # H-1: número de paquetes entre cada escritura de progreso a la BD
         
         for idx, pack_id in enumerate(packs_ids):
