@@ -15,7 +15,7 @@ Sistema de gestión de almacén local (Warehouse Management Dispatch System) que
 | Frontend build | Vite | IIFE library output |
 | Barcode rendering | python-barcode | Code128 SVG |
 | QR generation | qrcode (Python) | PNG, Base64 |
-| Async tasks | PostgreSQL advisory locks | Threading nativo |
+| Async tasks | PostgreSQL advisory locks | Disparo de `ir.cron` (`_trigger`) + advisory lock — ver §5 |
 | Testing | Odoo TransactionCase | unittest |
 | OWL patches | @stock_barcode models | Monkey-patching vía `patch()` |
 | Dependencia externa | WB_data_sale_order | Módulo interno Wonderbrands |
@@ -79,14 +79,15 @@ Arquitectura **híbrida MVC + SPA embebida**:
 - **Dependencias**: `wmds.log`, `wmds.stock.status`, `bin.storage`, `wb_printer_IoT`.
 - **Calidad**: Acceptable. La lógica de validación de Rackeo N1 está duplicada entre `button_validate()` y `barcode_controller.py:process_dest_location_scan`. El `_get_stock_barcode_data()` está definido dos veces en `StockWMDS` y `BatchWMDS` con lógica muy similar pero no idéntica. El `_FORBIDDEN_LOCATIONS` está hardcodeado como constante de clase en vez de ser configurable.
 
-#### `wmds_queued_tasks.py` (745 líneas)
+#### `wmds_queued_tasks.py` (828 líneas)
 - **Responsabilidad**: Cola de tareas asíncronas para operaciones de alto volumen (>10 ítems). Tipos: `move_to_bin`, `move_to_dock`, `dispatch_package`.
-- **Dependencias**: PostgreSQL advisory lock (847192847), `threading`, Odoo ORM en `SUPERUSER_ID`.
+- **Dependencias**: PostgreSQL advisory lock (847192847), `ir.cron` dedicado (`wmds.ir_cron_process_wmds_queued_tasks`), Odoo ORM en `SUPERUSER_ID`.
 - **Calidad**: Mixta. Bien diseñado el patrón de advisory lock para evitar concurrencia entre workers. Sin embargo:
   - Uso excesivo de `self.env.cr.commit()` que rompe la atomicidad de Odoo
   - `_update_progress()` escribe sin verificar estado concurrente
   - `_execute_move_to_bin()` y `_execute_move_to_dock()` duplican ~80% de la lógica de los controladores `dock_n_bin.py`
   - La caché `so_out_closed` acelera el despacho pero podría quedar inconsistente si el OUT se reabre durante el procesamiento del lote
+- **⚠️ Corregido (ver §5)**: `_trigger_async_process()` ya **no** lanza un `threading.Thread` dentro del worker HTTP (causa de OOM/SIGKILL en Odoo.sh); ahora dispara el `ir.cron` dedicado. Además, el detalle de ejecución (`log_lines`) se acotó a una ventana deslizante (`deque(maxlen=200)`).
 
 #### `purchase_flow_edit.py` (336 líneas)
 - **Responsabilidad**: Flujo COMEX para compras: VoBo, liberación de cuarentenas, creación de transferencias internas.
@@ -203,10 +204,12 @@ Arquitectura **híbrida MVC + SPA embebida**:
 | **N+1 queries en loops** | Alto | `dispatch.py:dispatch_packet` (por tag busca picking), `cycle_count.py:get_cycle_count_details`, `dock_n_bin.py:search_manual_dispatch` |
 | **Procesamiento síncrono para >10 ítems** | Alto | `dispatch.py:dispatch_packet` procesa todos los EI tags en una sola transacción — si hay 100 tags y falla el #50, los primeros 49 quedan aplicados sin rollback completo |
 | **Caché volátil en threads** | Medio | `wmds_queued_tasks.py`: `so_out_closed` diccionario en `_execute_dispatch_package` — si el OUT se reabre durante el batch, paquetes posteriores usan caché stale |
+| **~~Thread dentro del worker HTTP → OOM/SIGKILL~~ (RESUELTO §5)** | ~~Crítico~~ | `wmds_queued_tasks.py:_trigger_async_process` lanzaba `threading.Thread` en el worker HTTP; el despacho pesado consumía la memoria del worker y superaba `limit_memory_hard` de Odoo.sh (kill por signal 9). Ahora se procesa vía `ir.cron`. |
+| **~~`log_lines` sin límite (O(n²) en progreso)~~ (RESUELTO §5)** | ~~Medio~~ | El detalle acumulado se re-unía completo (`"\n".join`) y se escribía cada 10 paquetes; en lotes grandes crecía sin cota. Acotado con `deque(maxlen=200)`. |
 | **Carga masiva de ubicaciones** | Medio | `cycle_count.py:get_locations_by_range` carga todas las ubicaciones con `complete_name =ilike 'WH/Stock/%'` y filtra en Python |
 | **Multiple `search_count` por BIN/DOCK** | Bajo | `dock_n_bin.py:active_bins` hace 2 `search_count` por cada BIN registrado |
 | **PDF síncrono en request HTTP** | Medio | `dispatch_sheet_print_controller.py` renderiza QWeb PDF en el hilo de la request — puede timeout con sessions grandes |
-| **`env.invalidate_all()` en cada iteración** | Bajo | `wmds_queued_tasks.py:705` — necesario para evitar MemoryError pero invalida caché del ORM forzando relecturas |
+| **`env.invalidate_all()` en cada iteración** | Bajo | `wmds_queued_tasks.py:774` — necesario para evitar MemoryError pero invalida caché del ORM forzando relecturas |
 
 ### 3.3 Manejo de Errores y Robustez
 
@@ -320,3 +323,69 @@ Arquitectura **híbrida MVC + SPA embebida**:
 | Funciones duplicadas | 3 |
 | Archivos >500 líneas | 4 |
 | Cobertura de tests | <5% (solo rackeo N1) |
+
+---
+
+## 5. HISTORIAL DE CORRECCIONES
+
+### 5.1 — Fuga de memoria / `SIGKILL` en la cola de tareas (`wmds.queued_tasks`)
+
+**Fecha:** 2026-07-16 · **Rama:** `feature/optimize-dispatch-queue-will` · **Archivo:** `models/wmds_queued_tasks.py`
+
+#### Síntoma
+En Odoo.sh, al ejecutar una tarea encolada (despacho / movimiento masivo) el worker moría con:
+
+```
+odoo.sh: Worker process (pid=...) was killed by signal 9
+(most likely hit a memory limit, please check your custom modules memory usage.)
+```
+
+El `signal 9` (SIGKILL) lo dispara Odoo.sh al superar el límite de memoria **por worker** (`limit_memory_hard`). Se confirmó que el kill ocurría **únicamente al procesar una tarea de la cola**, no en reposo.
+
+#### Causa raíz #1 — Hilo dentro del worker HTTP
+`_trigger_async_process()` lanzaba un `threading.Thread` **dentro del worker HTTP**:
+
+```python
+# ANTES
+def _trigger_async_process(self):
+    thread = threading.Thread(target=self._process_tasks_thread, args=(registry, dbname))
+    thread.daemon = True
+    thread.start()
+```
+
+El despacho pesado (carga de recordsets, creación de logs, `button_validate()` de OUTs) corría en el **espacio de memoria del propio worker HTTP**; su RSS contaba contra `limit_memory_hard` y **no** estaba sujeto al reciclado de memoria por-request. En lotes grandes el worker se pasaba del límite → SIGKILL.
+
+**Corrección:** disparar el `ir.cron` dedicado, que ejecuta el mismo procesador en el **worker de cron** (ciclo de vida y presupuesto de memoria propios). El cron ya corría cada minuto como respaldo; `_trigger()` lo arranca de inmediato.
+
+```python
+# DESPUÉS
+def _trigger_async_process(self):
+    self.env.ref('wmds.ir_cron_process_wmds_queued_tasks').sudo()._trigger()
+```
+
+Beneficio adicional: el `ir.cron.trigger` se crea en la **misma transacción** que la tarea, por lo que ambos se confirman atómicamente y el cron nunca ve una tarea sin commitear (elimina una condición de carrera latente del enfoque con hilos). El `import threading` quedó sin uso y se retiró.
+
+> **Nota de comportamiento:** el procesamiento ya no arranca en el mismo milisegundo; comienza en la siguiente pasada del cron (típicamente segundos). Aceptable para un flujo "encolado en segundo plano". Se mantiene `PROGRESS_INTERVAL = 10`.
+
+#### Causa raíz #2 — `log_lines` sin cota (crecimiento O(n²))
+El detalle de ejecución se acumulaba en una lista sin límite y, cada 10 paquetes, se re-unía **completo** (`"\n".join(log_lines)`) para escribirlo en `info_message`. En lotes grandes esto crecía en memoria y CPU de forma cuadrática.
+
+**Corrección:** ventana deslizante acotada. `append` / `len` / `"\n".join` siguen funcionando igual sobre el `deque`; sólo se conservan las últimas 200 líneas de detalle (los contadores de Exitosos/Fallidos siguen siendo exactos).
+
+```python
+# ANTES:  log_lines = []
+# DESPUÉS:
+MAX_DETAIL_LINES = 200
+log_lines = deque(maxlen=MAX_DETAIL_LINES)   # H-7
+```
+
+#### Mitigaciones ya presentes (sin cambios)
+Advisory lock (`847192847`) para un único procesador, `self.env.invalidate_all()` por iteración, commit por paquete, y captura de `MemoryError` que aborta el lote de forma controlada.
+
+#### Verificación
+- `python -m py_compile models/wmds_queued_tasks.py` → OK.
+- Todas las llamadas a `_trigger_async_process` (`controllers/dock_n_bin.py`, `controllers/dispatch.py`, y las acciones de reintento) quedan cubiertas por el único método modificado.
+- Todos los usos de `log_lines` son `.append()` y `"\n".join()` — compatibles con `deque`; no hay slicing/indexado.
+
+#### Hardening pendiente (opcional)
+Dividir lotes muy grandes en varios registros `wmds.queued_tasks` en el momento de encolar (en `dock_n_bin.py` / `dispatch.py`) para acotar el pico de memoria también en el worker de cron.
