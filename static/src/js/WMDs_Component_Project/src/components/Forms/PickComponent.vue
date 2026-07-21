@@ -234,4 +234,37 @@
     top: -0.75rem;
     font-size: 12px;
 }
+
+@media screen and (max-width: 768px) {
+    .field {
+        width: 100%;
+        height: auto;
+        margin-top: 1.5rem;
+    }
+    
+    .save-button {
+        width: 80%;
+        height: auto;
+        padding: 0.75rem;
+        position: relative;
+        margin: 2rem 0;
+        right: auto;
+        bottom: auto;
+    }
+    
+    .title_section {
+        height: auto;
+        min-height: auto;
+        margin-bottom: 1rem;
+    }
+    
+    .title_section h1 {
+        font-size: 1.3rem;
+    }
+    
+    .form_items {
+        height: auto;
+        overflow-y: visible;
+    }
+}
 </style>

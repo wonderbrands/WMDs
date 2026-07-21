@@ -129,7 +129,7 @@
         </div>
 
         <!-- DIALOG DETALLE BIN -->
-        <Dialog v-model:visible="showBinDialog" :header="'Detalle de BIN: ' + (selectedBin?.name || '')" :style="{ width: '55vw' }" modal>
+        <Dialog v-model:visible="showBinDialog" :header="'Detalle de BIN: ' + (selectedBin?.name || '')" :style="{ width: '55vw' }" :breakpoints="{ '960px': '75vw', '640px': '95vw' }" modal>
             <div v-if="selectedBinContents" class="dialog-content">
                 <DataTable 
                     v-model:selection="selectedBinPackages" 
@@ -161,7 +161,7 @@
         </Dialog>
 
         <!-- DIALOG DETALLE DOCK -->
-        <Dialog v-model:visible="showDockDialog" :header="'Detalle de DOCK: ' + (selectedDock?.name || '')" :style="{ width: '55vw' }" modal>
+        <Dialog v-model:visible="showDockDialog" :header="'Detalle de DOCK: ' + (selectedDock?.name || '')" :style="{ width: '55vw' }" :breakpoints="{ '960px': '75vw', '640px': '95vw' }" modal>
             <div v-if="selectedDockContents" class="dialog-content">
                 <DataTable 
                     v-model:selection="selectedDockPackages" 
@@ -716,5 +716,56 @@ export default {
     gap: 1rem;
     padding-top: 1rem;
     border-top: 1px solid #ecf0f1;
+}
+
+@media screen and (max-width: 768px) {
+    .manual-dispatch-container {
+        height: auto;
+        padding: 0.5rem;
+    }
+    .search-section {
+        margin: 0.5rem;
+        padding: 1rem;
+    }
+    .search-bar {
+        flex-direction: column;
+    }
+    .order-header-large {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    .order-name-tag {
+        font-size: 1.1rem;
+        padding: 0.25rem 0.5rem;
+        width: 100%;
+    }
+    .order-detail-container {
+        flex-direction: column;
+        gap: 1rem;
+        padding: 0.5rem;
+    }
+    .grid-container {
+        flex-direction: column;
+        min-height: auto;
+        overflow: visible;
+    }
+    .section-card {
+        width: calc(100% - 1rem);
+        margin: 0.5rem;
+        max-height: 400px;
+    }
+    .wholesale-dispatch-banner {
+        flex-direction: column;
+        gap: 1rem;
+        align-items: flex-start !important;
+    }
+    .wholesale-dispatch-banner .flex {
+        width: 100%;
+        flex-direction: column;
+    }
+    .wholesale-dispatch-banner button {
+        width: 100%;
+    }
 }
 </style>

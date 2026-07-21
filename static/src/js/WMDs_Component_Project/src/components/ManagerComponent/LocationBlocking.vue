@@ -360,9 +360,18 @@
                 </div>
 
                 <div class="adjacency-container">
-                  <div class="flex-between mb-2">
-                    <h4 class="text-dark">Sugerencias de Adyacencia (Cuadrícula 3D):</h4>
-                    <div class="flex gap-small">
+                  <div class="flex-between mb-2 flex-wrap gap-small">
+                    <h4 class="text-dark font-bold">Sugerencias de Adyacencia:</h4>
+                    <div class="flex gap-small flex-wrap">
+                      <Button 
+                        v-if="adjacencies && adjacencies.length > 0"
+                        :label="show3DSelector ? 'Ver Listado' : 'Ver Vista 3D'" 
+                        :icon="show3DSelector ? 'fa fa-list' : 'fa fa-cubes'"
+                        severity="secondary" 
+                        text 
+                        size="small" 
+                        @click="show3DSelector = !show3DSelector" 
+                      />
                       <Button 
                         v-if="adjacencies && adjacencies.length > 0"
                         label="Seleccionar Todos" 
@@ -385,65 +394,92 @@
                   </div>
 
                   <div v-if="loadingAdjacencies" class="loading-box">
-                    <i class="fa fa-spinner fa-spin"></i> Cargando cuadrícula interactiva...
+                    <i class="fa fa-spinner fa-spin"></i> Cargando adyacencias...
                   </div>
 
-                  <div v-else-if="adjacencies && adjacencies.length > 0" class="grid-3d-visualizer">
-                    <!-- Preview Title and Expand Button -->
-                    <div class="flex justify-between items-center mb-2">
-                      <span class="text-xs text-muted font-bold">Vista Previa del Rack 3D:</span>
-                      <Button 
-                        label="Ampliar Vista 3D" 
-                        icon="fa fa-expand" 
-                        severity="primary" 
-                        size="small" 
-                        outlined
-                        @click="show3DModal = true" 
-                        title="Ver en pantalla completa"
-                      />
-                    </div>
+                  <div v-else-if="adjacencies && adjacencies.length > 0">
+                    <!-- Vista 3D del Rack -->
+                    <div v-if="show3DSelector" class="grid-3d-visualizer">
+                      <!-- Preview Title and Expand Button -->
+                      <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs text-muted font-bold">Vista Previa del Rack 3D:</span>
+                        <Button 
+                          label="Ampliar Vista 3D" 
+                          icon="fa fa-expand" 
+                          severity="primary" 
+                          size="small" 
+                          outlined
+                          @click="show3DModal = true" 
+                          title="Ver en pantalla completa"
+                        />
+                      </div>
 
-                    <!-- 3D Scene (Compact preview, no dragging or scrolling, just a beautiful static preview) -->
-                    <div class="rack-3d-scene" style="height: 240px;">
-                      <div 
-                        class="rack-3d-group"
-                        style="transform: rotateX(60deg) rotateY(0deg) rotateZ(-45deg) scale3d(0.7, 0.7, 0.7);"
-                      >
+                      <!-- 3D Scene (Compact preview, no dragging or scrolling, just a beautiful static preview) -->
+                      <div class="rack-3d-scene" style="height: 240px;">
                         <div 
-                          v-for="slot in grid3DSlots" 
-                          :key="`preview-${slot.x}-${slot.y}-${slot.z}`" 
-                          class="rack-cell-3d"
-                          :style="{
-                            transform: `translate3d(calc(${slot.x} * var(--cube-spacing-x)), calc(${slot.y} * var(--cube-spacing-y)), calc(${slot.z} * var(--cube-spacing-z)))`
-                          }"
+                          class="rack-3d-group"
+                          style="transform: rotateX(60deg) rotateY(0deg) rotateZ(-45deg) scale3d(0.7, 0.7, 0.7);"
                         >
                           <div 
-                            v-if="slot.loc" 
-                            class="iso-cube-wrapper"
-                            :class="getCubeClass(slot.loc)"
-                            @click="show3DModal = true"
+                            v-for="slot in grid3DSlots" 
+                            :key="`preview-${slot.x}-${slot.y}-${slot.z}`" 
+                            class="rack-cell-3d"
+                            :style="{
+                              transform: `translate3d(calc(${slot.x} * var(--cube-spacing-x)), calc(${slot.y} * var(--cube-spacing-y)), calc(${slot.z} * var(--cube-spacing-z)))`
+                            }"
                           >
-                            <div class="iso-cube">
-                              <!-- No text label inside cubes in compact preview -->
-                              <div class="cube-face top-face"></div>
-                              <div class="cube-face front-face"></div>
-                              <div class="cube-face side-face"></div>
+                            <div 
+                              v-if="slot.loc" 
+                              class="iso-cube-wrapper"
+                              :class="getCubeClass(slot.loc)"
+                              @click="show3DModal = true"
+                            >
+                              <div class="iso-cube">
+                                <!-- No text label inside cubes in compact preview -->
+                                <div class="cube-face top-face"></div>
+                                <div class="cube-face front-face"></div>
+                                <div class="cube-face side-face"></div>
+                              </div>
                             </div>
-                          </div>
-                          <div v-else class="empty-iso-slot">
-                            <div class="empty-slot-outline"></div>
+                            <div v-else class="empty-iso-slot">
+                              <div class="empty-slot-outline"></div>
+                            </div>
                           </div>
                         </div>
                       </div>
+
+                      <!-- Compact Legend -->
+                      <div class="legend-box flex-wrap gap-small mt-3">
+                        <span class="legend-item"><span class="dot source-dot"></span> Origen (Ocupado)</span>
+                        <span class="legend-item"><span class="dot available-dot"></span> Disponible (ubicación vacía)</span>
+                        <span class="legend-item"><span class="dot selected-dot"></span> Seleccionado</span>
+                        <span class="legend-item"><span class="dot blocked-dot"></span> Bloqueado</span>
+                        <span class="legend-item"><span class="dot product-dot"></span> Con Producto</span>
+                      </div>
                     </div>
 
-                    <!-- Compact Legend -->
-                    <div class="legend-box flex-wrap gap-small mt-3">
-                      <span class="legend-item"><span class="dot source-dot"></span> Origen (Ocupado)</span>
-                      <span class="legend-item"><span class="dot available-dot"></span> Disponible (ubicación vacía)</span>
-                      <span class="legend-item"><span class="dot selected-dot"></span> Seleccionado</span>
-                      <span class="legend-item"><span class="dot blocked-dot"></span> Bloqueado</span>
-                      <span class="legend-item"><span class="dot product-dot"></span> Con Producto</span>
+                    <!-- Vista de Listado para Adyacencias -->
+                    <div v-else class="adjacency-list">
+                      <div v-for="adj in adjacentsGrouped" :key="adj.id" class="adjacency-item flex justify-between items-center py-2 border-b">
+                        <div class="flex items-center gap-small">
+                          <Checkbox 
+                            :binary="true"
+                            :modelValue="selectedAdjacents.includes(adj.id)"
+                            @update:modelValue="toggleAdjacentSelection(adj.id)"
+                            :disabled="adj.is_blocked || adj.has_product"
+                          />
+                          <span :class="{'text-muted line-through font-normal': adj.is_blocked || adj.has_product, 'font-bold': !adj.is_blocked && !adj.has_product}">
+                            {{ adj.name }}
+                          </span>
+                          <span class="adj-direction text-xs">({{ adj.directionLabel }})</span>
+                        </div>
+                        <div>
+                          <span v-if="adj.is_blocked" class="badge badge-danger text-xs">Bloqueada</span>
+                          <span v-else-if="adj.has_product" class="badge badge-warn text-xs">Con Producto</span>
+                          <span v-else-if="selectedAdjacents.includes(adj.id)" class="badge badge-success text-xs">Seleccionada</span>
+                          <span v-else class="badge badge-secondary text-xs">Disponible</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -732,6 +768,8 @@ export default {
     return {
       store: useGeneralStore(),
       show3DModal: false,
+      isMobile: false,
+      show3DSelector: true,
       filters: {
         aisle_from: "A",
         aisle_to: "Z",
@@ -1376,7 +1414,22 @@ export default {
     },
     downloadCSV() {
       window.open('/web/blocked_locations_csv', '_blank');
+    },
+    checkMobile() {
+      const wasMobile = this.isMobile;
+      this.isMobile = window.innerWidth <= 768;
+      if (wasMobile !== this.isMobile) {
+        this.show3DSelector = !this.isMobile;
+      }
     }
+  },
+  mounted() {
+    this.isMobile = window.innerWidth <= 768;
+    this.show3DSelector = !this.isMobile;
+    window.addEventListener('resize', this.checkMobile);
+  },
+  beforeUnmount() {
+    window.removeEventListener('resize', this.checkMobile);
   }
 };
 </script>
@@ -2089,4 +2142,50 @@ export default {
 .selected-dot { background-color: #48bb78; }
 .blocked-dot { background-color: #fc8181; }
 .product-dot { background-color: #ed8936; }
+
+@media screen and (max-width: 768px) {
+  .grid-layout {
+    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    overflow-y: auto;
+    height: auto;
+  }
+  
+  .card {
+    padding: 1rem;
+    height: auto;
+    max-height: none;
+    overflow-y: visible;
+  }
+  
+  .title_section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
+  .title_section button {
+    width: 100%;
+  }
+
+  .flex-row {
+    flex-wrap: wrap;
+  }
+
+  .modal-layout {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .modal-sidebar-container {
+    width: 100%;
+    margin-top: 1rem;
+  }
+  
+  .rack-3d-scene.in-modal {
+    height: 300px;
+  }
+}
 </style>

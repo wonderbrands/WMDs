@@ -318,7 +318,6 @@ export default {
   }
 };
 </script>
-
 <style scoped>
 .list_view {
     width: 100%;
@@ -351,5 +350,28 @@ export default {
 
 .gap-small {
     gap: 0.5rem;
+}
+
+@media screen and (max-width: 768px) {
+  .flex-between {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .title_section {
+    margin-bottom: 1rem;
+    padding: 0 0.5rem;
+  }
+  .flex-row {
+    width: 100%;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .flex-row button {
+    width: 100%;
+  }
+  :deep(.p-datatable-wrapper) {
+    overflow-x: auto;
+  }
 }
 </style>

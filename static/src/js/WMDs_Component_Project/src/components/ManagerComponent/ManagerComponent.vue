@@ -62,4 +62,14 @@
     align-items: center;
     overflow: hidden;
 }
+
+@media screen and (max-width: 768px) {
+    .manager_screen {
+        flex-direction: column;
+    }
+    .main_manager_screen_container {
+        width: 100vw;
+        height: calc(100vh - var(--o-we-toolbar-height, 46px));
+    }
+}
 </style>

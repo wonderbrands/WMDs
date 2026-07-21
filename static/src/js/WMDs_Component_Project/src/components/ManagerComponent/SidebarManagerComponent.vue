@@ -180,4 +180,31 @@
     background-color: #ef4444 !important;
     color: white !important;
 }
+
+@media screen and (max-width: 768px) {
+  .sidebar_manager {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 260px !important;
+    max-width: 80vw;
+    height: 100%;
+    z-index: 1000;
+    box-shadow: 4px 0 15px rgba(0, 0, 0, 0.2);
+  }
+  
+  .sidebar_manager.collapsed {
+    width: 0px !important;
+    min-width: 0px !important;
+    border-right: none;
+    overflow: visible;
+  }
+  
+  .toggle_sidebar {
+    right: -45px;
+    background-color: #facc15 !important;
+    border: 1px solid #cbd5e1 !important;
+    color: #111827 !important;
+  }
+}
 </style>
