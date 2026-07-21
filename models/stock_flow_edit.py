@@ -385,7 +385,7 @@ class StockMoveWMDS(models.Model):
     _inherit = 'stock.move'
 
     def write(self, vals):
-        if not self.env.context.get('wmds_dispatch_in_progress'):
+        if not self.env.context.get('wmds_dispatch_in_progress') and not self.env.context.get('wmds_location_change_by_scan') and not self.env.context.get('wmds_move_line_write_in_progress'):
             for move in self:
                 changes = []
                 if 'location_id' in vals:

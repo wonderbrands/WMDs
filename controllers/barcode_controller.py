@@ -180,12 +180,12 @@ class BarcodeController(http.Controller):
                     return {"status": "error", "message": "has recogido la cantidad necesaria del SKU para este pedido, no se acpetara en esta operacion "}
 
             # Update picked
-            line.wmds_picked_qty += increment
-            
-            # Log the pick action with source location at picking level for better granularity
             action_desc = "escaneó" if not kw.get('increment') else ("incrementó" if increment > 0 else "decrementó")
-            msg = f"Operador {action_desc} {abs(increment)} unidad(es) de {line.product_id.display_name} desde {line.location_id.display_name}"
-            self._create_log(line.picking_id, msg, 'stock.picking', operator_email)
+            line.with_context(
+                wmds_operator_email=operator_email,
+                wmds_action_desc=action_desc,
+                wmds_increment=increment
+            ).write({'wmds_picked_qty': line.wmds_picked_qty + increment})
             
             return {
                 "status": "ok",
@@ -363,11 +363,11 @@ class BarcodeController(http.Controller):
 
             if is_valid:
                 old_dest_name = original_dest.display_name
-                line.write({'location_dest_id': scanned_location.id})
+                line.with_context(wmds_location_change_by_scan=True).write({'location_dest_id': scanned_location.id})
                 
                 # Sincronizar también el move_id
                 if line.move_id:
-                    line.move_id.write({'location_dest_id': scanned_location.id})
+                    line.move_id.with_context(wmds_location_change_by_scan=True).write({'location_dest_id': scanned_location.id})
                 
                 msg = f"Ubicación de destino cambiada para {line.product_id.display_name}: de {old_dest_name} a {scanned_location.display_name} (Cambio manual por escaneo)"
                 if vobo_message:
