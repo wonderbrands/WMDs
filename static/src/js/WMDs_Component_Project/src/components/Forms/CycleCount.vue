@@ -343,7 +343,7 @@
 
         <!-- Bulk Adjustment Dialog -->
         <!-- Header changed to reflect adjustment and finalization -->
-        <Dialog v-model:visible="bulkAdjDialog.visible" header="Ajustar y Finalizar Conteo" modal class="p-fluid" style="width: 500px">
+        <Dialog v-model:visible="bulkAdjDialog.visible" header="Ajustar y Finalizar Conteo" modal class="p-fluid" style="width: 500px" :breakpoints="{ '640px': '95vw' }">
              <div class="mb-3">
                 <div v-if="anyWaveOpen" class="warning-box mb-3">
                     <i class="fa fa-exclamation-triangle"></i>
@@ -365,7 +365,7 @@
         </Dialog>
 
         <!-- Adjustment Dialog -->
-        <Dialog v-model:visible="adjDialog.visible" header="Ajustar Stock Manualmente" modal class="p-fluid" style="width: 500px">
+        <Dialog v-model:visible="adjDialog.visible" header="Ajustar Stock Manualmente" modal class="p-fluid" style="width: 500px" :breakpoints="{ '640px': '95vw' }">
             <div v-if="adjDialog.line">
                 <div v-if="anyWaveOpen" class="warning-box mb-3">
                     <i class="fa fa-exclamation-triangle"></i>
@@ -395,7 +395,7 @@
             </template>
         </Dialog>
 
-        <Dialog v-model:visible="reopenDialog.visible" header="Reabrir Ola de Conteo" modal class="p-fluid" style="width: 450px">
+        <Dialog v-model:visible="reopenDialog.visible" header="Reabrir Ola de Conteo" modal class="p-fluid" style="width: 450px" :breakpoints="{ '640px': '95vw' }">
             <div class="field">
                 <label class="font-bold">Motivo de Reapertura</label>
                 <InputText v-model="reopenDialog.reason" placeholder="Ej: Error en conteo de SKU..." autofocus />
@@ -406,7 +406,7 @@
             </template>
         </Dialog>
 
-        <Dialog v-model:visible="operatorDialog.visible" :header="operatorDialog.title" modal class="p-fluid" style="width: 450px">
+        <Dialog v-model:visible="operatorDialog.visible" :header="operatorDialog.title" modal class="p-fluid" style="width: 450px" :breakpoints="{ '640px': '95vw' }">
             <Listbox v-model="operatorDialog.selected" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" :multiple="operatorDialog.multiSelect" filter listStyle="max-height:250px" />
             <template #footer>
                 <Button label="Cancelar" icon="fa fa-times" @click="operatorDialog.visible = false" class="p-button-text" />
@@ -948,4 +948,43 @@ export default {
 }
 
 :deep(::-webkit-scrollbar-track) {
-    background: #f1f1f1; border-radius: 5px; } :deep(::-webkit-scrollbar-thumb) { background: #3498db; border-radius: 5px; border: 2px solid #f1f1f1; } :deep(::-webkit-scrollbar-thumb:hover) { background: #2980b9; } /* Wave State Indicators */ .wave-state-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; } .wave-state-indicator.draft { background-color: #95a5a6; } .wave-state-indicator.ongoing { background-color: #f1c40f; } .wave-state-indicator.done { background-color: #2ecc71; } .wave-state-indicator.cancelled { background-color: #e74c3c; } .warning-box { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 4px; display: flex; align-items: center; gap: 10px; font-size: 0.9rem; } </style>
+    background: #f1f1f1; border-radius: 5px; } :deep(::-webkit-scrollbar-thumb) { background: #3498db; border-radius: 5px; border: 2px solid #f1f1f1; } :deep(::-webkit-scrollbar-thumb:hover) { background: #2980b9; } /* Wave State Indicators */ .wave-state-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; } .wave-state-indicator.draft { background-color: #95a5a6; } .wave-state-indicator.ongoing { background-color: #f1c40f; } .wave-state-indicator.done { background-color: #2ecc71; } .wave-state-indicator.cancelled { background-color: #e74c3c; } .warning-box { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 4px; display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+
+@media (max-width: 768px) {
+  .wizard-stepper {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .step-pill {
+    padding: 0.4rem 1rem;
+    font-size: 0.8rem;
+  }
+  .input-ref {
+    width: 100% !important;
+  }
+  .cycle-count-wrapper {
+    padding: 0.5rem;
+  }
+  .filter-group {
+    flex: 1 1 100%;
+  }
+  .filter-actions {
+    width: 100%;
+  }
+  .filter-actions button {
+    width: 100%;
+  }
+  .tables-container {
+    flex-direction: column;
+  }
+  .table-half {
+    min-width: 100%;
+  }
+  .operators-grid {
+    flex-direction: column;
+  }
+  .operator-card {
+    min-width: 100%;
+  }
+}
+</style>

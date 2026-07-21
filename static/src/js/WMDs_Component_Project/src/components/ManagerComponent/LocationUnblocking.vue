@@ -634,4 +634,36 @@ export default {
 .text-success {
   color: #16a34a;
 }
+
+@media screen and (max-width: 768px) {
+  .grid-layout {
+    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    overflow-y: auto;
+    height: auto;
+  }
+  
+  .card {
+    padding: 1rem;
+    height: auto;
+    max-height: none;
+    overflow-y: visible;
+  }
+  
+  .title_section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
+  .title_section button {
+    width: 100%;
+  }
+
+  .flex-row {
+    flex-wrap: wrap;
+  }
+}
 </style>

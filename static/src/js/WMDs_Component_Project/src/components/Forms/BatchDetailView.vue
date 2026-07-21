@@ -392,4 +392,39 @@ export default {
     padding-right: 15px;
     padding-left: 5px;
 }
+
+@media screen and (max-width: 768px) {
+  .title_section {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+  .title_section h1 {
+    font-size: 1.5rem;
+  }
+  .title_section button {
+    width: 100%;
+  }
+  .operator-field {
+    width: 100%;
+  }
+  .operator-field .flex {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .operator-field button {
+    width: 100%;
+  }
+  .column {
+    min-width: 100%;
+  }
+  .content-row {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+  .picks-container, .timeline-container {
+    max-height: 45vh !important;
+  }
+}
 </style>

@@ -79,6 +79,33 @@ class StockWMDS(models.Model):
                                 raise UserError(f"No se puede rackear en la ubicación '{loc.complete_name}' porque no está vacía.")
         return super(StockWMDS, self).button_validate()
 
+    def action_assign(self):
+        for picking in self:
+            if picking.picking_type_id.name == 'Pick' and picking.sale_id and picking.sale_id.data_is_wholesale_sale:
+                almacenaje_loc = self.env['stock.location'].search([
+                    '|', ('complete_name', '=', 'WH/Stock/Almacenaje'),
+                         ('complete_name', '=', 'Stock/Almacenaje')
+                ], limit=1)
+                if almacenaje_loc:
+                    picking.write({'location_id': almacenaje_loc.id})
+                    picking.move_ids.write({'location_id': almacenaje_loc.id})
+
+        res = super(StockWMDS, self).action_assign()
+
+        for picking in self:
+            if picking.picking_type_id.name == 'Pick' and picking.sale_id and picking.sale_id.data_is_wholesale_sale:
+                if picking.state != 'assigned':
+                    stock_loc = self.env['stock.location'].search([
+                        '|', ('complete_name', '=', 'WH/Stock'),
+                             ('complete_name', '=', 'Stock')
+                    ], limit=1)
+                    if stock_loc:
+                        picking.write({'location_id': stock_loc.id})
+                        picking.move_ids.write({'location_id': stock_loc.id})
+                        # Re-run reservation to grab from A_Pickable as well
+                        super(StockWMDS, picking).action_assign()
+        return res
+
     @api.model
     def create(self, vals):
         res = super(StockWMDS, self).create(vals)
@@ -380,7 +407,10 @@ class StockMoveWMDS(models.Model):
 class StockMoveLineWMDS(models.Model):
     _inherit = 'stock.move.line'
 
-    _FORBIDDEN_LOCATIONS = {"WH/Stock/A_Pickable"}
+    _FORBIDDEN_LOCATIONS = {
+        "WH/Stock/A_Pickable", "Stock/A_Pickable",
+        "WH/Stock/Almacenaje", "Stock/Almacenaje"
+    }
     #_FORBIDDEN_LOCATIONS = []
 
     @api.model_create_multi
