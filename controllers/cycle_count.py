@@ -145,9 +145,13 @@ class CycleCount(http.Controller):
                 return True
             
             domain = [
-                ('complete_name', '=ilike', 'WH/Stock/%'),
                 ('complete_name', 'not ilike', '%Cuarentena%'),
-                ('usage', '=', 'internal') 
+                ('usage', '=', 'internal'),
+                '|', '|', '|',
+                ('complete_name', '=ilike', 'WH/Stock/%'),
+                ('complete_name', '=ilike', 'Stock/%'),
+                ('complete_name', '=ilike', 'WH/Merma/%'),
+                ('complete_name', '=ilike', 'Merma/%'),
             ]
             all_locs = request.env['stock.location'].sudo().with_context(active_test=True).search(domain)
             
@@ -203,18 +207,19 @@ class CycleCount(http.Controller):
 
             locations = request.env['stock.location'].sudo().browse(location_ids)
             for loc in locations:
-                # Check for active reservations
-                reservations = request.env['stock.move.line'].sudo().search([
-                    ('location_id', '=', loc.id),
-                    ('state', 'not in', ['done', 'cancel']),
-                    ('quantity', '>', 0)
-                ], limit=1)
+                # se deshabilita bloquedo de conteo ciclico en ubcaciones por reserva
+                # reservations = request.env['stock.move.line'].sudo().search([
+                #     ('location_id', '=', loc.id),
+                #     ('state', 'not in', ['done', 'cancel']),
+                #     ('quantity', '>', 0)
+                # ], limit=1)
 
-                if reservations:
-                    return {
-                        'ok': False, 
-                        'error': f"No se puede bloquear la ubicación {loc.complete_name}, tiene una reserva en el movimiento {reservations.picking_id.name or reservations.move_id.reference}. Termine el traslado o anule la reserva."
-                    }
+                # if reservations:
+                #     return {
+                #         'ok': False, 
+                #         'error': f"No se puede bloquear la ubicación {loc.complete_name}, tiene una reserva en el movimiento {reservations.picking_id.name or reservations.move_id.reference}. Termine el traslado o anule la reserva."
+                #     }
+                pass
 
             # 2. Crear el maestro
             count_obj = request.env['scheduled.cycle.count'].sudo().create({
@@ -825,20 +830,20 @@ class CycleCount(http.Controller):
             if not sl:
                 return {'ok': False, 'error': 'Ubicación no encontrada en este ciclo.'}
             
-            # Check for active reservations if we are blocking
-            if not sl.is_blocked:
-                loc = sl.location_id
-                reservations = request.env['stock.move.line'].sudo().search([
-                    ('location_id', '=', loc.id),
-                    ('state', 'not in', ['done', 'cancel']),
-                    ('quantity', '>', 0)
-                ], limit=1)
-                
-                if reservations:
-                    return {
-                        'ok': False, 
-                        'error': f"No se puede bloquear la ubicación {loc.complete_name}, tiene una reserva en el movimiento {reservations.picking_id.name or reservations.move_id.reference}. Termine el traslado o anule la reserva."
-                    }
+            # se deshabilita bloquedo de conteo ciclico en ubcaciones por reserva
+            # if not sl.is_blocked:
+            #     loc = sl.location_id
+            #     reservations = request.env['stock.move.line'].sudo().search([
+            #         ('location_id', '=', loc.id),
+            #         ('state', 'not in', ['done', 'cancel']),
+            #         ('quantity', '>', 0)
+            #     ], limit=1)
+            #     
+            #     if reservations:
+            #         return {
+            #             'ok': False, 
+            #             'error': f"No se puede bloquear la ubicación {loc.complete_name}, tiene una reserva en el movimiento {reservations.picking_id.name or reservations.move_id.reference}. Termine el traslado o anule la reserva."
+            #         }
 
             sl.is_blocked = not sl.is_blocked
             
