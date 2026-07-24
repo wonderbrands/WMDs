@@ -1,4 +1,2 @@
 qrcode
-polars==1.42.1
-xlsx2csv==0.8.6
-fastexcel==0.20.2
+openpyxl

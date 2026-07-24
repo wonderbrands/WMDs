@@ -4,7 +4,7 @@ import csv
 import io
 import base64
 import xlsxwriter
-import polars as pl
+import openpyxl
 from odoo import http
 from odoo.http import request
 
@@ -866,30 +866,54 @@ class ImportPicksController(http.Controller):
         if len(file_content) > 1024 * 1024 * 1024: # 1 GB
             return request.make_response(json.dumps({'error': True, 'error_msg': 'El archivo excede el tamaño máximo permitido de 1 GB.'}), headers=[('Content-Type', 'application/json')])
         
-        # Parse rows using Polars
+        # Parse rows using openpyxl or csv
         try:
             if ext == 'csv':
                 try:
-                    df = pl.read_csv(io.BytesIO(file_content), has_header=has_header)
-                except Exception as csv_err:
-                    try:
-                        df = pl.read_csv(io.BytesIO(file_content), has_header=has_header, encoding='latin1')
-                    except Exception:
-                        raise csv_err
+                    csv_text = file_content.decode('utf-8')
+                except UnicodeDecodeError:
+                    csv_text = file_content.decode('latin1')
+                
+                # Use csv.reader
+                reader = csv.reader(io.StringIO(csv_text))
+                raw_rows = [list(row) for row in reader]
             else:
-                df = pl.read_excel(io.BytesIO(file_content), has_header=has_header)
+                # Read XLSX using openpyxl in read-only mode
+                wb = openpyxl.load_workbook(io.BytesIO(file_content), read_only=True, data_only=True)
+                sheet = wb.active
+                raw_rows = []
+                for row in sheet.iter_rows(values_only=True):
+                    raw_rows.append(list(row))
+                wb.close()
         except Exception as e:
-            return request.make_response(json.dumps({'error': True, 'error_msg': f'Error al leer el archivo con Polars: {str(e)}'}), headers=[('Content-Type', 'application/json')])
+            return request.make_response(json.dumps({'error': True, 'error_msg': f'Error al leer el archivo: {str(e)}'}), headers=[('Content-Type', 'application/json')])
+
+        if not raw_rows:
+            return request.make_response(json.dumps({'error': True, 'error_msg': 'El archivo está vacío o no contiene filas.'}), headers=[('Content-Type', 'application/json')])
 
         # Clean/Format rows
         if has_header:
-            headers = [str(col).strip() for col in df.columns]
+            header_row = raw_rows[0]
+            headers = [str(col).strip() if col is not None else '' for col in header_row]
+            data_rows_raw = raw_rows[1:]
         else:
-            headers = [f"Columna {i+1}" for i in range(len(df.columns))]
+            num_cols = max(len(r) for r in raw_rows) if raw_rows else 0
+            headers = [f"Columna {i+1}" for i in range(num_cols)]
+            data_rows_raw = raw_rows
             
         data_rows = []
-        for row in df.rows():
-            data_rows.append([str(val).strip() if val is not None else '' for val in row])
+        num_cols = len(headers)
+        for row in data_rows_raw:
+            formatted_row = []
+            for i in range(num_cols):
+                if i < len(row):
+                    val = row[i]
+                    if isinstance(val, float) and val.is_integer():
+                        val = int(val)
+                    formatted_row.append(str(val).strip() if val is not None else '')
+                else:
+                    formatted_row.append('')
+            data_rows.append(formatted_row)
         
         # Filter out empty rows
         data_rows = [r for r in data_rows if any(val.strip() for val in r)]
