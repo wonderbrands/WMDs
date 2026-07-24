@@ -27,6 +27,7 @@
      'external_dependencies': {
         'python': [
             'qrcode',
+            'openpyxl',
         ],
     },
 
