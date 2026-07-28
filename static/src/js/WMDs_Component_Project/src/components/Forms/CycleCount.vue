@@ -115,7 +115,9 @@
                                 <Button icon="fa fa-times"  severity="danger" @click="removeOperatorField(index)" label="X" />
                             </div>
                             <label class="small-label">Responsable</label>
-                            <Dropdown v-model="op.operator_id" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" placeholder="Seleccionar..." class="input-full" filter />
+                            <Dropdown v-model="op.operator_id" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" placeholder="Seleccionar..." class="input-full mb-2" filter />
+                            <label class="small-label">Posiciones</label>
+                            <Dropdown v-model="op.position_filter" :options="positionFilterOptions" optionLabel="label" optionValue="value" class="input-full" />
                         </div>
                     </div>
 
@@ -407,7 +409,14 @@
         </Dialog>
 
         <Dialog v-model:visible="operatorDialog.visible" :header="operatorDialog.title" modal class="p-fluid" style="width: 450px" :breakpoints="{ '640px': '95vw' }">
-            <Listbox v-model="operatorDialog.selected" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" :multiple="operatorDialog.multiSelect" filter listStyle="max-height:250px" />
+            <div class="field mb-3">
+                <label class="font-bold mb-1 block">Operador(es)</label>
+                <Listbox v-model="operatorDialog.selected" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" :multiple="operatorDialog.multiSelect" filter listStyle="max-height:250px" />
+            </div>
+            <div v-if="operatorDialog.mode === 'add'" class="field mb-2">
+                <label class="font-bold mb-1 block">Posiciones a Asignar</label>
+                <Dropdown v-model="operatorDialog.position_filter" :options="positionFilterOptions" optionLabel="label" optionValue="value" class="input-full" />
+            </div>
             <template #footer>
                 <Button label="Cancelar" icon="fa fa-times" @click="operatorDialog.visible = false" class="p-button-text" />
                 <Button label="Guardar" icon="fa fa-check" @click="handleOperatorSave" :loading="store.loading" />
@@ -444,7 +453,7 @@ export default {
             debouncedSearchQueryResults: "",
             rawSearchQuerySelected: "",
             debouncedSearchQuerySelected: "",
-            assignedOperators: [{ id: Date.now(), operator_id: null }],
+            assignedOperators: [{ id: Date.now(), operator_id: null, position_filter: 'all' }],
             newCount: { ref: "" },
             waves: [],
             created_by: '',
@@ -452,6 +461,12 @@ export default {
             cycleCountNotes: '',
             optionsCache: { operadores: [] },
             
+            positionFilterOptions: [
+                { label: 'Todas las Posiciones', value: 'all' },
+                { label: 'Posiciones Pares (e.g. P02, P04...)', value: 'even' },
+                { label: 'Posiciones Impares (e.g. P01, P03...)', value: 'odd' }
+            ],
+
             detailView: null, 
             selectedWave: null,
             waveLines: [],
@@ -490,7 +505,8 @@ export default {
                 title: '',
                 mode: 'add', 
                 multiSelect: true,
-                selected: null
+                selected: null,
+                position_filter: 'all'
             }
         };
     },
@@ -599,7 +615,7 @@ export default {
         isSelectable(data) { 
             // data might be the record directly or an event object depending on PrimeVue version
             const item = data.data || data;
-            return !this.isAlreadySelected(item) && !item.has_reservation; 
+            return !this.isAlreadySelected(item); 
         },
         rowClass(data) { 
             if (this.isAlreadySelected(data)) return 'row-locked';
@@ -607,7 +623,7 @@ export default {
             return '';
         },
         addSelected() {
-            const toAdd = this.tempSelection.filter(item => !this.isAlreadySelected(item) && !item.has_reservation);
+            const toAdd = this.tempSelection.filter(item => !this.isAlreadySelected(item));
             this.selectedLocations = [...this.selectedLocations, ...toAdd];
             this.tempSelection = [];
         },
@@ -616,15 +632,51 @@ export default {
             this.selectedLocations = this.selectedLocations.filter(l => !idsToRemove.includes(l.id));
             this.finalSelection = [];
         },
-        addOperatorField() { this.assignedOperators.push({ id: Date.now() + Math.random(), operator_id: null }); },
+        filterLocationsByParity(locations, filter) {
+            if (filter === 'all') return locations;
+            const locPattern = /([A-Z]{1,2})-P(\d{2})-F(\d)-N(\d)$/i;
+            return locations.filter(l => {
+                const match = l.complete_name.match(locPattern);
+                if (!match) return false;
+                const posNum = parseInt(match[2], 10);
+                if (filter === 'even') {
+                    return posNum % 2 === 0;
+                } else if (filter === 'odd') {
+                    return posNum % 2 !== 0;
+                }
+                return true;
+            });
+        },
+        addOperatorField() { this.assignedOperators.push({ id: Date.now() + Math.random(), operator_id: null, position_filter: 'all' }); },
         removeOperatorField(idx) { 
             this.assignedOperators = this.assignedOperators.filter((_, i) => i !== idx); 
         },
         async saveFullCount() {
+            // Validation: ensure every operator has at least one location assigned
+            for (const op of this.assignedOperators) {
+                const filteredLocs = this.filterLocationsByParity(this.selectedLocations, op.position_filter);
+                if (filteredLocs.length === 0) {
+                    const opName = this.optionsCache['operadores'].find(o => o.id === op.operator_id)?.name || 'Operador';
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Filtro sin resultados',
+                        detail: `El operador ${opName} no tiene ubicaciones con el filtro de posiciones seleccionado.`,
+                        life: 5000
+                    });
+                    return;
+                }
+            }
+
             const payload = {
                 name: this.newCount.ref,
                 location_ids: this.selectedLocations.map(l => l.id),
-                operators: this.assignedOperators.map(op => op.operator_id)
+                operators: this.assignedOperators.map(op => {
+                    const filteredLocs = this.filterLocationsByParity(this.selectedLocations, op.position_filter);
+                    return {
+                        operator_id: op.operator_id,
+                        location_ids: filteredLocs.map(l => l.id)
+                    };
+                })
             };
             let res = await this.store.callOdoo("create_full_cycle_count", "", payload);
             if (res.ok) {
@@ -808,6 +860,7 @@ export default {
                 this.operatorDialog.title = 'Añadir Nueva Ola';
                 this.operatorDialog.multiSelect = true;
                 this.operatorDialog.selected = [];
+                this.operatorDialog.position_filter = 'all';
             } else { // reassign
                 this.operatorDialog.title = `Reasignar Operador para ${wave.name}`;
                 this.operatorDialog.multiSelect = false;
@@ -856,13 +909,26 @@ export default {
         async handleOperatorSave() {
             if (this.operatorDialog.mode === 'add') {
                  if (!this.operatorDialog.selected || this.operatorDialog.selected.length === 0) return;
-                const payload = {
-                    location_ids: this.selectedLocations.map(l => l.id),
-                    operators: this.operatorDialog.selected,
-                    cycle_count_id: this.modalData.id
-                };
-                 let res = await this.store.callOdoo("create_waves_for_cycle", "", payload);
-                 if (res.ok) await this.loadExistingCountDetails();
+                 const filteredLocs = this.filterLocationsByParity(this.selectedLocations, this.operatorDialog.position_filter);
+                 if (filteredLocs.length === 0) {
+                     this.$toast.add({
+                         severity: 'error',
+                         summary: 'Filtro sin resultados',
+                         detail: 'No hay ubicaciones para este filtro de posiciones (pares/impares).',
+                         life: 5000
+                     });
+                     return;
+                 }
+                 const payload = {
+                     location_ids: this.selectedLocations.map(l => l.id),
+                     operators: this.operatorDialog.selected.map(opId => ({
+                         operator_id: opId,
+                         location_ids: filteredLocs.map(l => l.id)
+                     })),
+                     cycle_count_id: this.modalData.id
+                 };
+                  let res = await this.store.callOdoo("create_waves_for_cycle", "", payload);
+                  if (res.ok) await this.loadExistingCountDetails();
 
             } else { // reassign
                 if (!this.operatorDialog.selected) return;
@@ -898,8 +964,7 @@ export default {
 :deep(.p-datatable-row-selectable) { cursor: pointer; }
 :deep(.row-locked) { background-color: #e8f5e9 !important; color: #2e7d32 !important; font-style: italic; }
 :deep(.row-locked .p-checkbox) { display: none; }
-:deep(.row-reserved) { background-color: #f1f1f1 !important; color: #999 !important; font-style: italic; }
-:deep(.row-reserved .p-checkbox) { display: none; }
+:deep(.row-reserved) { background-color: #fff9e6 !important; color: #8a6d3b !important; }
 .wizard-footer { display: flex; justify-content: flex-end; margin-top: 1rem; }
 .input-ref { width: 350px; }
 .operators-grid { display: flex; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }

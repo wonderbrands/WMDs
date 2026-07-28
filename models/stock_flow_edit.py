@@ -81,14 +81,23 @@ class StockWMDS(models.Model):
 
     def action_assign(self):
         for picking in self:
-            if picking.picking_type_id.name == 'Pick' and picking.sale_id and picking.sale_id.data_is_wholesale_sale:
-                almacenaje_loc = self.env['stock.location'].search([
-                    '|', ('complete_name', '=', 'WH/Stock/Almacenaje'),
-                         ('complete_name', '=', 'Stock/Almacenaje')
-                ], limit=1)
-                if almacenaje_loc:
-                    picking.write({'location_id': almacenaje_loc.id})
-                    picking.move_ids.write({'location_id': almacenaje_loc.id})
+            if picking.picking_type_id.name == 'Pick' and picking.sale_id:
+                if picking.sale_id.data_is_wholesale_sale:
+                    almacenaje_loc = self.env['stock.location'].search([
+                        '|', ('complete_name', '=', 'WH/Stock/Almacenaje'),
+                             ('complete_name', '=', 'Stock/Almacenaje')
+                    ], limit=1)
+                    if almacenaje_loc:
+                        picking.write({'location_id': almacenaje_loc.id})
+                        picking.move_ids.write({'location_id': almacenaje_loc.id})
+                else:
+                    apickable_loc = self.env['stock.location'].search([
+                        '|', ('complete_name', '=', 'WH/Stock/A_Pickable'),
+                             ('complete_name', '=', 'Stock/A_Pickable')
+                    ], limit=1)
+                    if apickable_loc:
+                        picking.write({'location_id': apickable_loc.id})
+                        picking.move_ids.write({'location_id': apickable_loc.id})
 
         res = super(StockWMDS, self).action_assign()
 

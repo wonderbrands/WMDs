@@ -249,14 +249,21 @@ class CycleCount(http.Controller):
                     })
 
             # 3. Crear las olas
-            for op_id in operators:
+            for op in operators:
+                if isinstance(op, dict):
+                    op_id = op.get('operator_id')
+                    op_location_ids = op.get('location_ids', location_ids)
+                else:
+                    op_id = op
+                    op_location_ids = location_ids
+
                 wave_obj = request.env['cycle.count.wave'].sudo().create({
                     'cycle_count_id': count_obj.id,
                     'operator_id': op_id,
                     'state': 'draft'
                 })
                 # Las líneas de la ola apuntan a la ubicación (que ahora está bloqueada)
-                line_vals = [(0, 0, {'stock_location_id': lid}) for lid in location_ids]
+                line_vals = [(0, 0, {'stock_location_id': lid}) for lid in op_location_ids]
                 wave_obj.write({'line_ids': line_vals})
 
             return {'ok': True, 'id': count_obj.id, 'name': count_obj.name}
@@ -799,14 +806,24 @@ class CycleCount(http.Controller):
             if not active_location_ids:
                 return {'ok': False, 'error': 'No hay ubicaciones activas (no bloqueadas) para asignar.'}
 
-            for op_id in operators:
+            for op in operators:
+                if isinstance(op, dict):
+                    op_id = op.get('operator_id')
+                    op_location_ids = op.get('location_ids', active_location_ids)
+                else:
+                    op_id = op
+                    op_location_ids = active_location_ids
+
+                # Ensure customized location IDs are also filtered against blocked locations
+                op_location_ids = [lid for lid in op_location_ids if lid not in blocked_location_ids]
+
                 wave_obj = request.env['cycle.count.wave'].sudo().create({
                     'cycle_count_id': cycle_count_id,
                     'operator_id': op_id,
                     'state': 'draft'
                 })
                 # Las líneas de la ola apuntan a la ubicación
-                line_vals = [(0, 0, {'stock_location_id': lid}) for lid in active_location_ids]
+                line_vals = [(0, 0, {'stock_location_id': lid}) for lid in op_location_ids]
                 wave_obj.write({'line_ids': line_vals})
 
             return {'ok': True}
