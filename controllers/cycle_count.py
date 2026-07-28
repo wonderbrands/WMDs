@@ -731,15 +731,35 @@ class CycleCount(http.Controller):
             ]
             
             data = []
+            locations_map = {}
+            
             for line in lines:
+                loc = line.stock_location_id
+                if not loc:
+                    continue
+                if loc.id not in locations_map:
+                    locations_map[loc.id] = {
+                        'location_id': loc.id,
+                        'location_name': loc.complete_name,
+                        'status': 'pending',
+                        'counted_items': []
+                    }
+                
                 if line.product_id:
                     data.append({
                         'id': line.id,
                         'product_name': line.product_id.display_name,
                         'product_sku': line.product_id.default_code or '---',
                         'barcode': line.product_id.barcode or '---',
-                        'location_name': line.stock_location_id.complete_name,
+                        'location_name': loc.complete_name,
                         'qty': line.qty,
+                    })
+                    locations_map[loc.id]['status'] = 'counted'
+                    locations_map[loc.id]['counted_items'].append({
+                        'product_name': line.product_id.display_name,
+                        'product_sku': line.product_id.default_code or '---',
+                        'barcode': line.product_id.barcode or '---',
+                        'qty': line.qty
                     })
                 elif line.description == 'Marcada como vacía':
                     data.append({
@@ -747,11 +767,20 @@ class CycleCount(http.Controller):
                         'product_name': '(EL OPERADOR MARCÓ LA UBICACIÓN COMO VACÍA)',
                         'product_sku': 'N/A',
                         'barcode': 'N/A',
-                        'location_name': line.stock_location_id.complete_name,
+                        'location_name': loc.complete_name,
                         'qty': 0,
                     })
+                    locations_map[loc.id]['status'] = 'empty'
             
-            return {'ok': True, 'map_cols': map_cols, 'data': data, 'total_count': len(data)}
+            sorted_locations = sorted(locations_map.values(), key=lambda x: x['location_name'])
+            
+            return {
+                'ok': True,
+                'map_cols': map_cols,
+                'data': data,
+                'total_count': len(data),
+                'locations': sorted_locations
+            }
         except Exception as e:
             _logger.error(f"Error getting wave lines {e}")
             return {'ok': False, 'error': str(e)}

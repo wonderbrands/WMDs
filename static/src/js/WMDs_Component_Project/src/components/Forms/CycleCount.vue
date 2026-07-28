@@ -194,9 +194,39 @@
                             <h3 class="modal-title no-margin mt-2">Detalle de Ola: {{ selectedWave.name }}</h3>
                         </div>
                     </div>
-                    <DataTable :value="waveLines" class="p-datatable-sm custom-border">
+
+                    <!-- Nueva Sección Informativa por Ubicación -->
+                    <div class="card-background mb-medium">
+                        <h4 class="small-label mb-2">Ubicaciones Asignadas y Estado de Conteo</h4>
+                        <DataTable :value="waveLocations" class="p-datatable-sm custom-border" :rows="10" paginator responsiveLayout="scroll">
+                            <Column field="location_name" header="Ubicación" sortable style="min-width: 250px"></Column>
+                            <Column header="Estado" style="width: 150px">
+                                <template #body="slotProps">
+                                    <span v-if="slotProps.data.status === 'pending'" class="badge-pending">Pendiente</span>
+                                    <span v-else-if="slotProps.data.status === 'empty'" class="badge-empty">Marcada Vacía</span>
+                                    <span v-else-if="slotProps.data.status === 'counted'" class="badge-counted">Contada</span>
+                                </template>
+                            </Column>
+                            <Column header="Contenido Detectado / Contado">
+                                <template #body="slotProps">
+                                    <div v-if="slotProps.data.status === 'counted'">
+                                        <div v-for="item in slotProps.data.counted_items" :key="item.product_sku" class="small-product-item">
+                                            <strong>{{ item.product_sku }}</strong> - {{ item.product_name }} 
+                                            <span class="qty-tag">Cant: {{ item.qty }}</span>
+                                        </div>
+                                    </div>
+                                    <span v-else-if="slotProps.data.status === 'empty'" class="text-secondary italic">Sin stock en ubicación (marcada como vacía)</span>
+                                    <span v-else class="text-secondary italic">Por contar...</span>
+                                </template>
+                            </Column>
+                            <template #empty>No hay ubicaciones asignadas a esta ola.</template>
+                        </DataTable>
+                    </div>
+
+                    <!-- Tabla de Productos Contados -->
+                    <DataTable :value="waveLines" class="p-datatable-sm custom-border" :rows="10" paginator>
                          <template #header>
-                            <h4 class="small-label no-margin">Productos Contados ({{ waveLines.length }})</h4>
+                            <h4 class="small-label no-margin">Listado General de Productos Contados ({{ waveLines.length }})</h4>
                         </template>
                         <Column v-for="col of waveLinesCols" :key="col.field" :field="col.field" :header="col.name"></Column>
                         <template #empty>No se encontraron productos contados para esta ola.</template>
@@ -471,6 +501,7 @@ export default {
             selectedWave: null,
             waveLines: [],
             waveLinesCols: [],
+            waveLocations: [],
 
             comparisonData: [],
             comparisonWaves: [],
@@ -718,6 +749,7 @@ export default {
             if (res.ok) {
                 this.waveLines = res.data;
                 this.waveLinesCols = res.map_cols;
+                this.waveLocations = res.locations || [];
                 this.detailView = 'wave';
             }
         },
@@ -1014,6 +1046,12 @@ export default {
 
 :deep(::-webkit-scrollbar-track) {
     background: #f1f1f1; border-radius: 5px; } :deep(::-webkit-scrollbar-thumb) { background: #3498db; border-radius: 5px; border: 2px solid #f1f1f1; } :deep(::-webkit-scrollbar-thumb:hover) { background: #2980b9; } /* Wave State Indicators */ .wave-state-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; } .wave-state-indicator.draft { background-color: #95a5a6; } .wave-state-indicator.ongoing { background-color: #f1c40f; } .wave-state-indicator.done { background-color: #2ecc71; } .wave-state-indicator.cancelled { background-color: #e74c3c; } .warning-box { background: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 10px; border-radius: 4px; display: flex; align-items: center; gap: 10px; font-size: 0.9rem; }
+.badge-pending { background: #e9ecef; color: #495057; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 700; display: inline-block; }
+.badge-empty { background: #fff3cd; color: #856404; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 700; display: inline-block; }
+.badge-counted { background: #e8f5e9; color: #2e7d32; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 700; display: inline-block; }
+.small-product-item { font-size: 0.85rem; line-height: 1.4; padding: 2px 0; border-bottom: 1px dashed #eee; text-align: left; }
+.small-product-item:last-child { border-bottom: none; }
+.qty-tag { background: #e1f5fe; color: #0288d1; padding: 1px 4px; border-radius: 3px; font-size: 0.75rem; font-weight: bold; margin-left: 5px; }
 
 @media (max-width: 768px) {
   .wizard-stepper {
