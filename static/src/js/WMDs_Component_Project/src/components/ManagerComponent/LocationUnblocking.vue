@@ -217,7 +217,8 @@ export default {
         { label: "No Apta", value: "no_apto" },
         { label: "Dañada", value: "danado" },
         { label: "Onsite", value: "onsite" },
-        { label: "Sobredimensionada", value: "sobredimensionada" }
+        { label: "Sobredimensionada", value: "sobredimensionada" },
+        { label: "Dupla", value: "dupla" }
       ]
     };
   },
