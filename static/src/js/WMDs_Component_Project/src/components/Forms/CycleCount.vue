@@ -482,7 +482,7 @@ export default {
         return {
             store: useGeneralStore(),
             currentStep: 1,
-            filters: { aisle_from: "A", aisle_to: "Z", position_from: 1, position_to: 99, level_from: 1, level_to: 5, front_from: 1, front_to: 2, parity_even: false, parity_odd: false },
+            filters: { aisle_from: "A", aisle_to: "Z", position_from: 1, position_to: 99, level_from: 1, level_to: 5, front_from: 1, front_to: 2, parity_even: true, parity_odd: true },
             searchResults: [],
             selectedLocations: [],
             tempSelection: [],
@@ -633,7 +633,9 @@ export default {
             let res = await this.store.callOdoo("get_locations_by_range", "", this.filters);
             if (res?.locations) {
                 let locs = res.locations;
-                if (this.filters.parity_even && !this.filters.parity_odd) {
+                if (!this.filters.parity_even && !this.filters.parity_odd) {
+                    locs = [];
+                } else if (this.filters.parity_even && !this.filters.parity_odd) {
                     locs = this.filterLocationsByParity(locs, 'even');
                 } else if (this.filters.parity_odd && !this.filters.parity_even) {
                     locs = this.filterLocationsByParity(locs, 'odd');
