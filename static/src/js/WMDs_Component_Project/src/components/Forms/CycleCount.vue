@@ -38,6 +38,19 @@
                                 <InputNumber v-model="filters.front_to" :min="1" :max="2" inputClass="input-full" />
                             </div>
                         </div>
+                        <div class="filter-group">
+                            <label class="filter-label">Posiciones</label>
+                            <div class="flex-row gap-small align-items-center" style="margin-top: 0.8rem; height: 38px;">
+                                <div class="flex align-items-center">
+                                    <Checkbox id="parity_even" v-model="filters.parity_even" :binary="true" />
+                                    <label for="parity_even" class="ml-2 cursor-pointer font-bold text-sm" style="margin-left: 0.35rem; margin-right: 1.5rem;">Pares</label>
+                                </div>
+                                <div class="flex align-items-center">
+                                    <Checkbox id="parity_odd" v-model="filters.parity_odd" :binary="true" />
+                                    <label for="parity_odd" class="ml-2 cursor-pointer font-bold text-sm" style="margin-left: 0.35rem;">Impares</label>
+                                </div>
+                            </div>
+                        </div>
                         <div class="filter-actions">
                             <Button label="Buscar" icon="fa fa-search" @click="fetchLocations" :loading="store.loading" :disabled="isRangeInvalid" />
                         </div>
@@ -116,8 +129,6 @@
                             </div>
                             <label class="small-label">Responsable</label>
                             <Dropdown v-model="op.operator_id" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" placeholder="Seleccionar..." class="input-full mb-2" filter />
-                            <label class="small-label">Posiciones</label>
-                            <Dropdown v-model="op.position_filter" :options="positionFilterOptions" optionLabel="label" optionValue="value" class="input-full" />
                         </div>
                     </div>
 
@@ -443,10 +454,6 @@
                 <label class="font-bold mb-1 block">Operador(es)</label>
                 <Listbox v-model="operatorDialog.selected" :options="optionsCache['operadores']" optionLabel="name" optionValue="id" :multiple="operatorDialog.multiSelect" filter listStyle="max-height:250px" />
             </div>
-            <div v-if="operatorDialog.mode === 'add'" class="field mb-2">
-                <label class="font-bold mb-1 block">Posiciones a Asignar</label>
-                <Dropdown v-model="operatorDialog.position_filter" :options="positionFilterOptions" optionLabel="label" optionValue="value" class="input-full" />
-            </div>
             <template #footer>
                 <Button label="Cancelar" icon="fa fa-times" @click="operatorDialog.visible = false" class="p-button-text" />
                 <Button label="Guardar" icon="fa fa-check" @click="handleOperatorSave" :loading="store.loading" />
@@ -466,15 +473,16 @@ import Dropdown from "primevue/dropdown";
 import Dialog from 'primevue/dialog';
 import Listbox from 'primevue/listbox';
 import Divider from 'primevue/divider';
+import Checkbox from 'primevue/checkbox';
 
 export default {
     name: "CycleCountModal",
-    components: { InputText, InputNumber, Button, DataTable, Column, Dropdown, Dialog, Listbox, Divider },
+    components: { InputText, InputNumber, Button, DataTable, Column, Dropdown, Dialog, Listbox, Divider, Checkbox },
     data() {
         return {
             store: useGeneralStore(),
             currentStep: 1,
-            filters: { aisle_from: "A", aisle_to: "Z", position_from: 1, position_to: 99, level_from: 1, level_to: 5, front_from: 1, front_to: 2 },
+            filters: { aisle_from: "A", aisle_to: "Z", position_from: 1, position_to: 99, level_from: 1, level_to: 5, front_from: 1, front_to: 2, parity_even: false, parity_odd: false },
             searchResults: [],
             selectedLocations: [],
             tempSelection: [],
@@ -483,19 +491,13 @@ export default {
             debouncedSearchQueryResults: "",
             rawSearchQuerySelected: "",
             debouncedSearchQuerySelected: "",
-            assignedOperators: [{ id: Date.now(), operator_id: null, position_filter: 'all' }],
+            assignedOperators: [{ id: Date.now(), operator_id: null }],
             newCount: { ref: "" },
             waves: [],
             created_by: '',
             cycleCountState: 'created',
             cycleCountNotes: '',
             optionsCache: { operadores: [] },
-            
-            positionFilterOptions: [
-                { label: 'Todas las Posiciones', value: 'all' },
-                { label: 'Posiciones Pares (e.g. P02, P04...)', value: 'even' },
-                { label: 'Posiciones Impares (e.g. P01, P03...)', value: 'odd' }
-            ],
 
             detailView: null, 
             selectedWave: null,
@@ -536,8 +538,7 @@ export default {
                 title: '',
                 mode: 'add', 
                 multiSelect: true,
-                selected: null,
-                position_filter: 'all'
+                selected: null
             }
         };
     },
@@ -630,7 +631,16 @@ export default {
         },
         async fetchLocations() {
             let res = await this.store.callOdoo("get_locations_by_range", "", this.filters);
-            if (res?.locations) { this.searchResults = res.locations; this.tempSelection = []; }
+            if (res?.locations) {
+                let locs = res.locations;
+                if (this.filters.parity_even && !this.filters.parity_odd) {
+                    locs = this.filterLocationsByParity(locs, 'even');
+                } else if (this.filters.parity_odd && !this.filters.parity_even) {
+                    locs = this.filterLocationsByParity(locs, 'odd');
+                }
+                this.searchResults = locs;
+                this.tempSelection = [];
+            }
         },
         async loadExistingCountDetails() {
             this.detailView = null; // Reset view when reloading
@@ -678,34 +688,18 @@ export default {
                 return true;
             });
         },
-        addOperatorField() { this.assignedOperators.push({ id: Date.now() + Math.random(), operator_id: null, position_filter: 'all' }); },
+        addOperatorField() { this.assignedOperators.push({ id: Date.now() + Math.random(), operator_id: null }); },
         removeOperatorField(idx) { 
             this.assignedOperators = this.assignedOperators.filter((_, i) => i !== idx); 
         },
         async saveFullCount() {
-            // Validation: ensure every operator has at least one location assigned
-            for (const op of this.assignedOperators) {
-                const filteredLocs = this.filterLocationsByParity(this.selectedLocations, op.position_filter);
-                if (filteredLocs.length === 0) {
-                    const opName = this.optionsCache['operadores'].find(o => o.id === op.operator_id)?.name || 'Operador';
-                    this.$toast.add({
-                        severity: 'error',
-                        summary: 'Filtro sin resultados',
-                        detail: `El operador ${opName} no tiene ubicaciones con el filtro de posiciones seleccionado.`,
-                        life: 5000
-                    });
-                    return;
-                }
-            }
-
             const payload = {
                 name: this.newCount.ref,
                 location_ids: this.selectedLocations.map(l => l.id),
                 operators: this.assignedOperators.map(op => {
-                    const filteredLocs = this.filterLocationsByParity(this.selectedLocations, op.position_filter);
                     return {
                         operator_id: op.operator_id,
-                        location_ids: filteredLocs.map(l => l.id)
+                        location_ids: this.selectedLocations.map(l => l.id)
                     };
                 })
             };
@@ -892,7 +886,6 @@ export default {
                 this.operatorDialog.title = 'Añadir Nueva Ola';
                 this.operatorDialog.multiSelect = true;
                 this.operatorDialog.selected = [];
-                this.operatorDialog.position_filter = 'all';
             } else { // reassign
                 this.operatorDialog.title = `Reasignar Operador para ${wave.name}`;
                 this.operatorDialog.multiSelect = false;
@@ -941,21 +934,11 @@ export default {
         async handleOperatorSave() {
             if (this.operatorDialog.mode === 'add') {
                  if (!this.operatorDialog.selected || this.operatorDialog.selected.length === 0) return;
-                 const filteredLocs = this.filterLocationsByParity(this.selectedLocations, this.operatorDialog.position_filter);
-                 if (filteredLocs.length === 0) {
-                     this.$toast.add({
-                         severity: 'error',
-                         summary: 'Filtro sin resultados',
-                         detail: 'No hay ubicaciones para este filtro de posiciones (pares/impares).',
-                         life: 5000
-                     });
-                     return;
-                 }
                  const payload = {
                      location_ids: this.selectedLocations.map(l => l.id),
                      operators: this.operatorDialog.selected.map(opId => ({
                          operator_id: opId,
-                         location_ids: filteredLocs.map(l => l.id)
+                         location_ids: this.selectedLocations.map(l => l.id)
                      })),
                      cycle_count_id: this.modalData.id
                  };
