@@ -425,11 +425,20 @@ class StockMoveLineWMDS(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
-            self._check_forbidden_locations(vals)
+            if vals.get('quantity', 0.0) > 0:
+                self._check_forbidden_locations(vals)
         return super(StockMoveLineWMDS, self).create(vals_list)
 
     def write(self, vals):
-        self._check_forbidden_locations(vals)
+        for record in self:
+            qty = vals.get('quantity', record.quantity)
+            if qty > 0:
+                check_vals = {
+                    'location_id': vals.get('location_id', record.location_id.id),
+                    'location_dest_id': vals.get('location_dest_id', record.location_dest_id.id),
+                    'quant_id': vals.get('quant_id'),
+                }
+                record._check_forbidden_locations(check_vals)
         return super(StockMoveLineWMDS, self).write(vals)
 
     def _check_forbidden_locations(self, vals):
