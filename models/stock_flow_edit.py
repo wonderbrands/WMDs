@@ -426,17 +426,36 @@ class StockMoveLineWMDS(models.Model):
     def create(self, vals_list):
         for vals in vals_list:
             if vals.get('quantity', 0.0) > 0:
-                self._check_forbidden_locations(vals)
+                quant_id = vals.get('quant_id')
+                if quant_id:
+                    quant = self.env['stock.quant'].sudo().browse(quant_id)
+                    loc_id = quant.location_id.id
+                else:
+                    loc_id = vals.get('location_id')
+                
+                check_vals = {
+                    'location_id': loc_id,
+                    'location_dest_id': vals.get('location_dest_id'),
+                    'quant_id': quant_id,
+                }
+                self._check_forbidden_locations(check_vals)
         return super(StockMoveLineWMDS, self).create(vals_list)
 
     def write(self, vals):
         for record in self:
             qty = vals.get('quantity', record.quantity)
             if qty > 0:
+                quant_id = vals.get('quant_id', record.quant_id.id if record.quant_id else False)
+                if quant_id:
+                    quant = self.env['stock.quant'].sudo().browse(quant_id)
+                    loc_id = quant.location_id.id
+                else:
+                    loc_id = vals.get('location_id', record.location_id.id)
+                
                 check_vals = {
-                    'location_id': vals.get('location_id', record.location_id.id),
+                    'location_id': loc_id,
                     'location_dest_id': vals.get('location_dest_id', record.location_dest_id.id),
-                    'quant_id': vals.get('quant_id'),
+                    'quant_id': quant_id,
                 }
                 record._check_forbidden_locations(check_vals)
         return super(StockMoveLineWMDS, self).write(vals)
