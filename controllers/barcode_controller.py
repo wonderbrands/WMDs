@@ -544,7 +544,22 @@ class BarcodeController(http.Controller):
                 if res_model == 'stock.picking':
                     res = record.button_validate()
                 else:
-                    res = record.action_done()
+                    # Validar uno por uno para liberar memoria y evitar OOM (Bad Gateway)
+                    pickings_to_validate = record.picking_ids.filtered(lambda p: p.state not in ('cancel', 'done'))
+                    for picking in pickings_to_validate:
+                        res_picking = picking.button_validate()
+                        
+                        # Procesar backorder de inmediato si es requerido para este picking
+                        if isinstance(res_picking, dict) and res_picking.get('res_model') == 'stock.backorder.confirmation':
+                            wizard = request.env['stock.backorder.confirmation'].with_context(res_picking['context']).sudo().create({
+                                'pick_ids': [(4, picking.id)]
+                            })
+                            wizard.process()
+                        
+                        # Flush y limpieza de caché de Odoo
+                        request.env.flush_all()
+                        request.env.invalidate_all()
+                    res = True
             except Exception as odoo_e:
                 logger.error(f"Odoo Validation Error: {str(odoo_e)}")
                 return {"status": "error", "message": f"Error de Odoo: {str(odoo_e)}"}
