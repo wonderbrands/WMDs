@@ -430,6 +430,22 @@ class StockMoveLineWMDS(models.Model):
     def create(self, vals_list):
         for vals in vals_list:
             if vals.get('quantity', 0.0) > 0:
+                is_return = False
+                move_id = vals.get('move_id')
+                if move_id:
+                    move = self.env['stock.move'].sudo().browse(move_id)
+                    if move.origin_returned_move_id:
+                        is_return = True
+                if not is_return:
+                    picking_id = vals.get('picking_id')
+                    if picking_id:
+                        picking = self.env['stock.picking'].sudo().browse(picking_id)
+                        if any(m.origin_returned_move_id for m in picking.move_ids):
+                            is_return = True
+                
+                if is_return:
+                    continue
+
                 quant_id = vals.get('quant_id')
                 if quant_id:
                     quant = self.env['stock.quant'].sudo().browse(quant_id)
@@ -447,6 +463,26 @@ class StockMoveLineWMDS(models.Model):
 
     def write(self, vals):
         for record in self:
+            is_return = False
+            if record.move_id and record.move_id.origin_returned_move_id:
+                is_return = True
+            elif record.picking_id and any(m.origin_returned_move_id for m in record.picking_id.move_ids):
+                is_return = True
+            else:
+                move_id = vals.get('move_id')
+                if move_id:
+                    move = self.env['stock.move'].sudo().browse(move_id)
+                    if move.origin_returned_move_id:
+                        is_return = True
+                picking_id = vals.get('picking_id')
+                if picking_id:
+                    picking = self.env['stock.picking'].sudo().browse(picking_id)
+                    if any(m.origin_returned_move_id for m in picking.move_ids):
+                        is_return = True
+
+            if is_return:
+                continue
+
             qty = vals.get('quantity', record.quantity)
             if qty > 0:
                 quant_id = vals.get('quant_id', record.quant_id.id if record.quant_id else False)

@@ -340,3 +340,79 @@ class TestRackeoN1(TransactionCase):
         self.assertFalse(picking.move_line_ids)
         self.assertEqual(move.wmds_picked_qty, 0.0)
 
+    def test_return_picking_bypass_forbidden_locations(self):
+        """Test that return pickings/moves bypass the forbidden locations check."""
+        # 1. Create a forbidden destination location
+        parent_loc = self.env['stock.location'].create({
+            'name': 'Stock',
+            'usage': 'view',
+        })
+        forbidden_loc = self.env['stock.location'].create({
+            'name': 'Almacenaje',
+            'location_id': parent_loc.id,
+            'usage': 'internal',
+        })
+        self.assertEqual(forbidden_loc.complete_name, 'Stock/Almacenaje')
+
+        # 2. Test that a normal (non-return) picking to a forbidden location fails
+        picking_fail = self.env['stock.picking'].create({
+            'picking_type_id': self.picking_type_rackeo.id,
+            'location_id': self.loc_src.id,
+            'location_dest_id': forbidden_loc.id,
+        })
+        move_fail = self.env['stock.move'].create({
+            'name': 'Move Fail',
+            'product_id': self.product_1.id,
+            'product_uom_qty': 1.0,
+            'product_uom': self.product_1.uom_id.id,
+            'picking_id': picking_fail.id,
+            'location_id': self.loc_src.id,
+            'location_dest_id': forbidden_loc.id,
+            'quantity': 1.0,
+        })
+        picking_fail.action_confirm()
+        
+        # This assign/validate should raise UserError because location is forbidden
+        with self.assertRaises(UserError):
+            picking_fail.button_validate()
+
+        # 3. Test that a return picking/move to the same forbidden location succeeds
+        orig_picking = self.env['stock.picking'].create({
+            'picking_type_id': self.picking_type_rackeo.id,
+            'location_id': self.loc_src.id,
+            'location_dest_id': self.loc_normal.id,
+        })
+        orig_move = self.env['stock.move'].create({
+            'name': 'Original Move',
+            'product_id': self.product_1.id,
+            'product_uom_qty': 1.0,
+            'product_uom': self.product_1.uom_id.id,
+            'picking_id': orig_picking.id,
+            'location_id': self.loc_src.id,
+            'location_dest_id': self.loc_normal.id,
+            'quantity': 1.0,
+        })
+        orig_picking.action_confirm()
+        orig_picking.button_validate()
+
+        return_picking = self.env['stock.picking'].create({
+            'picking_type_id': self.picking_type_rackeo.id,
+            'location_id': self.loc_normal.id,
+            'location_dest_id': forbidden_loc.id,
+        })
+        return_move = self.env['stock.move'].create({
+            'name': 'Return Move',
+            'product_id': self.product_1.id,
+            'product_uom_qty': 1.0,
+            'product_uom': self.product_1.uom_id.id,
+            'picking_id': return_picking.id,
+            'location_id': self.loc_normal.id,
+            'location_dest_id': forbidden_loc.id,
+            'origin_returned_move_id': orig_move.id,
+            'quantity': 1.0,
+        })
+        return_picking.action_confirm()
+        # This validate should succeed because it is a return and bypasses the check
+        return_picking.button_validate()
+        self.assertEqual(return_picking.state, 'done')
+
