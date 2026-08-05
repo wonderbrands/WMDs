@@ -201,8 +201,14 @@ class BarcodeController(http.Controller):
         try:
             user = False
             if operator_email:
-                # Use case-insensitive search for login
-                user = request.env['res.users'].sudo().search([('login', '=ilike', operator_email.strip())], limit=1)
+                if not hasattr(request, '_operator_users_cache'):
+                    request._operator_users_cache = {}
+                email_key = operator_email.strip().lower()
+                if email_key in request._operator_users_cache:
+                    user = request._operator_users_cache[email_key]
+                else:
+                    user = request.env['res.users'].sudo().search([('login', '=ilike', email_key)], limit=1)
+                    request._operator_users_cache[email_key] = user
             
             if not user:
                 user = request.env.user
@@ -466,42 +472,73 @@ class BarcodeController(http.Controller):
                 key = (line.product_id.id, line.location_id.id)
                 stock_check[key] = stock_check.get(key, 0.0) + line.wmds_picked_qty
             
-            for (prod_id, loc_id), qty_needed in stock_check.items():
-                product = request.env['product.product'].sudo().browse(prod_id)
-                location = request.env['stock.location'].sudo().browse(loc_id)
+            if stock_check:
+                product_ids = list(set(k[0] for k in stock_check.keys()))
+                location_ids = list(set(k[1] for k in stock_check.keys()))
                 
-                # Check stock_no_negative flags
-                disallowed_by_product = not product.allow_negative_stock and not product.categ_id.allow_negative_stock
-                disallowed_by_location = not location.allow_negative_stock
+                # Prefetch records and fields to cache
+                products = request.env['product.product'].sudo().browse(product_ids)
+                locations = request.env['stock.location'].sudo().browse(location_ids)
+                products.mapped('categ_id.allow_negative_stock')
+                locations.mapped('allow_negative_stock')
                 
-                if product.is_storable and location.usage in ['internal', 'transit'] and disallowed_by_product and disallowed_by_location:
-                    quants = request.env['stock.quant'].sudo().search([
-                        ('product_id', '=', prod_id),
-                        ('location_id', '=', loc_id)
-                    ])
-                    available = sum(quants.mapped('quantity'))
-                    if qty_needed > available:
-                         return {
-                            "status": "error", 
-                            "message": f"Stock insuficiente en {location.display_name} para {product.display_name}. Disponible: {available}, Requerido: {qty_needed}. No se puede validar para evitar saldos negativos."
-                        }
+                product_map = {p.id: p for p in products}
+                location_map = {l.id: l for l in locations}
+                
+                # Single batch query to stock.quant
+                quants = request.env['stock.quant'].sudo().search([
+                    ('product_id', 'in', product_ids),
+                    ('location_id', 'in', location_ids)
+                ])
+                quant_stock = {}
+                for quant in quants:
+                    q_key = (quant.product_id.id, quant.location_id.id)
+                    quant_stock[q_key] = quant_stock.get(q_key, 0.0) + quant.quantity
+                
+                for (prod_id, loc_id), qty_needed in stock_check.items():
+                    product = product_map.get(prod_id)
+                    location = location_map.get(loc_id)
+                    if not product or not location:
+                        continue
+                    disallowed_by_product = not product.allow_negative_stock and not product.categ_id.allow_negative_stock
+                    disallowed_by_location = not location.allow_negative_stock
+                    
+                    if product.is_storable and location.usage in ['internal', 'transit'] and disallowed_by_product and disallowed_by_location:
+                        available = quant_stock.get((prod_id, loc_id), 0.0)
+                        if qty_needed > available:
+                             return {
+                                "status": "error", 
+                                "message": f"Stock insuficiente en {location.display_name} para {product.display_name}. Disponible: {available}, Requerido: {qty_needed}. No se puede validar para evitar saldos negativos."
+                            }
 
             # 2. Call Odoo's native validation
             res = None
             try:
                 # Synchronize 'picked' to 'quantity' (qty_done) inside the try block
                 processed_lines_info = []
+                updates = {}
                 for line in record.move_line_ids:
-                    if line.wmds_picked_qty > 0:
+                    target_qty = line.wmds_picked_qty
+                    target_picked = True if target_qty > 0 else line.picked
+                    if target_qty > 0:
                         processed_lines_info.append({
                             'move_id': line.move_id.id,
-                            'qty': line.wmds_picked_qty
+                            'qty': target_qty
                         })
                     
-                    # En Odoo 19 es quantity
-                    line.sudo().write({
-                        'quantity': line.wmds_picked_qty,
-                        'picked': True if line.wmds_picked_qty > 0 else line.picked
+                    # Only schedule update if values are changing
+                    if line.quantity != target_qty or line.picked != target_picked:
+                        key = (target_qty, target_picked)
+                        if key not in updates:
+                            updates[key] = []
+                        updates[key].append(line.id)
+                
+                # Perform batch writes to database
+                for (qty, picked), line_ids in updates.items():
+                    chunk_lines = request.env['stock.move.line'].sudo().browse(line_ids)
+                    chunk_lines.write({
+                        'quantity': qty,
+                        'picked': picked
                     })
 
                 if res_model == 'stock.picking':
@@ -514,15 +551,25 @@ class BarcodeController(http.Controller):
 
             # Logistics Update for DFUL: mark origin moves as dispatched
             if is_dful:
+                move_ids = [info['move_id'] for info in processed_lines_info]
+                moves = request.env['stock.move'].sudo().browse(move_ids)
+                # Prefetch move_orig_ids relations
+                all_orig_moves = moves.mapped('move_orig_ids')
+                all_orig_moves.mapped('picking_id')
+                all_orig_moves.mapped('batch_id')
+                all_orig_moves.mapped('product_id')
+                
+                move_qtys = {}
                 for info in processed_lines_info:
-                    move = request.env['stock.move'].sudo().browse(info['move_id'])
-                    qty = info['qty']
-                    
-                    # Find origin moves (PFUL)
-                    origin_moves = move.move_orig_ids
-                    for orig in origin_moves:
-                        if not orig.exists(): continue
-                        # Update origin move status in BIN/DOCK
+                    move_qtys[info['move_id']] = move_qtys.get(info['move_id'], 0.0) + info['qty']
+                
+                for move in moves:
+                    qty = move_qtys.get(move.id, 0.0)
+                    if qty <= 0:
+                        continue
+                    for orig in move.move_orig_ids:
+                        if not orig.exists():
+                            continue
                         new_qty_dispatched = (orig.qty_dispatched or 0.0) + qty
                         orig.write({
                             'qty_dispatched': new_qty_dispatched,
