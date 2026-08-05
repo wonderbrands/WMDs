@@ -117,6 +117,8 @@ class StockWMDS(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        if isinstance(vals_list, dict):
+            vals_list = [vals_list]
         res = super(StockWMDS, self).create(vals_list)
 
         not_assigned = None
@@ -311,6 +313,8 @@ class BatchWMDS(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        if isinstance(vals_list, dict):
+            vals_list = [vals_list]
         res = super(BatchWMDS, self).create(vals_list)
         for record in res:
             if record.operator:
@@ -424,98 +428,129 @@ class StockMoveLineWMDS(models.Model):
         "WH/Stock/A_Pickable", "Stock/A_Pickable",
         "WH/Stock/Almacenaje", "Stock/Almacenaje"
     }
-    #_FORBIDDEN_LOCATIONS = []
 
     @api.model_create_multi
     def create(self, vals_list):
+        if isinstance(vals_list, dict):
+            vals_list = [vals_list]
+
+        # Batch check for returns
+        move_ids = {v.get('move_id') for v in vals_list if v.get('move_id')}
+        picking_ids = {v.get('picking_id') for v in vals_list if v.get('picking_id')}
+
+        return_move_ids = set()
+        if move_ids:
+            return_move_ids = set(self.env['stock.move'].sudo().search([
+                ('id', 'in', list(move_ids)),
+                ('origin_returned_move_id', '!=', False)
+            ]).ids)
+
+        return_picking_ids = set()
+        if picking_ids:
+            return_picking_ids = set(self.env['stock.picking'].sudo().search([
+                ('id', 'in', list(picking_ids)),
+                ('move_ids.origin_returned_move_id', '!=', False)
+            ]).ids)
+
+        # Batch lookup for quants
+        quant_ids = {v.get('quant_id') for v in vals_list if v.get('quant_id')}
+        quant_loc_map = {}
+        if quant_ids:
+            quants = self.env['stock.quant'].sudo().browse(list(quant_ids))
+            quant_loc_map = {q.id: q.location_id.id for q in quants if q.location_id}
+
+        # Perform location checks for non-return moves
+        check_list = []
         for vals in vals_list:
             if vals.get('quantity', 0.0) > 0:
-                is_return = False
-                move_id = vals.get('move_id')
-                if move_id:
-                    move = self.env['stock.move'].sudo().browse(move_id)
-                    if move.origin_returned_move_id:
-                        is_return = True
-                if not is_return:
-                    picking_id = vals.get('picking_id')
-                    if picking_id:
-                        picking = self.env['stock.picking'].sudo().browse(picking_id)
-                        if any(m.origin_returned_move_id for m in picking.move_ids):
-                            is_return = True
-                
-                if is_return:
+                m_id = vals.get('move_id')
+                p_id = vals.get('picking_id')
+                if (m_id and m_id in return_move_ids) or (p_id and p_id in return_picking_ids):
                     continue
 
                 quant_id = vals.get('quant_id')
-                if quant_id:
-                    quant = self.env['stock.quant'].sudo().browse(quant_id)
-                    loc_id = quant.location_id.id
-                else:
-                    loc_id = vals.get('location_id')
-                
-                check_vals = {
+                loc_id = quant_loc_map.get(quant_id) if quant_id else vals.get('location_id')
+                check_list.append({
                     'location_id': loc_id,
                     'location_dest_id': vals.get('location_dest_id'),
                     'quant_id': quant_id,
-                }
-                self._check_forbidden_locations(check_vals)
+                })
+
+        if check_list:
+            self._batch_check_forbidden_locations(check_list)
+
         return super(StockMoveLineWMDS, self).create(vals_list)
 
     def write(self, vals):
-        for record in self:
-            is_return = False
-            if record.move_id and record.move_id.origin_returned_move_id:
-                is_return = True
-            elif record.picking_id and any(m.origin_returned_move_id for m in record.picking_id.move_ids):
-                is_return = True
-            else:
-                move_id = vals.get('move_id')
-                if move_id:
-                    move = self.env['stock.move'].sudo().browse(move_id)
-                    if move.origin_returned_move_id:
-                        is_return = True
-                picking_id = vals.get('picking_id')
-                if picking_id:
-                    picking = self.env['stock.picking'].sudo().browse(picking_id)
-                    if any(m.origin_returned_move_id for m in picking.move_ids):
-                        is_return = True
+        if 'quantity' in vals or 'location_id' in vals or 'location_dest_id' in vals or 'quant_id' in vals:
+            return_move_ids = set(self.mapped('move_id').filtered(lambda m: m.origin_returned_move_id).ids)
+            return_picking_ids = set(self.mapped('picking_id').filtered(lambda p: any(m.origin_returned_move_id for m in p.move_ids)).ids)
 
-            if is_return:
-                continue
+            val_move_id = vals.get('move_id')
+            if val_move_id and self.env['stock.move'].sudo().browse(val_move_id).origin_returned_move_id:
+                return_move_ids.add(val_move_id)
 
-            qty = vals.get('quantity', record.quantity)
-            if qty > 0:
-                quant_id = vals.get('quant_id', record.quant_id.id if record.quant_id else False)
-                if quant_id:
-                    quant = self.env['stock.quant'].sudo().browse(quant_id)
-                    loc_id = quant.location_id.id
-                else:
-                    loc_id = vals.get('location_id', record.location_id.id)
-                
-                check_vals = {
-                    'location_id': loc_id,
-                    'location_dest_id': vals.get('location_dest_id', record.location_dest_id.id),
-                    'quant_id': quant_id,
-                }
-                record._check_forbidden_locations(check_vals)
+            val_picking_id = vals.get('picking_id')
+            if val_picking_id and any(m.origin_returned_move_id for m in self.env['stock.picking'].sudo().browse(val_picking_id).move_ids):
+                return_picking_ids.add(val_picking_id)
+
+            quant_id = vals.get('quant_id')
+            quant_loc_id = False
+            if quant_id:
+                quant = self.env['stock.quant'].sudo().browse(quant_id)
+                quant_loc_id = quant.location_id.id if quant.location_id else False
+
+            check_list = []
+            for record in self:
+                is_return = False
+                if record.move_id and record.move_id.id in return_move_ids:
+                    is_return = True
+                elif record.picking_id and record.picking_id.id in return_picking_ids:
+                    is_return = True
+
+                if is_return:
+                    continue
+
+                qty = vals.get('quantity', record.quantity)
+                if qty > 0:
+                    q_id = quant_id or (record.quant_id.id if record.quant_id else False)
+                    if quant_loc_id:
+                        loc_id = quant_loc_id
+                    elif q_id and record.quant_id:
+                        loc_id = record.quant_id.location_id.id
+                    else:
+                        loc_id = vals.get('location_id', record.location_id.id)
+
+                    check_list.append({
+                        'location_id': loc_id,
+                        'location_dest_id': vals.get('location_dest_id', record.location_dest_id.id),
+                        'quant_id': q_id,
+                    })
+
+            if check_list:
+                self._batch_check_forbidden_locations(check_list)
+
         return super(StockMoveLineWMDS, self).write(vals)
 
-    def _check_forbidden_locations(self, vals):
-        loc_id = vals.get('location_id')
-        dest_id = vals.get('location_dest_id')
-        quant_id = vals.get('quant_id')
+    def _batch_check_forbidden_locations(self, check_list):
+        loc_ids = set()
+        for item in check_list:
+            if item.get('location_id'):
+                loc_ids.add(item['location_id'])
+            if item.get('location_dest_id'):
+                loc_ids.add(item['location_dest_id'])
 
-        if loc_id:
-            loc = self.env['stock.location'].sudo().browse(loc_id)
-            if loc.complete_name and loc.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"Error al guardar: La ubicación '{loc.complete_name}' es una ubicación padre y no puede ser usada como origen en una línea de movimiento.")
+        if not loc_ids:
+            return
 
-        if dest_id:
-            dest = self.env['stock.location'].sudo().browse(dest_id)
-            if dest.complete_name and dest.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"Error al guardar: La ubicación '{dest.complete_name}' es una ubicación padre y no puede ser usada como destino en una línea de movimiento.")
+        locations = self.env['stock.location'].sudo().browse(list(loc_ids))
+        loc_name_map = {l.id: (l.complete_name.strip() if l.complete_name else "") for l in locations}
 
-        if quant_id:
-            quant = self.env['stock.quant'].sudo().browse(quant_id)
-            if quant.location_id and quant.location_id.complete_name and quant.location_id.complete_name.strip() in self._FORBIDDEN_LOCATIONS:
-                raise UserError(f"Error al guardar: El stock seleccionado pertenece a la ubicación padre '{quant.location_id.complete_name}', lo cual no está permitido.")
+        for item in check_list:
+            loc_id = item.get('location_id')
+            if loc_id and loc_name_map.get(loc_id) in self._FORBIDDEN_LOCATIONS:
+                raise UserError(f"Error al guardar: La ubicación '{loc_name_map[loc_id]}' es una ubicación padre y no puede ser usada como origen en una línea de movimiento.")
+
+            dest_id = item.get('location_dest_id')
+            if dest_id and loc_name_map.get(dest_id) in self._FORBIDDEN_LOCATIONS:
+                raise UserError(f"Error al guardar: La ubicación '{loc_name_map[dest_id]}' es una ubicación padre y no puede ser usada como destino en una línea de movimiento.")

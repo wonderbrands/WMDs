@@ -19,6 +19,8 @@ class ScheduledCycleCount(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        if isinstance(vals_list, dict):
+            vals_list = [vals_list]
         last_rec = self.search([], order='id desc', limit=1)
         last_id = last_rec.id if last_rec else 0
         for i, vals in enumerate(vals_list):

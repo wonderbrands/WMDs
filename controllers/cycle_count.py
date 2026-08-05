@@ -450,6 +450,28 @@ class CycleCount(http.Controller):
             loc_block_map = {sl.location_id.id: sl.is_blocked for sl in count.selected_location_ids}
             loc_ids = list(loc_block_map.keys())
             
+            # Map location_id (including blocked/original/children) to planned loc_id in loc_ids
+            selected_locations = request.env['stock.location'].sudo().browse(loc_ids)
+            loc_to_planned_map = {l.id: l.id for l in selected_locations}
+            for loc in selected_locations:
+                if hasattr(loc, 'original_parent_id') and loc.original_parent_id:
+                    loc_to_planned_map[loc.original_parent_id.id] = loc.id
+
+            def get_planned_loc_id(raw_loc_id):
+                if not raw_loc_id:
+                    return None
+                if raw_loc_id in loc_to_planned_map:
+                    return loc_to_planned_map[raw_loc_id]
+                target_loc = request.env['stock.location'].sudo().browse(raw_loc_id)
+                curr = target_loc
+                while curr:
+                    if curr.id in loc_to_planned_map:
+                        loc_to_planned_map[raw_loc_id] = loc_to_planned_map[curr.id]
+                        return loc_to_planned_map[curr.id]
+                    curr = curr.location_id
+                loc_to_planned_map[raw_loc_id] = raw_loc_id
+                return raw_loc_id
+
             # Obtener todas las líneas de todas las olas
             all_lines = request.env['cycle.count.line'].sudo().with_context(active_test=False).search([('wave_id', 'in', waves.ids)])
             
@@ -459,13 +481,13 @@ class CycleCount(http.Controller):
             
             # Identify locations with active reservations for comparison view
             reservations = request.env['stock.move.line'].sudo().search([
-                ('location_id', 'in', loc_ids),
+                ('location_id', 'child_of', loc_ids),
                 ('state', 'not in', ['done', 'cancel']),
                 ('quantity', '>', 0)
             ])
             res_info_map = {}
             for res in reservations:
-                lid = res.location_id.id
+                lid = get_planned_loc_id(res.location_id.id)
                 if lid not in res_info_map:
                     res_info_map[lid] = []
                 p_name = res.picking_id.name or res.move_id.reference or "Movimiento Interno"
@@ -475,15 +497,16 @@ class CycleCount(http.Controller):
             # Inicializar con lo contado
             for line in all_lines:
                 if not line.product_id or not line.stock_location_id:
-                    if line.description == 'Marcada como vacía':
-                        empty_locations_by_wave.add((line.wave_id.id, line.stock_location_id.id))
+                    if line.description == 'Marcada como vacía' and line.stock_location_id:
+                        empty_locations_by_wave.add((line.wave_id.id, get_planned_loc_id(line.stock_location_id.id)))
                     continue
-                key = (line.stock_location_id.id, line.product_id.id)
+                lid = get_planned_loc_id(line.stock_location_id.id)
+                key = (lid, line.product_id.id)
                 if key not in comparison_map:
-                    lid = line.stock_location_id.id
+                    planned_loc = request.env['stock.location'].sudo().browse(lid)
                     comparison_map[key] = {
                         'location_id': lid,
-                        'location_name': line.stock_location_id.complete_name,
+                        'location_name': planned_loc.complete_name,
                         'is_blocked': loc_block_map.get(lid, False),
                         'has_reservation': lid in res_info_map,
                         'reservation_info': ", ".join(res_info_map.get(lid, [])),
@@ -498,17 +521,18 @@ class CycleCount(http.Controller):
 
             # Obtener stock teórico de las ubicaciones
             quants = request.env['stock.quant'].sudo().with_context(active_test=False).search([
-                ('location_id', 'in', loc_ids),
+                ('location_id', 'child_of', loc_ids),
                 ('quantity', '>', 0)
             ])
             
             for q in quants:
-                key = (q.location_id.id, q.product_id.id)
+                lid = get_planned_loc_id(q.location_id.id)
+                key = (lid, q.product_id.id)
                 if key not in comparison_map:
-                    lid = q.location_id.id
+                    planned_loc = request.env['stock.location'].sudo().browse(lid)
                     comparison_map[key] = {
                         'location_id': lid,
-                        'location_name': q.location_id.complete_name,
+                        'location_name': planned_loc.complete_name,
                         'is_blocked': loc_block_map.get(lid, False),
                         'has_reservation': lid in res_info_map,
                         'reservation_info': ", ".join(res_info_map.get(lid, [])),

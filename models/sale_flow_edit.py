@@ -12,6 +12,8 @@ class SOWMDS(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        if isinstance(vals_list, dict):
+            vals_list = [vals_list]
         res = super(SOWMDS, self).create(vals_list)
         for record, vals in zip(res, vals_list):
             self.env['wmds.log'].sudo().create({

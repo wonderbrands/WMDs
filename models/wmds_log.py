@@ -22,6 +22,8 @@ class WMDSLog(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        if isinstance(vals_list, dict):
+            vals_list = [vals_list]
         for vals in vals_list:
             if vals.get('log'):
                 vals['log'] = vals['log'].replace('\n', ' ').replace('\r', ' ').strip()
