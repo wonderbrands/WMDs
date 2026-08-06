@@ -38,6 +38,8 @@
         "template/wmds_template.xml",
         "data/wmds_status.xml",
         "data/block_reason_data.xml",
+        "data/wmds_locations.xml",
+        "data/wmds_picking_types.xml",
         "views/wmds_stock.xml",
         "views/wmds_po.xml",
         "views/wmds_sale.xml",

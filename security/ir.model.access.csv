@@ -20,4 +20,3 @@ access_wmds_dispatch_session_line_user,wmds.dispatch.session.line.user,model_wmd
 access_stock_location_block_wizard_user,stock.location.block.wizard.user,model_stock_location_block_wizard,base.group_user,1,1,1,1
 access_wmds_queued_tasks_user,wmds.queued_tasks.user,model_wmds_queued_tasks,base.group_user,1,1,1,1
 
-

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="picking_type_merma" model="stock.picking.type">
+            <field name="name">Merma</field>
+            <field name="sequence_code">MER</field>
+            <field name="code">internal</field>
+        </record>
+
+        <record id="picking_type_cancelacion" model="stock.picking.type">
+            <field name="name">Cancelaciones</field>
+            <field name="sequence_code">CAN</field>
+            <field name="code">internal</field>
+        </record>
+    </data>
+</odoo>

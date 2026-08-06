@@ -108,8 +108,16 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
             case "operator_roles":
                 return [
                     { id: 101, name: "Reception" },
-                    { id: 102, name: "Picker" },
-                    { id: 103, name: "Packer" },
+                    { id: 102, name: "Forklift operator" },
+                    { id: 103, name: "Picker" },
+                    { id: 104, name: "Packer" },
+                    { id: 105, name: "BIN" },
+                    { id: 106, name: "DOCK" },
+                    { id: 107, name: "Dispatch" },
+                    { id: 108, name: "Stock Counter" },
+                    { id: 109, name: "Replenishment" },
+                    { id: 110, name: "Merma" },
+                    { id: 111, name: "Cancelación" },
                 ]
 
             case "save_operator":
@@ -593,6 +601,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
                 case 'get_barcode_url':
                     return result.result?.url;
                 case 'operadores':
+                case 'operator_roles':
                     return result.result?.results;
                 default:
                     return result.result;

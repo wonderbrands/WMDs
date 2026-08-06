@@ -2,60 +2,87 @@
 <odoo>
 
     <data>
+        <record id="module_category_wmds" model="ir.module.category">
+            <field name="name">WMDs Operadores</field>
+            <field name="description">Permisos y Roles para Operaciones WMDs</field>
+            <field name="sequence">20</field>
+        </record>
+
         <record model="res.groups" id="group_wmds_manager">
             <field name="name">WMDs Manager</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
         
         <record model="res.groups" id="group_wmds_manager_ro">
             <field name="name">WMDs Manager Read Only</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
 
            
         <record model="res.groups" id="group_wmds_log_reader">
             <field name="name">WMDs Logs</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
 
         <record model="res.groups" id="group_wmds_operator">
             <field name="name">WMDs Operator</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
 
         <record id="role_wmds_reception_operator" model="res.groups">
             <field name="name">WMDs Operator - Reception</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
 
         <record id="role_wmds_forklift_operator" model="res.groups">
             <field name="name">WMDs Operator - Forklift operator</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>    
 
-         <record id="role_wmds_picker" model="res.groups">
+        <record id="role_wmds_picker" model="res.groups">
             <field name="name">WMDs Operator - Picker</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>   
 
         <record id="role_wmds_packer" model="res.groups">
             <field name="name">WMDs Operator - Packer</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
 
         <record id="role_wmds_bin" model="res.groups">
             <field name="name">WMDs Operator - BIN</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
 
         <record id="role_wmds_dock" model="res.groups">
             <field name="name">WMDs Operator - DOCK</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
 
         <record id="role_wmds_dispatch" model="res.groups">
             <field name="name">WMDs Operator - Dispatch</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
 
         <record id="role_wmds_counter" model="res.groups">
             <field name="name">WMDs Operator - Stock Counter</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
 
         <record id="role_wmds_supplier" model="res.groups">
             <field name="name">WMDs Operator - Replenishment</field>
+            <field name="category_id" ref="module_category_wmds"/>
         </record>
 
-        WMDs Operator - Replenishment
+        <record id="role_wmds_merma" model="res.groups">
+            <field name="name">WMDs Operator - Merma</field>
+            <field name="category_id" ref="module_category_wmds"/>
+        </record>
+
+        <record id="role_wmds_cancelacion" model="res.groups">
+            <field name="name">WMDs Operator - Cancelación</field>
+            <field name="category_id" ref="module_category_wmds"/>
+        </record>
         
     </data>
     

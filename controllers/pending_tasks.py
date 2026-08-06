@@ -32,6 +32,8 @@ class PendingTasks(http.Controller):
                 "reabastecimiento": "Reabastecimiento",
                 "dispatch_ful": "Resurtido a Ful: Despacho",
                 "devoluciones": "Devolucion",
+                "merma": "Merma",
+                "cancelacion": "Cancelac",
             }
 
             if task == "batch_pick":
@@ -54,9 +56,9 @@ class PendingTasks(http.Controller):
                     search_domain.append(('picking_type_id.name', 'ilike', 'Reabastecimiento'))
                     search_domain.append(('picking_type_id.name', 'ilike', 'Traslados internos'))
                 else:
-                    search_domain.append(('picking_type_id.name', 'ilike', map_task[task]))
+                    search_domain.append(('picking_type_id.name', 'ilike', map_task.get(task, task)))
 
-                if task not in ["acomodo", "ingresos"]:
+                if task not in ["acomodo", "ingresos", "merma", "cancelacion"]:
                     search_domain.append(('operator.login', '=', email))
                 else:
                     search_domain.append('|')

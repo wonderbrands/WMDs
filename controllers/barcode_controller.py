@@ -168,6 +168,18 @@ class BarcodeController(http.Controller):
             if not line.exists():
                 return {"status": "error", "message": "Línea no encontrada."}
 
+            # Merma restriction: Evitar que tome piezas de ubicaciones bloqueadas/
+            picking = line.picking_id or (line.batch_id.picking_ids[0] if line.batch_id and line.batch_id.picking_ids else False)
+            if picking and picking.picking_type_id and picking.picking_type_id.name == 'Merma':
+                src_loc = line.location_id
+                is_blocked = False
+                if hasattr(src_loc, 'is_location_blocked') and src_loc.is_location_blocked():
+                    is_blocked = True
+                elif src_loc.complete_name and ('bloquead' in src_loc.complete_name.lower()):
+                    is_blocked = True
+                if is_blocked:
+                    return {"status": "error", "message": "No se puede tomar piezas de una ubicación bloqueada."}
+
             extra_products = kw.get('extra_products', False)
             
             # Demand validation
@@ -319,11 +331,35 @@ class BarcodeController(http.Controller):
             is_valid = True 
             vobo_message = ""
 
-            # Lógica de COMEX para Rackeos
+            # Lógica de Merma y Cancelaciones
             picking = line.picking_id or (line.batch_id.picking_ids[0] if line.batch_id and line.batch_id.picking_ids else False)
-            logger.info(f"COMEX Check: picking={picking.name if picking else 'None'}, picking_type={picking.picking_type_id.name if picking else 'None'}, origin={picking.origin if picking else 'None'}")
+            p_type_name = picking.picking_type_id.name if picking and picking.picking_type_id else ''
+            logger.info(f"Operation Check: picking={picking.name if picking else 'None'}, picking_type={p_type_name}, origin={picking.origin if picking else 'None'}")
             
-            if picking and picking.picking_type_id.name == 'Rackeos':
+            if p_type_name == 'Merma':
+                dest_complete = scanned_location.complete_name or ''
+                if not ('WH/Merma' in dest_complete or 'Merma' in dest_complete):
+                    return {"status": "error", "message": "La ubicación final de Merma siempre debe pertenecer a WH/Merma/."}
+
+            elif 'Cancelac' in p_type_name:
+                is_ful = False
+                type_names = (line.picking_id.mapped('picking_type_id.name') if line.picking_id else line.batch_id.picking_ids.mapped('picking_type_id.name')) or []
+                if any('Resurtido' in name for name in type_names if name):
+                    is_ful = True
+                if picking and hasattr(picking, 'sale_id') and picking.sale_id and getattr(picking.sale_id, 'data_is_fulfillment', False):
+                    is_ful = True
+                
+                target_dest_name = 'WH/Stock/Guarderia_Cancelados_Ful' if is_ful else 'WH/Stock/Guarderia_Cancelados'
+                target_loc = request.env['stock.location'].sudo().search([('complete_name', '=', target_dest_name)], limit=1)
+                if not target_loc:
+                    short_name = 'Guarderia_Cancelados_Ful' if is_ful else 'Guarderia_Cancelados'
+                    target_loc = request.env['stock.location'].sudo().search([('name', '=', short_name)], limit=1)
+                
+                if target_loc:
+                    scanned_location = target_loc
+                    vobo_message = f"Traslado automático a {target_loc.display_name}."
+
+            if picking and p_type_name == 'Rackeos':
                 # Intentar encontrar la PO. A veces el origin tiene prefijos o múltiples referencias.
                 origin = picking.origin or ''
                 # Buscar cualquier secuencia que parezca una PO (típicamente empieza con P o PO)
