@@ -218,7 +218,8 @@ export default {
         { label: "Dañada", value: "danado" },
         { label: "Onsite", value: "onsite" },
         { label: "Sobredimensionada", value: "sobredimensionada" },
-        { label: "Dupla", value: "dupla" }
+        { label: "Dupla", value: "dupla" },
+        { label: "Materiales", value: "materiales" }
       ]
     };
   },
