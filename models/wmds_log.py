@@ -20,26 +20,22 @@ class WMDSLog(models.Model):
     date = fields.Datetime('Date', default=fields.Datetime.now, index=True)
     user = fields.Many2one('res.users', 'User')
 
-    @api.model_create_multi
-    def create(self, vals_list):
-        if isinstance(vals_list, dict):
-            vals_list = [vals_list]
-        for vals in vals_list:
-            if vals.get('log'):
-                vals['log'] = vals['log'].replace('\n', ' ').replace('\r', ' ').strip()
+    @api.model
+    def create(self, vals):
+        if vals.get('log'):
+            vals['log'] = vals['log'].replace('\n', ' ').replace('\r', ' ').strip()
         
         # Original log record
-        logs = super(WMDSLog, self).create(vals_list)
+        log = super(WMDSLog, self).create(vals)
         
         # Avoid recursion if we are already duplicating
         if self.env.context.get('wmds_log_duplicating'):
-            return logs
+            return log
 
         # Propagation logic
-        for log, vals in zip(logs, vals_list):
-            self._propagate_log(log, vals)
+        self._propagate_log(log, vals)
         
-        return logs
+        return log
 
     def _propagate_log(self, log, original_vals):
         """

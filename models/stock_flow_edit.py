@@ -115,26 +115,21 @@ class StockWMDS(models.Model):
                         super(StockWMDS, picking).action_assign()
         return res
 
-    @api.model_create_multi
-    def create(self, vals_list):
-        if isinstance(vals_list, dict):
-            vals_list = [vals_list]
-        res = super(StockWMDS, self).create(vals_list)
+    @api.model
+    def create(self, vals):
+        res = super(StockWMDS, self).create(vals)
 
-        not_assigned = None
-        for record in res:
-            if not record.operator:
-                if not_assigned is None:
-                    not_assigned = self.env['wmds.stock.status'].search([('value', '=', 'not_assigned')], limit=1)
-                if not_assigned:
-                    record.wmds_status = not_assigned.id
-            else:
-                # Log initial assignment if operator is provided in create
-                self.env['wmds.log'].sudo().create({
-                    'pick': record.id,
-                    'log': f"Operador asignado: {record.operator.name}",
-                    'user': self.env.user.id,
-                })
+        if not res.operator:
+            not_assigned = self.env['wmds.stock.status'].search([('value', '=', 'not_assigned')], limit=1)
+            if not_assigned:
+                res.wmds_status = not_assigned.id
+        else:
+            # Log initial assignment if operator is provided in create
+            self.env['wmds.log'].sudo().create({
+                'pick': res.id,
+                'log': f"Operador asignado: {res.operator.name}",
+                'user': self.env.user.id,
+            })
         return res
 
     def write(self, vals):
@@ -311,18 +306,15 @@ class BatchWMDS(models.Model):
             pickings_to_remove.write({'batch_id': False})
         return True
 
-    @api.model_create_multi
-    def create(self, vals_list):
-        if isinstance(vals_list, dict):
-            vals_list = [vals_list]
-        res = super(BatchWMDS, self).create(vals_list)
-        for record in res:
-            if record.operator:
-                self.env['wmds.log'].sudo().create({
-                    'batch_pick': record.id,
-                    'log': f"Operador asignado al lote: {record.operator.name}",
-                    'user': self.env.user.id,
-                })
+    @api.model
+    def create(self, vals):
+        res = super(BatchWMDS, self).create(vals)
+        if res.operator:
+            self.env['wmds.log'].sudo().create({
+                'batch_pick': res.id,
+                'log': f"Operador asignado al lote: {res.operator.name}",
+                'user': self.env.user.id,
+            })
         return res
 
     def write(self, vals):
