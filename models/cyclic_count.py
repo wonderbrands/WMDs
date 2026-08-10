@@ -17,13 +17,16 @@ class ScheduledCycleCount(models.Model):
     wave_ids = fields.One2many("cycle.count.wave", "cycle_count_id", string="Olas de Conteo")
     wmds_log = fields.One2many("wmds.log", "cycle_count", string="WMDS Log")
 
-    @api.model
-    def create(self, vals):
-        if vals.get('name', _('Nuevo')) == _('Nuevo'):
-            last_rec = self.search([], order='id desc', limit=1)
-            last_id = last_rec.id if last_rec else 0
-            vals['name'] = "CC%s" % (str(last_id + 1).zfill(6))
-        return super(ScheduledCycleCount, self).create(vals)
+    @api.model_create_multi
+    def create(self, vals_list):
+        if isinstance(vals_list, dict):
+            vals_list = [vals_list]
+        last_rec = self.search([], order='id desc', limit=1)
+        last_id = last_rec.id if last_rec else 0
+        for i, vals in enumerate(vals_list):
+            if vals.get('name', _('Nuevo')) == _('Nuevo'):
+                vals['name'] = "CC%s" % (str(last_id + 1 + i).zfill(6))
+        return super(ScheduledCycleCount, self).create(vals_list)
 
 class CycleCountSelectedLocation(models.Model):
     _name = "cycle.count.selected.location"

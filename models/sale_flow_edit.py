@@ -10,24 +10,27 @@ class SOWMDS(models.Model):
 
     wmds_log = fields.One2many('wmds.log', 'sale', string='WMDS Log')
 
-    @api.model
-    def create(self, vals):
-        res = super(SOWMDS, self).create(vals)
-        self.env['wmds.log'].sudo().create({
-            'sale': res.id,
-            'log': f"Se ha creado la órden de venta",
-            'user': self.env.user.id,
-            'date': fields.Datetime.now(),
-        })
-
-        if vals.get('carrier_selection_relational'):
-            carrier_name = res.carrier_selection_relational.name
+    @api.model_create_multi
+    def create(self, vals_list):
+        if isinstance(vals_list, dict):
+            vals_list = [vals_list]
+        res = super(SOWMDS, self).create(vals_list)
+        for record, vals in zip(res, vals_list):
             self.env['wmds.log'].sudo().create({
-                'sale': res.id,
-                'log': f"Se ha asignado el carrier {carrier_name} a la orden (Creación)",
+                'sale': record.id,
+                'log': f"Se ha creado la órden de venta",
                 'user': self.env.user.id,
                 'date': fields.Datetime.now(),
             })
+
+            if vals.get('carrier_selection_relational'):
+                carrier_name = record.carrier_selection_relational.name
+                self.env['wmds.log'].sudo().create({
+                    'sale': record.id,
+                    'log': f"Se ha asignado el carrier {carrier_name} a la orden (Creación)",
+                    'user': self.env.user.id,
+                    'date': fields.Datetime.now(),
+                })
         return res
 
     def write(self, vals):
