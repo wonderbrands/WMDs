@@ -475,16 +475,40 @@ class StockMoveLineWMDS(models.Model):
 
     def write(self, vals):
         if 'quantity' in vals or 'location_id' in vals or 'location_dest_id' in vals or 'quant_id' in vals:
-            return_move_ids = set(self.mapped('move_id').filtered(lambda m: m.origin_returned_move_id).ids)
-            return_picking_ids = set(self.mapped('picking_id').filtered(lambda p: any(m.origin_returned_move_id for m in p.move_ids)).ids)
+            move_ids = self.mapped('move_id').ids
+            picking_ids = self.mapped('picking_id').ids
+
+            return_move_ids = set()
+            if move_ids:
+                return_move_ids = set(self.env['stock.move'].sudo().search([
+                    ('id', 'in', move_ids),
+                    ('origin_returned_move_id', '!=', False)
+                ]).ids)
+
+            return_picking_ids = set()
+            if picking_ids:
+                return_picking_ids = set(self.env['stock.picking'].sudo().search([
+                    ('id', 'in', picking_ids),
+                    ('move_ids.origin_returned_move_id', '!=', False)
+                ]).ids)
 
             val_move_id = vals.get('move_id')
-            if val_move_id and self.env['stock.move'].sudo().browse(val_move_id).origin_returned_move_id:
-                return_move_ids.add(val_move_id)
+            if val_move_id:
+                has_return = self.env['stock.move'].sudo().search_count([
+                    ('id', '=', val_move_id),
+                    ('origin_returned_move_id', '!=', False)
+                ])
+                if has_return:
+                    return_move_ids.add(val_move_id)
 
             val_picking_id = vals.get('picking_id')
-            if val_picking_id and any(m.origin_returned_move_id for m in self.env['stock.picking'].sudo().browse(val_picking_id).move_ids):
-                return_picking_ids.add(val_picking_id)
+            if val_picking_id:
+                has_return = self.env['stock.picking'].sudo().search_count([
+                    ('id', '=', val_picking_id),
+                    ('move_ids.origin_returned_move_id', '!=', False)
+                ])
+                if has_return:
+                    return_picking_ids.add(val_picking_id)
 
             quant_id = vals.get('quant_id')
             quant_loc_id = False
