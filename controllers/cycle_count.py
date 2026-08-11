@@ -153,13 +153,34 @@ class CycleCount(http.Controller):
                 ('complete_name', '=ilike', 'WH/Merma/%'),
                 ('complete_name', '=ilike', 'Merma/%'),
             ]
+            special = kw.get('special', False)
+            if not special:
+                if f['a_from'] == f['a_to']:
+                    domain.append(('name', '=ilike', f"{f['a_from']}-%"))
+                elif len(f['a_from']) == 1 and len(f['a_to']) == 1 and ord(f['a_to']) - ord(f['a_from']) < 10:
+                    aisles = [chr(c) for c in range(ord(f['a_from']), ord(f['a_to']) + 1)]
+                    aisle_domain = ['|'] * (len(aisles) - 1)
+                    for aisle in aisles:
+                        aisle_domain.append(('name', '=ilike', f"{aisle}-%"))
+                    domain.extend(aisle_domain)
+
             all_locs = request.env['stock.location'].sudo().with_context(active_test=True).search(domain)
             
             active_counts = request.env['scheduled.cycle.count'].sudo().search([('state', 'not in', ['finalized', 'cancelled'])])
             active_location_ids = active_counts.mapped('selected_location_ids.location_id.id')
             
-            # Apply our advanced range filter
-            locations = all_locs.filtered(lambda u: u.id not in active_location_ids and is_location_in_range(u.complete_name))
+            # Apply our advanced range filter or special filter
+            special = kw.get('special', False)
+            if special:
+                loc_pattern = re.compile(r"^[A-Z]{1,2}-P\d{2}-F\d-N\d$", re.IGNORECASE)
+                locations = all_locs.filtered(
+                    lambda u: u.id not in active_location_ids
+                    and u.name not in ['Almacenaje', 'A_Pickable']
+                    and ('Almacenaje' in u.complete_name or 'A_Pickable' in u.complete_name)
+                    and not loc_pattern.match(u.name)
+                )
+            else:
+                locations = all_locs.filtered(lambda u: u.id not in active_location_ids and is_location_in_range(u.complete_name))
             
             # Apply custom sorting
             locations = sorted(locations, key=get_location_sort_key)

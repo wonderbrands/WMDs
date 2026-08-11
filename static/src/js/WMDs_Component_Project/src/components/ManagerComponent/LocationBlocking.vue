@@ -14,34 +14,57 @@
         <h3>Buscador de Ubicaciones</h3>
         
         <div class="filter-section">
-          <div class="filter-group">
-            <label class="filter-label">Pasillo (A - ZZ)</label>
-            <div class="flex-row gap-small">
-              <InputText v-model="filters.aisle_from" maxlength="2" @input="filters.aisle_from = filters.aisle_from.toUpperCase()" class="w-full p-inputtext-sm" />
-              <InputText v-model="filters.aisle_to" maxlength="2" @input="filters.aisle_to = filters.aisle_to.toUpperCase()" class="w-full p-inputtext-sm" />
+          <!-- Pestañas del Buscador -->
+          <div class="search-tabs flex-row mb-2" style="width: 100%; border-bottom: 2px solid #e5e7eb; gap: 1rem; margin-bottom: 1rem; display: flex;">
+            <button 
+              type="button" 
+              class="tab-btn" 
+              @click="searchTab = 'ranges'"
+              :style="searchTab === 'ranges' ? { background: 'none', border: 'none', padding: '0.5rem 1rem', 'font-size': '0.9rem', 'font-weight': '600', color: '#2563eb', cursor: 'pointer', 'border-bottom': '2px solid #2563eb', outline: 'none' } : { background: 'none', border: 'none', padding: '0.5rem 1rem', 'font-size': '0.9rem', 'font-weight': '600', color: '#6b7280', cursor: 'pointer', 'border-bottom': '2px solid transparent', outline: 'none' }"
+            >
+              Por Rangos
+            </button>
+            <button 
+              type="button" 
+              class="tab-btn" 
+              @click="searchTab = 'special'"
+              :style="searchTab === 'special' ? { background: 'none', border: 'none', padding: '0.5rem 1rem', 'font-size': '0.9rem', 'font-weight': '600', color: '#2563eb', cursor: 'pointer', 'border-bottom': '2px solid #2563eb', outline: 'none' } : { background: 'none', border: 'none', padding: '0.5rem 1rem', 'font-size': '0.9rem', 'font-weight': '600', color: '#6b7280', cursor: 'pointer', 'border-bottom': '2px solid transparent', outline: 'none' }"
+            >
+              Especiales (13)
+            </button>
+          </div>
+
+          <div v-show="searchTab === 'ranges'" style="display: flex; flex-direction: column; gap: 0.75rem; width: 100%;">
+            <div class="filter-group">
+              <label class="filter-label">Pasillo (A - ZZ)</label>
+              <div class="flex-row gap-small">
+                <InputText v-model="filters.aisle_from" maxlength="2" @input="filters.aisle_from = filters.aisle_from.toUpperCase()" class="w-full p-inputtext-sm" />
+                <InputText v-model="filters.aisle_to" maxlength="2" @input="filters.aisle_to = filters.aisle_to.toUpperCase()" class="w-full p-inputtext-sm" />
+              </div>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Posición (1 - 99)</label>
+              <div class="flex-row gap-small">
+                <InputNumber v-model="filters.position_from" :min="1" :max="99" class="w-full p-inputnumber-sm" />
+                <InputNumber v-model="filters.position_to" :min="1" :max="99" class="w-full p-inputnumber-sm" />
+              </div>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Nivel (1 - 5)</label>
+              <div class="flex-row gap-small">
+                <InputNumber v-model="filters.level_from" :min="1" :max="5" class="w-full p-inputnumber-sm" />
+                <InputNumber v-model="filters.level_to" :min="1" :max="5" class="w-full p-inputnumber-sm" />
+              </div>
+            </div>
+            <div class="filter-group">
+              <label class="filter-label">Frente (1 - 2)</label>
+              <div class="flex-row gap-small">
+                <InputNumber v-model="filters.front_from" :min="1" :max="2" class="w-full p-inputnumber-sm" />
+                <InputNumber v-model="filters.front_to" :min="1" :max="2" class="w-full p-inputnumber-sm" />
+              </div>
             </div>
           </div>
-          <div class="filter-group">
-            <label class="filter-label">Posición (1 - 99)</label>
-            <div class="flex-row gap-small">
-              <InputNumber v-model="filters.position_from" :min="1" :max="99" class="w-full p-inputnumber-sm" />
-              <InputNumber v-model="filters.position_to" :min="1" :max="99" class="w-full p-inputnumber-sm" />
-            </div>
-          </div>
-          <div class="filter-group">
-            <label class="filter-label">Nivel (1 - 5)</label>
-            <div class="flex-row gap-small">
-              <InputNumber v-model="filters.level_from" :min="1" :max="5" class="w-full p-inputnumber-sm" />
-              <InputNumber v-model="filters.level_to" :min="1" :max="5" class="w-full p-inputnumber-sm" />
-            </div>
-          </div>
-          <div class="filter-group">
-            <label class="filter-label">Frente (1 - 2)</label>
-            <div class="flex-row gap-small">
-              <InputNumber v-model="filters.front_from" :min="1" :max="2" class="w-full p-inputnumber-sm" />
-              <InputNumber v-model="filters.front_to" :min="1" :max="2" class="w-full p-inputnumber-sm" />
-            </div>
-          </div>
+
           <div class="filter-group">
             <label class="filter-label">Mostrar:</label>
             <Select 
@@ -767,6 +790,7 @@ export default {
   data() {
     return {
       store: useGeneralStore(),
+      searchTab: "ranges",
       show3DModal: false,
       isMobile: false,
       show3DSelector: true,
@@ -972,6 +996,11 @@ export default {
     }
   },
   watch: {
+    searchTab(newVal) {
+      if (newVal === 'special') {
+        this.performSearch();
+      }
+    },
     blockReasonType(newVal) {
       if (newVal === 'sobredimensionada') {
         this.fetchAdjacencies();
@@ -1048,7 +1077,8 @@ export default {
     async performSearch() {
       const res = await this.store.callOdoo("location_blocking_search", "", {
         ...this.filters,
-        only_blocked: false
+        only_blocked: false,
+        special: this.searchTab === 'special'
       });
 
       if (res && !res.error) {

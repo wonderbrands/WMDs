@@ -10,44 +10,66 @@
 
                 <div v-if="currentStep === 1" class="fade-in">
                     <div class="filter-section card-background">
-                        <div class="filter-group">
-                            <label class="filter-label">Pasillo (A - ZZ)</label>
-                            <div class="flex-row gap-small">
-                                <InputText v-model="filters.aisle_from" maxlength="2" @input="filters.aisle_from = filters.aisle_from.toUpperCase()" class="input-full" />
-                                <InputText v-model="filters.aisle_to" maxlength="2" @input="filters.aisle_to = filters.aisle_to.toUpperCase()" class="input-full" />
-                            </div>
+                        <!-- Pestañas del Buscador -->
+                        <div class="search-tabs flex-row mb-3" style="width: 100%; border-bottom: 2px solid #e5e7eb; gap: 1rem; margin-bottom: 1rem; display: flex;">
+                            <button 
+                              type="button" 
+                              class="tab-btn" 
+                              @click="searchTab = 'ranges'"
+                              :style="searchTab === 'ranges' ? { background: 'none', border: 'none', padding: '0.5rem 1rem', 'font-size': '0.9rem', 'font-weight': '600', color: '#2563eb', cursor: 'pointer', 'border-bottom': '2px solid #2563eb', outline: 'none' } : { background: 'none', border: 'none', padding: '0.5rem 1rem', 'font-size': '0.9rem', 'font-weight': '600', color: '#6b7280', cursor: 'pointer', 'border-bottom': '2px solid transparent', outline: 'none' }"
+                            >
+                              Por Rangos
+                            </button>
+                            <button 
+                              type="button" 
+                              class="tab-btn" 
+                              @click="searchTab = 'special'"
+                              :style="searchTab === 'special' ? { background: 'none', border: 'none', padding: '0.5rem 1rem', 'font-size': '0.9rem', 'font-weight': '600', color: '#2563eb', cursor: 'pointer', 'border-bottom': '2px solid #2563eb', outline: 'none' } : { background: 'none', border: 'none', padding: '0.5rem 1rem', 'font-size': '0.9rem', 'font-weight': '600', color: '#6b7280', cursor: 'pointer', 'border-bottom': '2px solid transparent', outline: 'none' }"
+                            >
+                              Especiales (13)
+                            </button>
                         </div>
-                        <div class="filter-group">
-                            <label class="filter-label">Posición (1 - 99)</label>
-                            <div class="flex-row gap-small">
-                                <InputNumber v-model="filters.position_from" :min="1" :max="99" inputClass="input-full" />
-                                <InputNumber v-model="filters.position_to" :min="1" :max="99" inputClass="input-full" />
-                            </div>
-                        </div>
-                        <div class="filter-group">
-                            <label class="filter-label">Nivel (1 - 5)</label>
-                            <div class="flex-row gap-small">
-                                <InputNumber v-model="filters.level_from" :min="1" :max="5" inputClass="input-full" />
-                                <InputNumber v-model="filters.level_to" :min="1" :max="5" inputClass="input-full" />
-                            </div>
-                        </div>
-                        <div class="filter-group">
-                            <label class="filter-label">Frente (1 - 2)</label>
-                            <div class="flex-row gap-small">
-                                <InputNumber v-model="filters.front_from" :min="1" :max="2" inputClass="input-full" />
-                                <InputNumber v-model="filters.front_to" :min="1" :max="2" inputClass="input-full" />
-                            </div>
-                        </div>
-                        <div class="filter-group">
-                            <label class="filter-label">Posiciones</label>
-                            <div class="flex-row gap-small align-items-center" style="margin-top: 0.8rem; height: 38px;">
-                                <div class="flex align-items-center">
-                                    <Checkbox id="parity_even" v-model="filters.parity_even" :binary="true" />
-                                    <label for="parity_even" class="ml-2 cursor-pointer font-bold text-sm" style="margin-left: 0.35rem; margin-right: 1.5rem;">Pares</label>
+
+                        <div v-show="searchTab === 'ranges'" style="display: flex; flex-wrap: wrap; gap: 0.75rem; width: 100%;">
+                            <div class="filter-group">
+                                <label class="filter-label">Pasillo (A - ZZ)</label>
+                                <div class="flex-row gap-small">
+                                    <InputText v-model="filters.aisle_from" maxlength="2" @input="filters.aisle_from = filters.aisle_from.toUpperCase()" class="input-full" />
+                                    <InputText v-model="filters.aisle_to" maxlength="2" @input="filters.aisle_to = filters.aisle_to.toUpperCase()" class="input-full" />
                                 </div>
-                                <div class="flex align-items-center">
-                                    <Checkbox id="parity_odd" v-model="filters.parity_odd" :binary="true" />
-                                    <label for="parity_odd" class="ml-2 cursor-pointer font-bold text-sm" style="margin-left: 0.35rem;">Impares</label>
+                            </div>
+                            <div class="filter-group">
+                                <label class="filter-label">Posición (1 - 99)</label>
+                                <div class="flex-row gap-small">
+                                    <InputNumber v-model="filters.position_from" :min="1" :max="99" inputClass="input-full" />
+                                    <InputNumber v-model="filters.position_to" :min="1" :max="99" inputClass="input-full" />
+                                </div>
+                            </div>
+                            <div class="filter-group">
+                                <label class="filter-label">Nivel (1 - 5)</label>
+                                <div class="flex-row gap-small">
+                                    <InputNumber v-model="filters.level_from" :min="1" :max="5" inputClass="input-full" />
+                                    <InputNumber v-model="filters.level_to" :min="1" :max="5" inputClass="input-full" />
+                                </div>
+                            </div>
+                            <div class="filter-group">
+                                <label class="filter-label">Frente (1 - 2)</label>
+                                <div class="flex-row gap-small">
+                                    <InputNumber v-model="filters.front_from" :min="1" :max="2" inputClass="input-full" />
+                                    <InputNumber v-model="filters.front_to" :min="1" :max="2" inputClass="input-full" />
+                                </div>
+                            </div>
+                            <div class="filter-group">
+                                <label class="filter-label">Posiciones</label>
+                                <div class="flex-row gap-small align-items-center" style="margin-top: 0.8rem; height: 38px;">
+                                    <div class="flex align-items-center">
+                                        <Checkbox id="parity_even" v-model="filters.parity_even" :binary="true" />
+                                        <label for="parity_even" class="ml-2 cursor-pointer font-bold text-sm" style="margin-left: 0.35rem; margin-right: 1.5rem;">Pares</label>
+                                    </div>
+                                    <div class="flex align-items-center">
+                                        <Checkbox id="parity_odd" v-model="filters.parity_odd" :binary="true" />
+                                        <label for="parity_odd" class="ml-2 cursor-pointer font-bold text-sm" style="margin-left: 0.35rem;">Impares</label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -481,6 +503,7 @@ export default {
     data() {
         return {
             store: useGeneralStore(),
+            searchTab: 'ranges',
             currentStep: 1,
             filters: { aisle_from: "A", aisle_to: "Z", position_from: 1, position_to: 99, level_from: 1, level_to: 5, front_from: 1, front_to: 2, parity_even: true, parity_odd: true },
             searchResults: [],
@@ -546,6 +569,7 @@ export default {
         modalData() { return this.store.form_context?.data || {}; },
         isCreating() { return !!this.modalData.cycle_count || this.modalData.form_type === 'new'; },
         isRangeInvalid() {
+            if (this.searchTab === 'special') return false;
             const f = this.filters;
             if (!f.aisle_from || !f.aisle_to) return true;
             
@@ -610,6 +634,11 @@ export default {
         }
     },
     watch: {
+        searchTab(newVal) {
+            if (newVal === 'special') {
+                this.fetchLocations();
+            }
+        },
         rawSearchQueryResults(newVal) {
             if (this.searchTimeoutResults) clearTimeout(this.searchTimeoutResults);
             this.searchTimeoutResults = setTimeout(() => {
@@ -630,15 +659,21 @@ export default {
             this.optionsCache = { ...this.optionsCache, operadores: data };
         },
         async fetchLocations() {
-            let res = await this.store.callOdoo("get_locations_by_range", "", this.filters);
+            let payload = {
+                ...this.filters,
+                special: this.searchTab === 'special'
+            };
+            let res = await this.store.callOdoo("get_locations_by_range", "", payload);
             if (res?.locations) {
                 let locs = res.locations;
-                if (!this.filters.parity_even && !this.filters.parity_odd) {
-                    locs = [];
-                } else if (this.filters.parity_even && !this.filters.parity_odd) {
-                    locs = this.filterLocationsByParity(locs, 'even');
-                } else if (this.filters.parity_odd && !this.filters.parity_even) {
-                    locs = this.filterLocationsByParity(locs, 'odd');
+                if (this.searchTab !== 'special') {
+                    if (!this.filters.parity_even && !this.filters.parity_odd) {
+                        locs = [];
+                    } else if (this.filters.parity_even && !this.filters.parity_odd) {
+                        locs = this.filterLocationsByParity(locs, 'even');
+                    } else if (this.filters.parity_odd && !this.filters.parity_even) {
+                        locs = this.filterLocationsByParity(locs, 'odd');
+                    }
                 }
                 this.searchResults = locs;
                 this.tempSelection = [];

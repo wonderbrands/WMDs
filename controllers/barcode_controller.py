@@ -428,22 +428,38 @@ class BarcodeController(http.Controller):
 
     @http.route('/wmds/v2/barcode/validate_operation', type='json', auth='user', methods=['POST'], csrf=True)
     def validate_operation(self, **kw):
+        def _mem():
+            try:
+                with open('/proc/self/status') as f:
+                    for line in f:
+                        if line.startswith('VmRSS:'):
+                            return line.strip()
+            except Exception:
+                pass
+            return "VmRSS: unknown"
+
+        logger.info(f"WMDS_DEBUG: Starting validate_operation. {_mem()}")
         try:
             res_id = kw.get('res_id')
             res_model = kw.get('res_model')
             operator_email = kw.get('operator_email')
+            logger.info(f"WMDS_DEBUG: Received params -> res_id={res_id}, res_model={res_model}, operator_email={operator_email}")
 
+            logger.info("WMDS_DEBUG: Fetching record and checking status...")
             record = self._get_record(res_id, res_model)
             status = self._check_status(record, operator_email)
             if status['status'] == 'error':
+                logger.info(f"WMDS_DEBUG: Status check failed: {status}")
                 return status
 
             # Identify if it is DFUL or PFUL
             pickings = record if res_model == 'stock.picking' else record.picking_ids
+            logger.info(f"WMDS_DEBUG: Associated pickings count: {len(pickings)}. {_mem()}")
 
             # Handle unstarted pickings in a batch: remove them from the batch
             excluded_names = []
             if res_model == 'stock.picking.batch':
+                logger.info("WMDS_DEBUG: Processing batch unstarted pickings exclusion...")
                 for picking in list(pickings):
                     # A picking is unstarted if ALL its lines have wmds_picked_qty == 0
                     if all(l.wmds_picked_qty == 0 for l in picking.move_line_ids):
@@ -455,7 +471,9 @@ class BarcodeController(http.Controller):
                 
                 # Refresh pickings list after removals
                 pickings = record.picking_ids
+                logger.info(f"WMDS_DEBUG: Remaining pickings in batch count: {len(pickings)}. Excluded: {excluded_names}. {_mem()}")
                 if not pickings:
+                     logger.info("WMDS_DEBUG: Error - No pickings left in the batch after exclusion.")
                      return {"status": "error", "message": "No quedan pedidos en el plan de pickeo tras remover los no iniciados."}
 
             validated_names = pickings.mapped('name')
@@ -463,16 +481,18 @@ class BarcodeController(http.Controller):
             is_dful = any('Resurtido a Ful: Despacho' in name for name in type_names if name)
             is_pful = any('Resurtido a Ful: Pick' in name for name in type_names if name)
 
-            logger.info(f"Validating {res_model} {record.name}. is_dful: {is_dful}, is_pful: {is_pful}")
+            logger.info(f"Validating {res_model} {record.name}. is_dful: {is_dful}, is_pful: {is_pful}. {_mem()}")
 
             # 1. Proactive stock check (to avoid negative stock bug)
             stock_check = {}
+            logger.info("WMDS_DEBUG: Performing proactive stock check...")
             for line in record.move_line_ids:
                 if line.wmds_picked_qty <= 0: continue
                 key = (line.product_id.id, line.location_id.id)
                 stock_check[key] = stock_check.get(key, 0.0) + line.wmds_picked_qty
             
             if stock_check:
+                logger.info(f"WMDS_DEBUG: Stock check contains {len(stock_check)} items. Loading products and locations...")
                 product_ids = list(set(k[0] for k in stock_check.keys()))
                 location_ids = list(set(k[1] for k in stock_check.keys()))
                 
@@ -486,6 +506,7 @@ class BarcodeController(http.Controller):
                 location_map = {l.id: l for l in locations}
                 
                 # Single batch query to stock.quant
+                logger.info("WMDS_DEBUG: Querying stock quants...")
                 quants = request.env['stock.quant'].sudo().search([
                     ('product_id', 'in', product_ids),
                     ('location_id', 'in', location_ids)
@@ -495,6 +516,7 @@ class BarcodeController(http.Controller):
                     q_key = (quant.product_id.id, quant.location_id.id)
                     quant_stock[q_key] = quant_stock.get(q_key, 0.0) + quant.quantity
                 
+                logger.info(f"WMDS_DEBUG: Comparing stock requirements. {_mem()}")
                 for (prod_id, loc_id), qty_needed in stock_check.items():
                     product = product_map.get(prod_id)
                     location = location_map.get(loc_id)
@@ -506,6 +528,7 @@ class BarcodeController(http.Controller):
                     if product.is_storable and location.usage in ['internal', 'transit'] and disallowed_by_product and disallowed_by_location:
                         available = quant_stock.get((prod_id, loc_id), 0.0)
                         if qty_needed > available:
+                             logger.info(f"WMDS_DEBUG: Error - Insufficient stock for product {product.display_name} in {location.display_name}. Available: {available}, Required: {qty_needed}")
                              return {
                                 "status": "error", 
                                 "message": f"Stock insuficiente en {location.display_name} para {product.display_name}. Disponible: {available}, Requerido: {qty_needed}. No se puede validar para evitar saldos negativos."
@@ -517,6 +540,7 @@ class BarcodeController(http.Controller):
                 # Synchronize 'picked' to 'quantity' (qty_done) inside the try block
                 processed_lines_info = []
                 updates = {}
+                logger.info(f"WMDS_DEBUG: Preparing update operations for {len(record.move_line_ids)} move lines. {_mem()}")
                 for line in record.move_line_ids:
                     target_qty = line.wmds_picked_qty
                     target_picked = True if target_qty > 0 else line.picked
@@ -534,23 +558,28 @@ class BarcodeController(http.Controller):
                         updates[key].append(line.id)
                 
                 # Perform batch writes to database
+                logger.info(f"WMDS_DEBUG: Writing quantities updates (groups count: {len(updates)}). {_mem()}")
                 for (qty, picked), line_ids in updates.items():
+                    logger.info(f"WMDS_DEBUG: Updating chunk of {len(line_ids)} lines with qty={qty}, picked={picked}...")
                     chunk_lines = request.env['stock.move.line'].sudo().browse(line_ids)
                     chunk_lines.write({
                         'quantity': qty,
                         'picked': picked
                     })
 
+                logger.info(f"WMDS_DEBUG: Calling Odoo native validation... res_model: {res_model}. {_mem()}")
                 if res_model == 'stock.picking':
                     res = record.button_validate()
                 else:
                     res = record.action_done()
+                logger.info(f"WMDS_DEBUG: Native validation completed. Result: {res}. {_mem()}")
             except Exception as odoo_e:
-                logger.error(f"Odoo Validation Error: {str(odoo_e)}")
+                logger.error(f"WMDS_DEBUG: Odoo Validation Exception caught! Memory: {_mem()}\n{traceback.format_exc()}")
                 return {"status": "error", "message": f"Error de Odoo: {str(odoo_e)}"}
 
             # Logistics Update for DFUL: mark origin moves as dispatched
             if is_dful:
+                logger.info(f"WMDS_DEBUG: Starting DFUL logistics update... {_mem()}")
                 move_ids = [info['move_id'] for info in processed_lines_info]
                 moves = request.env['stock.move'].sudo().browse(move_ids)
                 # Prefetch move_orig_ids relations
@@ -563,6 +592,7 @@ class BarcodeController(http.Controller):
                 for info in processed_lines_info:
                     move_qtys[info['move_id']] = move_qtys.get(info['move_id'], 0.0) + info['qty']
                 
+                logger.info(f"WMDS_DEBUG: Updating {len(moves)} moves and dispatch details...")
                 for move in moves:
                     qty = move_qtys.get(move.id, 0.0)
                     if qty <= 0:
@@ -581,19 +611,23 @@ class BarcodeController(http.Controller):
                         target_log = orig.picking_id or orig.batch_id
                         if target_log:
                             self._create_log(target_log, 
-                                            f"Producto {orig.product_id.display_name} despachado (DFUL). Cantidad: {qty}", 
-                                            'stock.picking' if orig.picking_id else 'stock.picking.batch', 
-                                            operator_email)
+                                             f"Producto {orig.product_id.display_name} despachado (DFUL). Cantidad: {qty}", 
+                                             'stock.picking' if orig.picking_id else 'stock.picking.batch', 
+                                             operator_email)
+                logger.info(f"WMDS_DEBUG: DFUL logistics update finished. {_mem()}")
 
             # If Odoo returns a wizard (like backorder confirmation)
             if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
+                logger.info(f"WMDS_DEBUG: Handling backorder confirmation wizard... {_mem()}")
                 pickings_to_backorder = record if res_model == 'stock.picking' else record.picking_ids
                 wizard = request.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
                     'pick_ids': [(4, p.id) for p in pickings_to_backorder]
                 })
                 wizard.process()
+                logger.info(f"WMDS_DEBUG: Backorder wizard processed. {_mem()}")
 
             # Create summary log for the operation
+            logger.info("WMDS_DEBUG: Logging validation summary...")
             if res_model == 'stock.picking.batch':
                 summary_parts = []
                 if validated_names:
@@ -605,6 +639,7 @@ class BarcodeController(http.Controller):
             else:
                 self._create_log(record, f"Transferencia {record.name} validada con éxito.", res_model, operator_email)
 
+            logger.info(f"WMDS_DEBUG: Finished validate_operation successfully. {_mem()}")
             return {
                 "status": "ok", 
                 "message": "Validación exitosa.",
@@ -614,5 +649,5 @@ class BarcodeController(http.Controller):
                 "is_dful": is_dful
             }
         except Exception as e:
-            logger.error(traceback.format_exc())
+            logger.error(f"WMDS_DEBUG: Exception caught in main block! Memory: {_mem()}\n{traceback.format_exc()}")
             return {"status": "error", "message": str(e)}
