@@ -84,6 +84,11 @@
             <field name="category_id" ref="module_category_wmds"/>
         </record>
         
+        <record id="role_wmds_compactacion" model="res.groups">
+            <field name="name">WMDs Operator - Compactación</field>
+            <field name="category_id" ref="module_category_wmds"/>
+        </record>
+        
     </data>
     
 </odoo>

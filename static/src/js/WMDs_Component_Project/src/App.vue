@@ -37,6 +37,7 @@ import DispatchComponent  from "./components/OperatorComponent/DispatchComponent
 import DispatchComponentFul  from "./components/OperatorComponent/DispatchComponentFul.vue"
 import BarcodeOperationComponent from "./components/OperatorComponent/BarcodeOperationComponent.vue"
 import CycleCountOperator from "./components/OperatorComponent/CycleCountOperator.vue"
+import CompactionComponent from "./components/OperatorComponent/CompactionComponent.vue"
 
 import { useGeneralStore } from "./store/index"
 
@@ -56,8 +57,10 @@ export default {
     DispatchComponent,
     DispatchComponentFul,
     BarcodeOperationComponent,
-    CycleCountOperator
+    CycleCountOperator,
+    CompactionComponent
   },
+
   data() {
     return {
       store: useGeneralStore()

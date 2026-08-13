@@ -17,4 +17,5 @@ from . import dispatch_session_controller
 from . import barcode_controller
 from . import dispatch_sheet_print_controller
 from . import import_picks_controller
+from . import compactacion
 

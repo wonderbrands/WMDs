@@ -125,7 +125,9 @@ export default {
                 { id: "devoluciones", title: "Devoluciones", description: "Manejo de retornos", fetch: true, label: "Asignados", permission: "WMDs Operator - Replenishment", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: true, any_source: true, any_dest: true, check_empty_dest_location: false },
                 { id: "merma", title: "Merma", description: "Traslado a Merma", fetch: true, label: "Abiertos", permission: "WMDs Operator - Merma", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true, check_empty_dest_location: false },
                 { id: "cancelacion", title: "Cancelación", description: "Traslado de Cancelaciones", fetch: true, label: "Abiertos", permission: "WMDs Operator - Cancelación", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true, check_empty_dest_location: false },
+                { id: "compactacion", title: "Compactación", description: "Pasar productos de ubicación A, B, C a D", fetch: false, label: "Iniciar", view: "CompactionComponent", permission: "WMDs Operator - Compactación" },
             ],
+
             tasks: [],
             // Pull to refresh state
             startY: 0,

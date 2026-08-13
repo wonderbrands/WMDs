@@ -118,6 +118,7 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                     { id: 109, name: "Replenishment" },
                     { id: 110, name: "Merma" },
                     { id: 111, name: "Cancelación" },
+                    { id: 112, name: "Compactación" },
                 ]
 
             case "save_operator":
@@ -519,6 +520,11 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             import_picks_process: {url: '/wmds/v2/import_picks/process', method: 'POST'},
             import_picks_validate_rows: {url: '/wmds/v2/import_picks/validate_rows', method: 'POST'},
             unreserve_and_reserve: {url: '/wmds/v2/picking/unreserve_and_reserve', method: 'POST'},
+            compactacion_create: {url: '/wmds/v2/engine/compactacion/create_picking', method: 'POST'},
+            compactacion_validate_origin: {url: '/wmds/v2/engine/compactacion/validate_origin_location', method: 'POST'},
+            compactacion_add_lines: {url: '/wmds/v2/engine/compactacion/add_location_lines', method: 'POST'},
+            compactacion_validate_dest: {url: '/wmds/v2/engine/compactacion/validate_destination_location', method: 'POST'},
+            compactacion_validate_picking: {url: '/wmds/v2/engine/compactacion/validate_picking', method: 'POST'},
         };
 
 

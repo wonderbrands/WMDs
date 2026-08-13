@@ -12,5 +12,12 @@
             <field name="sequence_code">CAN</field>
             <field name="code">internal</field>
         </record>
+
+        <record id="picking_type_compactacion" model="stock.picking.type">
+            <field name="name">Compactación</field>
+            <field name="sequence_code">COM</field>
+            <field name="code">internal</field>
+        </record>
     </data>
 </odoo>
+
