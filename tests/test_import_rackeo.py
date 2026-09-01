@@ -171,8 +171,9 @@ PO-TEST-RACKEO\t{self.sku_a}\tLOC-SHELF-N1\t16
         q_n1 = self.env['stock.quant'].search([('location_id', '=', loc_n1_dest.id), ('product_id', '=', product_a.id)])
         self.assertEqual(sum(q_n1.mapped('quantity')), 10.0)
 
-        # 6. Verify prior STOR was adjusted from 50 to 20 (50 - 30)
-        self.assertEqual(move_prior.product_uom_qty, 20.0)
+        # 6. Verify prior STOR moves demand was set to 0 and picking cancelled
+        self.assertEqual(move_prior.product_uom_qty, 0.0)
+        self.assertEqual(open_stor.state, 'cancel')
 
     def test_03_controller_validation_and_process(self):
         """Test controller validation and process routes."""

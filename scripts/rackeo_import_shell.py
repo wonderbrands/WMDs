@@ -300,9 +300,14 @@ def process_rackeo_text(raw_text, env=None, commit=True):
         ])
         
         if open_stors:
-            print(f"  ℹ️ Desreservando {len(open_stors)} STOR(s) abierto(s) previo(s) ({', '.join(open_stors.mapped('name'))})...")
+            print(f"  ℹ️ Cancelando reservas y poniendo demanda a 0 en {len(open_stors)} STOR(s) original(es) ({', '.join(open_stors.mapped('name'))})...")
             for s in open_stors:
                 s.do_unreserve()
+                for m in s.move_ids:
+                    if m.state not in ('done', 'cancel'):
+                        m.write({'product_uom_qty': 0.0})
+                        m._action_cancel()
+                s.action_cancel()
 
         # Check total requested vs available in WH/Recepcion
         items_by_prod = {}
@@ -366,25 +371,6 @@ def process_rackeo_text(raw_text, env=None, commit=True):
                 })
 
             new_stor.button_validate()
-
-            # Adjust prior open STOR remaining demand
-            processed_totals = {prod.id: sum(it['pzs'] for it in p_items) for prod, p_items in items_by_prod.items()}
-            for s in open_stors:
-                for m in s.move_ids:
-                    p_id = m.product_id.id
-                    if p_id in processed_totals and processed_totals[p_id] > 0:
-                        sub_qty = min(m.product_uom_qty, processed_totals[p_id])
-                        remaining_demand = m.product_uom_qty - sub_qty
-                        processed_totals[p_id] -= sub_qty
-                        if remaining_demand > 0:
-                            m.write({'product_uom_qty': remaining_demand})
-                        else:
-                            m._action_cancel()
-                active_moves = s.move_ids.filtered(lambda m: m.state != 'cancel')
-                if not active_moves:
-                    s.action_cancel()
-                else:
-                    s.action_assign()
 
             # WMDS logs
             total_pzs = sum(it['pzs'] for it in parsed_items)

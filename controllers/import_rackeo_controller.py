@@ -518,7 +518,7 @@ class ImportRackeoController(http.Controller):
                 continue
 
             try:
-                # 1. Unreserve existing open STORs for this PO to free up WH/Recepcion
+                # 1. Unreserve and cancel existing open STORs for this PO, set moves demand to 0
                 open_stors = request.env['stock.picking'].sudo().search([
                     ('origin', '=', po_record.name),
                     ('picking_type_id.sequence_code', '=', 'STOR'),
@@ -526,6 +526,11 @@ class ImportRackeoController(http.Controller):
                 ])
                 for s in open_stors:
                     s.do_unreserve()
+                    for m in s.move_ids:
+                        if m.state not in ('done', 'cancel'):
+                            m.write({'product_uom_qty': 0.0})
+                            m._action_cancel()
+                    s.action_cancel()
 
                 # 2. Group items by product to create moves
                 items_by_prod = {}
@@ -585,25 +590,6 @@ class ImportRackeoController(http.Controller):
 
                 # 6. Validate the new STOR picking
                 new_stor.button_validate()
-
-                # 7. Adjust remaining demand on previous open STORs
-                processed_totals = {prod_id: sum(item['quantity'] for item in items) for prod_id, items in items_by_prod.items()}
-                for s in open_stors:
-                    for m in s.move_ids:
-                        p_id = m.product_id.id
-                        if p_id in processed_totals and processed_totals[p_id] > 0:
-                            sub_qty = min(m.product_uom_qty, processed_totals[p_id])
-                            remaining_demand = m.product_uom_qty - sub_qty
-                            processed_totals[p_id] -= sub_qty
-                            if remaining_demand > 0:
-                                m.write({'product_uom_qty': remaining_demand})
-                            else:
-                                m._action_cancel()
-                    active_moves = s.move_ids.filtered(lambda m: m.state != 'cancel')
-                    if not active_moves:
-                        s.action_cancel()
-                    else:
-                        s.action_assign()
 
                 # 8. Create WMDs logs
                 total_pzs = sum(self._safe_float(r['data'].get('PZS')) for r in po_rows)
