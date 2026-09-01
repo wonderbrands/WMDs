@@ -4,6 +4,7 @@
     <ManualDispatch v-else-if="store.main_manager_screen.value === 'manual_dispatch'" />
     <LocationBlocking v-else-if="store.main_manager_screen.value === 'location_blocking'" />
     <LocationUnblocking v-else-if="store.main_manager_screen.value === 'location_unblocking'" />
+    <ImportRackeoHelper v-else-if="store.main_manager_screen.value === 'rackeo_import'" />
     <div v-else class="home-screen">
         <h1>Bienvenido al WMDs Manager</h1>
         <p>Selecciona una opción del menú lateral para comenzar.</p>
@@ -17,6 +18,7 @@
     import ManualDispatch from './ManualDispatch.vue'
     import LocationBlocking from './LocationBlocking.vue'
     import LocationUnblocking from './LocationUnblocking.vue'
+    import ImportRackeoHelper from '../Forms/ImportRackeoHelper.vue'
     export default {
       name: 'MainManagerScreen',
 
@@ -36,7 +38,8 @@
           ListView,
           ManualDispatch,
           LocationBlocking,
-          LocationUnblocking
+          LocationUnblocking,
+          ImportRackeoHelper
       }
     }
 </script>

@@ -305,6 +305,11 @@ export const useGeneralStore = defineStore('general_store', {
             title: "Desbloqueo de Ubicaciones",
             description: "Gestión de desbloqueo de posiciones (excepto cuarentenas y cíclicos)",
             value: "location_unblocking"
+        },
+        rackeo_import: {
+            title: "Importar Rackeo",
+            description: "Carga masiva de rackeos (STOR) a partir de Excel",
+            value: "rackeo_import"
         }
       },
       main_manager_screen: null,
@@ -715,6 +720,36 @@ export const useGeneralStore = defineStore('general_store', {
             return result;
         } catch (e) {
             console.error("Upload picks file error:", e);
+            if (this.toast) {
+                this.toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Red', 
+                    detail: 'No se pudo contactar al servidor para validar el archivo.', 
+                    life: 5000 
+                });
+            }
+            return { error: true, error_msg: 'Fallo de red o servidor no disponible.' };
+        } finally {
+            this.loading = false;
+        }
+    },
+    async uploadRackeoFile(file, hasHeader, columnMapping) {
+        this.loading = true;
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('has_header', hasHeader ? 'true' : 'false');
+            if (columnMapping) {
+                formData.append('column_mapping', JSON.stringify(columnMapping));
+            }
+            const response = await fetch('/wmds/v2/import_rackeo/validate_file', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            return result;
+        } catch (e) {
+            console.error("Upload rackeo file error:", e);
             if (this.toast) {
                 this.toast.add({ 
                     severity: 'error', 
