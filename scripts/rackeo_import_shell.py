@@ -332,6 +332,11 @@ def process_rackeo_text(raw_text, env=None, commit=True):
                 s.action_cancel()
 
         # Check total requested vs available in WH/Recepcion
+        items_by_key = {}
+        for item in parsed_items:
+            key = (item['product'], item['location'])
+            items_by_key.setdefault(key, []).append(item)
+
         items_by_prod = {}
         for item in parsed_items:
             items_by_prod.setdefault(item['product'], []).append(item)
@@ -353,17 +358,18 @@ def process_rackeo_text(raw_text, env=None, commit=True):
 
         # Create new STOR picking
         try:
+            first_dest_id = parsed_items[0]['location'].id if parsed_items else dest_stock.id
             new_stor = env['stock.picking'].sudo().create({
                 'picking_type_id': pt_stor.id,
                 'location_id': rec_loc.id,
-                'location_dest_id': dest_stock.id,
+                'location_dest_id': first_dest_id,
                 'origin': po.name,
                 'purchase_id': po.id,
                 'user_id': env.user.id,
             })
 
             created_moves = {}
-            for prod, p_items in items_by_prod.items():
+            for (prod, loc), p_items in items_by_key.items():
                 total_prod_qty = sum(it['pzs'] for it in p_items)
                 move = env['stock.move'].sudo().create({
                     'name': f"STOR: {prod.display_name}",
@@ -372,9 +378,9 @@ def process_rackeo_text(raw_text, env=None, commit=True):
                     'product_uom': prod.uom_id.id,
                     'picking_id': new_stor.id,
                     'location_id': rec_loc.id,
-                    'location_dest_id': dest_stock.id,
+                    'location_dest_id': loc.id,
                 })
-                created_moves[prod.id] = move
+                created_moves[(prod.id, loc.id)] = move
 
             new_stor.action_confirm()
             if new_stor.move_line_ids:
@@ -382,14 +388,15 @@ def process_rackeo_text(raw_text, env=None, commit=True):
 
             for item in parsed_items:
                 prod = item['product']
-                move = created_moves[prod.id]
+                loc = item['location']
+                move = created_moves[(prod.id, loc.id)]
                 env['stock.move.line'].sudo().create({
                     'picking_id': new_stor.id,
                     'move_id': move.id,
                     'product_id': prod.id,
                     'product_uom_id': prod.uom_id.id,
                     'location_id': rec_loc.id,
-                    'location_dest_id': item['location'].id,
+                    'location_dest_id': loc.id,
                     'quantity': item['pzs'],
                 })
 

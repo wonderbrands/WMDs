@@ -672,31 +672,35 @@ class ImportRackeoController(http.Controller):
                             m._action_cancel()
                     s.action_cancel()
 
-                # 2. Group items by product to create moves
-                items_by_prod = {}
+                # 2. Group items by (product, location) to create moves with exact destination locations
+                items_by_key = {}
                 for r in po_rows:
                     prod_id = r['product_id']
+                    loc_id = r['location_id']
                     pzs = self._safe_float(r['data'].get('PZS'))
-                    items_by_prod.setdefault(prod_id, []).append({
-                        'location_id': r['location_id'],
+                    key = (prod_id, loc_id)
+                    items_by_key.setdefault(key, []).append({
+                        'location_id': loc_id,
                         'quantity': pzs,
                         'row_index': r['index']
                     })
 
                 # 3. Create new STOR picking (1 per PO, linked to origin and purchase_id)
+                first_dest_id = po_rows[0]['location_id'] if po_rows else dest_stock.id
                 new_stor = request.env['stock.picking'].sudo().create({
                     'picking_type_id': pt_stor.id,
                     'location_id': rec_loc.id,
-                    'location_dest_id': dest_stock.id,
+                    'location_dest_id': first_dest_id,
                     'origin': po_record.name,
                     'purchase_id': po_record.id,
                     'user_id': request.env.user.id,
                 })
 
-                # 4. Create stock.move for each product
+                # 4. Create stock.move for each (product, location) pair
                 created_moves = {}
-                for prod_id, items in items_by_prod.items():
+                for (prod_id, loc_id), items in items_by_key.items():
                     prod = request.env['product.product'].sudo().browse(prod_id)
+                    dest_loc = request.env['stock.location'].sudo().browse(loc_id)
                     total_prod_qty = sum(item['quantity'] for item in items)
                     
                     move = request.env['stock.move'].sudo().create({
@@ -706,18 +710,18 @@ class ImportRackeoController(http.Controller):
                         'product_uom': prod.uom_id.id,
                         'picking_id': new_stor.id,
                         'location_id': rec_loc.id,
-                        'location_dest_id': dest_stock.id,
+                        'location_dest_id': dest_loc.id,
                     })
-                    created_moves[prod_id] = move
+                    created_moves[(prod_id, loc_id)] = move
 
                 new_stor.action_confirm()
                 if new_stor.move_line_ids:
                     new_stor.move_line_ids.unlink()
 
                 # 5. Create stock.move.line for each line
-                for prod_id, items in items_by_prod.items():
+                for (prod_id, loc_id), items in items_by_key.items():
                     prod = request.env['product.product'].sudo().browse(prod_id)
-                    move = created_moves[prod_id]
+                    move = created_moves[(prod_id, loc_id)]
                     for item in items:
                         request.env['stock.move.line'].sudo().create({
                             'picking_id': new_stor.id,
