@@ -115,6 +115,23 @@ def parse_rackeo_text(raw_text):
 
     return parsed_rows
 
+def _has_bom(product, env):
+    if not product:
+        return False
+    if hasattr(product, 'bom_count') and product.bom_count > 0:
+        return True
+    if hasattr(product, 'bom_ids') and bool(product.bom_ids):
+        return True
+    if hasattr(product, 'product_tmpl_id') and hasattr(product.product_tmpl_id, 'bom_ids') and bool(product.product_tmpl_id.bom_ids):
+        return True
+    if 'mrp.bom' in env:
+        bom_exists = env['mrp.bom'].sudo().search_count([
+            '|', ('product_id', '=', product.id), ('product_tmpl_id', '=', product.product_tmpl_id.id)
+        ])
+        if bom_exists > 0:
+            return True
+    return False
+
 def process_rackeo_text(raw_text, env=None, commit=True):
     """
     Procesa el texto de rackeo dentro del entorno de Odoo:
@@ -123,8 +140,8 @@ def process_rackeo_text(raw_text, env=None, commit=True):
     3. Desreserva STORs abiertos previos de la PO.
     4. Valida disponibilidad en WH/Recepcion.
     5. Valida ubicaciones destino (existencia, bloqueo, regla N1 vs vacía).
-    6. Crea y valida el nuevo STOR (WH/Recepcion -> WH/Stock) con sus líneas exactas.
-    7. Ajusta demanda remanente en STORs previos.
+    6. Crea y valida el nuevo STOR (WH/Recepcion -> WH/Stock) con sus líneas exactas y purchase_id.
+    7. Registra en wmds.log con usuario y mención de automatización.
     8. Imprime y retorna resumen de ejecución.
     """
     if env is None:
@@ -148,10 +165,10 @@ def process_rackeo_text(raw_text, env=None, commit=True):
     skus = list(set(r['SKU'] for r in rows if r['SKU']))
     loc_names = list(set(r['UBICACION'] for r in rows if r['UBICACION']))
 
-    # 1. POs
+    # 1. POs (Strict exact match)
     po_map = {}
     for po_name in po_names:
-        po = env['purchase.order'].sudo().search(['|', ('name', '=ilike', po_name), ('name', 'ilike', po_name)], limit=1)
+        po = env['purchase.order'].sudo().search([('name', '=ilike', po_name.strip())], limit=1)
         if po:
             po_map[po_name.lower()] = po
             po_map[po.name.lower()] = po
@@ -249,6 +266,11 @@ def process_rackeo_text(raw_text, env=None, commit=True):
                 po_has_errors = True
                 continue
 
+            if _has_bom(prod, env):
+                print(f"  ❌ Línea {line_no}: SKU '{prod.default_code or sku}' es un producto padre con lista de materiales (combo/multicaja). No se puede rackear directamente.")
+                po_has_errors = True
+                continue
+
             loc = loc_map.get(loc_str.lower())
             if not loc:
                 print(f"  ❌ Línea {line_no}: Ubicación '{loc_str}' no existe en Odoo.")
@@ -336,6 +358,7 @@ def process_rackeo_text(raw_text, env=None, commit=True):
                 'location_id': rec_loc.id,
                 'location_dest_id': dest_stock.id,
                 'origin': po.name,
+                'purchase_id': po.id,
                 'user_id': env.user.id,
             })
 
@@ -374,7 +397,8 @@ def process_rackeo_text(raw_text, env=None, commit=True):
 
             # WMDS logs
             total_pzs = sum(it['pzs'] for it in parsed_items)
-            log_msg = f"Rackeo masivo completado: {new_stor.name} ({len(parsed_items)} líneas, {total_pzs} pzs) para PO {po.name}."
+            user_name = env.user.name or f"Usuario #{env.user.id}"
+            log_msg = f"Rackeo masivo realizado por automatización por {user_name}: {new_stor.name} ({len(parsed_items)} líneas, {total_pzs} pzs) para PO {po.name}."
             env['wmds.log'].sudo().create({
                 'purchase': po.id,
                 'pick': new_stor.id,

@@ -48,12 +48,27 @@ class ImportRackeoController(http.Controller):
             
         missing = [n for n in po_list if n.strip().lower() not in po_map]
         for m in missing:
-            po_found = request.env['purchase.order'].sudo().search([('name', '=ilike', m)], limit=1)
-            if not po_found:
-                po_found = request.env['purchase.order'].sudo().search([('name', 'ilike', m)], limit=1)
+            po_found = request.env['purchase.order'].sudo().search([('name', '=ilike', m.strip())], limit=1)
             if po_found:
                 po_map[m.strip().lower()] = po_found
         return po_map
+
+    def _has_bom(self, product):
+        if not product:
+            return False
+        if hasattr(product, 'bom_count') and product.bom_count > 0:
+            return True
+        if hasattr(product, 'bom_ids') and bool(product.bom_ids):
+            return True
+        if hasattr(product, 'product_tmpl_id') and hasattr(product.product_tmpl_id, 'bom_ids') and bool(product.product_tmpl_id.bom_ids):
+            return True
+        if 'mrp.bom' in request.env:
+            bom_exists = request.env['mrp.bom'].sudo().search_count([
+                '|', ('product_id', '=', product.id), ('product_tmpl_id', '=', product.product_tmpl_id.id)
+            ])
+            if bom_exists > 0:
+                return True
+        return False
 
     def _prefetch_products(self, skus):
         product_map = {}
@@ -184,159 +199,145 @@ class ImportRackeoController(http.Controller):
         loc_map = self._prefetch_locations(list(all_locs))
         rec_loc = self._get_reception_location()
 
-        # Group rows by PO
-        rows_by_po = {}
-        for r in raw_rows:
-            po_name = r.get('data', {}).get('PO', '').strip()
-            rows_by_po.setdefault(po_name, []).append(r)
-
-        # For each PO, determine available reservoir in WH/Recepcion (considering unreserved open STORs)
-        for po_name, p_rows in rows_by_po.items():
-            po_record = po_map.get(po_name.lower()) if po_name else None
-            
-            # If PO exists, calculate reservoir for all products in this PO
-            reservoir_cache = {}
-            if po_record and rec_loc:
-                # Find open STORs for this PO
-                open_stors = request.env['stock.picking'].sudo().search([
-                    ('origin', '=', po_record.name),
-                    ('picking_type_id.sequence_code', '=', 'STOR'),
-                    ('state', 'not in', ('done', 'cancel'))
+        # Global reservoir cache in WH/Recepcion for all products in the batch
+        global_reservoir_cache = {}
+        if rec_loc:
+            all_prod_ids = set()
+            for r in raw_rows:
+                sku_str = r.get('data', {}).get('SKU', '').strip()
+                prod = product_map.get(sku_str.lower()) or product_map.get(self._normalize_code(sku_str))
+                if prod:
+                    all_prod_ids.add(prod.id)
+            if all_prod_ids:
+                quants = request.env['stock.quant'].sudo().search([
+                    ('location_id', '=', rec_loc.id),
+                    ('product_id', 'in', list(all_prod_ids))
                 ])
-                # Products requested in this PO batch
-                po_prod_ids = set()
-                for r in p_rows:
-                    sku_str = r.get('data', {}).get('SKU', '').strip()
-                    prod = product_map.get(sku_str.lower()) or product_map.get(self._normalize_code(sku_str))
-                    if prod:
-                        po_prod_ids.add(prod.id)
-                
-                if po_prod_ids:
-                    quants = request.env['stock.quant'].sudo().search([
-                        ('location_id', '=', rec_loc.id),
-                        ('product_id', 'in', list(po_prod_ids))
-                    ])
-                    for q in quants:
-                        # Total stock in WH/Recepcion
-                        reservoir_cache[q.product_id.id] = q.quantity
-                        
-            # Track planned allocations from reservoir per product
-            allocated_qty = {}
+                for q in quants:
+                    global_reservoir_cache[q.product_id.id] = global_reservoir_cache.get(q.product_id.id, 0.0) + q.quantity
 
-            for r in p_rows:
-                idx = r.get('index', 0)
-                orig_row = r.get('original_row', [])
-                data = dict(r.get('data', {}))
-                is_excluded = r.get('excluded', False)
-                
-                errors = []
-                warnings = []
-                
-                po_str = data.get('PO', '').strip()
-                sku_str = data.get('SKU', '').strip()
-                loc_str = data.get('UBICACION', '').strip()
-                pzs_str = data.get('PZS', '').strip()
+        global_allocated_qty = {}
 
-                product_record = None
-                dest_loc_record = None
-                pzs_val = 0.0
+        for r in raw_rows:
+            idx = r.get('index', 0)
+            orig_row = r.get('original_row', [])
+            data = dict(r.get('data', {}))
+            is_excluded = r.get('excluded', False)
+            
+            errors = []
+            warnings = []
+            
+            po_str = data.get('PO', '').strip()
+            sku_str = data.get('SKU', '').strip()
+            loc_str = data.get('UBICACION', '').strip()
+            pzs_str = data.get('PZS', '').strip()
 
-                # 1. Validate PO
-                if not po_str:
-                    errors.append({'field': 'PO', 'code': 'missing', 'message': 'El campo PO es obligatorio.'})
-                elif not po_record:
-                    errors.append({'field': 'PO', 'code': 'not_found', 'message': f'La Orden de Compra "{po_str}" no existe en Odoo.'})
+            po_record = po_map.get(po_str.lower()) if po_str else None
+            product_record = None
+            dest_loc_record = None
+            pzs_val = 0.0
+
+            # 1. Validate PO
+            if not po_str:
+                errors.append({'field': 'PO', 'code': 'missing', 'message': 'El campo PO es obligatorio.'})
+            elif not po_record:
+                errors.append({'field': 'PO', 'code': 'not_found', 'message': f'La Orden de Compra "{po_str}" no existe en Odoo.'})
+            else:
+                data['PO'] = po_record.name
+
+            # 2. Validate SKU / Product
+            if not sku_str:
+                errors.append({'field': 'SKU', 'code': 'missing', 'message': 'El campo SKU es obligatorio.'})
+            else:
+                product_record = product_map.get(sku_str.lower()) or product_map.get(self._normalize_code(sku_str))
+                if not product_record:
+                    errors.append({'field': 'SKU', 'code': 'not_found', 'message': f'El SKU "{sku_str}" no existe en el catálogo de productos.'})
+                elif self._has_bom(product_record):
+                    errors.append({
+                        'field': 'SKU',
+                        'code': 'has_bom',
+                        'message': f'El SKU "{product_record.default_code or sku_str}" es un producto padre con lista de materiales (combo/multicaja). No se puede rackear directamente; deben acomodarse las cajas/componentes unitarios.'
+                    })
                 else:
-                    data['PO'] = po_record.name
+                    data['SKU'] = product_record.default_code or product_record.name
 
-                # 2. Validate SKU / Product
-                if not sku_str:
-                    errors.append({'field': 'SKU', 'code': 'missing', 'message': 'El campo SKU es obligatorio.'})
-                else:
-                    product_record = product_map.get(sku_str.lower()) or product_map.get(self._normalize_code(sku_str))
-                    if not product_record:
-                        errors.append({'field': 'SKU', 'code': 'not_found', 'message': f'El SKU "{sku_str}" no existe en el catálogo de productos.'})
+            # 3. Validate Quantity (PZS)
+            if not pzs_str:
+                errors.append({'field': 'PZS', 'code': 'missing', 'message': 'El campo PZS (cantidad) es obligatorio.'})
+            else:
+                try:
+                    pzs_val = self._safe_float(pzs_str)
+                    if pzs_val <= 0:
+                        errors.append({'field': 'PZS', 'code': 'invalid', 'message': 'La cantidad (PZS) debe ser un número mayor a cero.'})
                     else:
-                        data['SKU'] = product_record.default_code or product_record.name
+                        data['PZS'] = self._format_qty(pzs_val)
+                except Exception:
+                    errors.append({'field': 'PZS', 'code': 'invalid', 'message': 'La cantidad (PZS) no es un número válido.'})
 
-                # 3. Validate Quantity (PZS)
-                if not pzs_str:
-                    errors.append({'field': 'PZS', 'code': 'missing', 'message': 'El campo PZS (cantidad) es obligatorio.'})
+            # 4. Validate Location
+            if not loc_str:
+                errors.append({'field': 'UBICACION', 'code': 'missing', 'message': 'El campo UBICACIÓN es obligatorio.'})
+            else:
+                dest_loc_record = loc_map.get(loc_str.lower())
+                if not dest_loc_record:
+                    errors.append({'field': 'UBICACION', 'code': 'not_found', 'message': f'La ubicación "{loc_str}" no existe en Odoo.'})
                 else:
-                    try:
-                        pzs_val = self._safe_float(pzs_str)
-                        if pzs_val <= 0:
-                            errors.append({'field': 'PZS', 'code': 'invalid', 'message': 'La cantidad (PZS) debe ser un número mayor a cero.'})
-                        else:
-                            data['PZS'] = self._format_qty(pzs_val)
-                    except Exception:
-                        errors.append({'field': 'PZS', 'code': 'invalid', 'message': 'La cantidad (PZS) no es un número válido.'})
-
-                # 4. Validate Location
-                if not loc_str:
-                    errors.append({'field': 'UBICACION', 'code': 'missing', 'message': 'El campo UBICACIÓN es obligatorio.'})
-                else:
-                    dest_loc_record = loc_map.get(loc_str.lower())
-                    if not dest_loc_record:
-                        errors.append({'field': 'UBICACION', 'code': 'not_found', 'message': f'La ubicación "{loc_str}" no existe en Odoo.'})
-                    else:
-                        data['UBICACION'] = dest_loc_record.barcode or dest_loc_record.name
-                        # Check location blocked
-                        if hasattr(dest_loc_record, 'is_location_blocked') and dest_loc_record.is_location_blocked():
-                            errors.append({
-                                'field': 'UBICACION',
-                                'code': 'blocked',
-                                'message': f'La ubicación "{dest_loc_record.complete_name}" está bloqueada ({dest_loc_record.block_reason or "Sin motivo"}).'
-                            })
-                        else:
-                            # Check occupancy rules: N1 allows same SKU, others must be empty
-                            loc_quants = request.env['stock.quant'].sudo().search([
-                                ('location_id', '=', dest_loc_record.id),
-                                ('quantity', '>', 0)
-                            ])
-                            if loc_quants:
-                                is_n1 = dest_loc_record.name and dest_loc_record.name.upper().endswith('N1')
-                                if is_n1:
-                                    if product_record:
-                                        other_prods = loc_quants.filtered(lambda q: q.product_id.id != product_record.id)
-                                        if other_prods:
-                                            errors.append({
-                                                'field': 'UBICACION',
-                                                'code': 'occupied_n1_diff',
-                                                'message': f'La ubicación N1 "{dest_loc_record.name}" contiene un SKU diferente ({other_prods[0].product_id.default_code}).'
-                                            })
-                                else:
-                                    errors.append({
-                                        'field': 'UBICACION',
-                                        'code': 'not_empty',
-                                        'message': f'La ubicación "{dest_loc_record.complete_name}" no está vacía (contiene {loc_quants[0].product_id.default_code}: {loc_quants[0].quantity} pzs).'
-                                    })
-
-                # 5. Validate Reservoir in WH/Recepcion
-                if product_record and pzs_val > 0 and po_record:
-                    total_rec_stock = reservoir_cache.get(product_record.id, 0.0)
-                    already_allocated = allocated_qty.get(product_record.id, 0.0)
-                    if already_allocated + pzs_val > total_rec_stock:
+                    data['UBICACION'] = dest_loc_record.barcode or dest_loc_record.name
+                    # Check location blocked
+                    if hasattr(dest_loc_record, 'is_location_blocked') and dest_loc_record.is_location_blocked():
                         errors.append({
-                            'field': 'PZS',
-                            'code': 'no_reservoir',
-                            'message': f'Falta de reserva de producto en WH/Recepcion para SKU {product_record.default_code}. Requerido acumulado: {already_allocated + pzs_val}, Disponible en recepción: {total_rec_stock}.'
+                            'field': 'UBICACION',
+                            'code': 'blocked',
+                            'message': f'La ubicación "{dest_loc_record.complete_name}" está bloqueada ({dest_loc_record.block_reason or "Sin motivo"}).'
                         })
                     else:
-                        allocated_qty[product_record.id] = already_allocated + pzs_val
+                        # Check occupancy rules: N1 allows same SKU, others must be empty
+                        loc_quants = request.env['stock.quant'].sudo().search([
+                            ('location_id', '=', dest_loc_record.id),
+                            ('quantity', '>', 0)
+                        ])
+                        if loc_quants:
+                            is_n1 = dest_loc_record.name and dest_loc_record.name.upper().endswith('N1')
+                            if is_n1:
+                                if product_record:
+                                    other_prods = loc_quants.filtered(lambda q: q.product_id.id != product_record.id)
+                                    if other_prods:
+                                        errors.append({
+                                            'field': 'UBICACION',
+                                            'code': 'occupied_n1_diff',
+                                            'message': f'La ubicación N1 "{dest_loc_record.name}" contiene un SKU diferente ({other_prods[0].product_id.default_code}).'
+                                        })
+                            else:
+                                errors.append({
+                                    'field': 'UBICACION',
+                                    'code': 'not_empty',
+                                    'message': f'La ubicación "{dest_loc_record.complete_name}" no está vacía (contiene {loc_quants[0].product_id.default_code}: {loc_quants[0].quantity} pzs).'
+                                })
 
-                val_row = {
-                    'index': idx,
-                    'original_row': orig_row,
-                    'data': data,
-                    'excluded': is_excluded,
-                    'errors': errors,
-                    'warnings': warnings,
-                    'po_id': po_record.id if po_record else False,
-                    'product_id': product_record.id if product_record else False,
-                    'location_id': dest_loc_record.id if dest_loc_record else False,
-                }
-                validated_rows.append(val_row)
+            # 5. Validate Reservoir in WH/Recepcion (Cumulative across entire batch)
+            if product_record and pzs_val > 0:
+                total_rec_stock = global_reservoir_cache.get(product_record.id, 0.0)
+                already_allocated = global_allocated_qty.get(product_record.id, 0.0)
+                if already_allocated + pzs_val > total_rec_stock:
+                    errors.append({
+                        'field': 'PZS',
+                        'code': 'no_reservoir',
+                        'message': f'Stock insuficiente en WH/Recepcion para SKU "{product_record.default_code}". Requerido acumulado en archivo: {already_allocated + pzs_val} pzs, Disponible en recepción: {total_rec_stock} pzs.'
+                    })
+                global_allocated_qty[product_record.id] = already_allocated + pzs_val
+
+            val_row = {
+                'index': idx,
+                'original_row': orig_row,
+                'data': data,
+                'excluded': is_excluded,
+                'errors': errors,
+                'warnings': warnings,
+                'po_id': po_record.id if po_record else False,
+                'product_id': product_record.id if product_record else False,
+                'location_id': dest_loc_record.id if dest_loc_record else False,
+            }
+            validated_rows.append(val_row)
 
         return validated_rows
 
@@ -483,15 +484,154 @@ class ImportRackeoController(http.Controller):
             'rows': validated_rows
         }
 
+    def _generate_feedback_excel(self, validated_rows, raw_headers=None, column_mapping=None, row_results_map=None, is_preview=False):
+        output_stream = io.BytesIO()
+        workbook = xlsxwriter.Workbook(output_stream, {'in_memory': True})
+        worksheet = workbook.add_worksheet('Revision_Errores' if is_preview else 'Retroalimentacion_Rackeo')
+        
+        header_format = workbook.add_format({
+            'bold': True,
+            'bg_color': '#0F172A',
+            'font_color': '#FFFFFF',
+            'border': 1,
+            'align': 'center'
+        })
+        cell_format = workbook.add_format({'border': 1})
+        cell_error_format = workbook.add_format({'border': 1, 'bg_color': '#FEE2E2', 'font_color': '#991B1B', 'bold': True})
+        status_error_format = workbook.add_format({'border': 1, 'bg_color': '#FEE2E2', 'font_color': '#991B1B', 'bold': True, 'align': 'center'})
+        status_ok_format = workbook.add_format({'border': 1, 'bg_color': '#DCFCE7', 'font_color': '#166534', 'bold': True, 'align': 'center'})
+        
+        mapping = column_mapping or {}
+        # Clean headers if they already include feedback columns at the end
+        feedback_names = {'ok', 'stor', 'estado', 'detalle'}
+        base_headers = []
+        if raw_headers:
+            for h in raw_headers:
+                if str(h).strip().lower() in feedback_names:
+                    break
+                base_headers.append(h)
+                
+        if not base_headers:
+            max_col = max(len(row.get('original_row', [])) for row in validated_rows) if validated_rows else 0
+            base_headers = [f"Columna {i+1}" for i in range(max_col)]
+            
+        new_headers = base_headers + ['Ok', 'STOR', 'Estado', 'Detalle']
+        for col_idx, h_text in enumerate(new_headers):
+            worksheet.write(0, col_idx, h_text, header_format)
+            
+        # Build inverted mapping for quick lookup: col_idx -> field_name ('PO', 'SKU', 'UBICACION', 'PZS')
+        col_to_field = {}
+        for fld, c_idx in mapping.items():
+            if c_idx is not None:
+                try:
+                    col_to_field[int(c_idx)] = fld
+                except (ValueError, TypeError):
+                    pass
+
+        row_results_map = row_results_map or {}
+
+        for row_idx, row in enumerate(validated_rows):
+            excel_row_num = row_idx + 1
+            orig_row = row.get('original_row', [])[:len(base_headers)]
+            errors = row.get('errors', [])
+            error_fields = {e.get('field') for e in errors}
+            
+            for col_idx in range(len(base_headers)):
+                val = orig_row[col_idx] if col_idx < len(orig_row) else ''
+                field_for_col = col_to_field.get(col_idx)
+                
+                # If this column corresponds to a field with an error, paint cell red
+                if field_for_col and field_for_col in error_fields:
+                    worksheet.write(excel_row_num, col_idx, val, cell_error_format)
+                else:
+                    worksheet.write(excel_row_num, col_idx, val, cell_format)
+                    
+            res_info = row_results_map.get(row.get('index'))
+            
+            if is_preview:
+                if errors:
+                    ok_val = "❌"
+                    stor_val = ""
+                    estado_val = "Con Errores"
+                    detalle_val = ", ".join([e.get('message', '') for e in errors])
+                    fmt = status_error_format
+                else:
+                    ok_val = "✅"
+                    stor_val = ""
+                    estado_val = "Listo para procesar"
+                    detalle_val = "Validación exitosa (Stock y ubicación disponibles)"
+                    fmt = status_ok_format
+            else:
+                if errors:
+                    ok_val = "❌"
+                    stor_val = ""
+                    estado_val = "Con Errores"
+                    detalle_val = ", ".join([e.get('message', '') for e in errors])
+                    fmt = status_error_format
+                elif res_info and res_info.get('ok'):
+                    ok_val = "✅"
+                    stor_val = res_info.get('stor', '')
+                    estado_val = "Realizado"
+                    detalle_val = res_info.get('msg', 'OK')
+                    fmt = status_ok_format
+                elif res_info:
+                    ok_val = "❌"
+                    stor_val = ""
+                    estado_val = "Error al procesar"
+                    detalle_val = res_info.get('msg', 'Error')
+                    fmt = status_error_format
+                else:
+                    ok_val = "-"
+                    stor_val = ""
+                    estado_val = "No procesado"
+                    detalle_val = ""
+                    fmt = cell_format
+                    
+            worksheet.write(excel_row_num, len(base_headers), ok_val, fmt)
+            worksheet.write(excel_row_num, len(base_headers) + 1, stor_val, cell_format)
+            worksheet.write(excel_row_num, len(base_headers) + 2, estado_val, fmt)
+            worksheet.write(excel_row_num, len(base_headers) + 3, detalle_val, cell_format)
+            
+        workbook.close()
+        output_stream.seek(0)
+        xlsx_data = output_stream.read()
+        return base64.b64encode(xlsx_data).decode('utf-8')
+
+    @http.route('/wmds/v2/import_rackeo/preview_report', type='json', auth='user', methods=['POST'], csrf=True)
+    def preview_report(self, **kw):
+        rows = kw.get('rows', [])
+        headers = kw.get('headers', [])
+        mapping = kw.get('column_mapping', {})
+        if not rows:
+            return {'error': True, 'error_msg': 'No hay datos para revisar.'}
+            
+        validated_rows = self._validate_and_match_rackeo_rows(rows)
+        xlsx_base64 = self._generate_feedback_excel(validated_rows, raw_headers=headers, column_mapping=mapping, is_preview=True)
+        
+        ok_count = sum(1 for r in validated_rows if not r.get('errors'))
+        error_count = sum(1 for r in validated_rows if r.get('errors'))
+        
+        return {
+            'status': 'ok',
+            'message': f"Revisión completada: {ok_count} filas válidas, {error_count} con errores.",
+            'xlsx_file': xlsx_base64,
+            'filename': 'revision_errores_rackeo.xlsx',
+            'ok_count': ok_count,
+            'error_count': error_count,
+            'rows': validated_rows
+        }
+
     @http.route('/wmds/v2/import_rackeo/process', type='json', auth='user', methods=['POST'], csrf=True)
     def process_rackeo(self, **kw):
         rows = kw.get('rows', [])
+        headers = kw.get('headers', [])
+        mapping = kw.get('column_mapping', {})
         if not rows:
             return {'error': True, 'error_msg': 'No hay datos para procesar.'}
             
         validated_rows = self._validate_and_match_rackeo_rows(rows)
         
-        valid_rows = [r for r in validated_rows if not r.get('excluded') and not r.get('errors')]
+        valid_rows = [r for r in validated_rows if not r.get('errors')]
         if not valid_rows:
             return {'error': True, 'error_msg': 'No hay filas válidas para procesar.'}
 
@@ -543,12 +683,13 @@ class ImportRackeoController(http.Controller):
                         'row_index': r['index']
                     })
 
-                # 3. Create new STOR picking
+                # 3. Create new STOR picking (1 per PO, linked to origin and purchase_id)
                 new_stor = request.env['stock.picking'].sudo().create({
                     'picking_type_id': pt_stor.id,
                     'location_id': rec_loc.id,
                     'location_dest_id': dest_stock.id,
                     'origin': po_record.name,
+                    'purchase_id': po_record.id,
                     'user_id': request.env.user.id,
                 })
 
@@ -591,9 +732,10 @@ class ImportRackeoController(http.Controller):
                 # 6. Validate the new STOR picking
                 new_stor.button_validate()
 
-                # 8. Create WMDs logs
+                # 7. Create WMDs logs with user and automation note
                 total_pzs = sum(self._safe_float(r['data'].get('PZS')) for r in po_rows)
-                log_msg = f"Rackeo masivo completado: {new_stor.name} ({len(po_rows)} líneas, {total_pzs} pzs) para PO {po_record.name}."
+                user_name = request.env.user.name or f"Usuario #{request.env.user.id}"
+                log_msg = f"Rackeo masivo realizado por automatización por {user_name}: {new_stor.name} ({len(po_rows)} líneas, {total_pzs} pzs) para PO {po_record.name}."
                 request.env['wmds.log'].sudo().create({
                     'purchase': po_record.id,
                     'pick': new_stor.id,
@@ -616,84 +758,16 @@ class ImportRackeoController(http.Controller):
                 for r in po_rows:
                     row_results_map[r['index']] = {'ok': False, 'msg': f'Error: {str(e)}', 'stor': ''}
 
-        # Generate feedback Excel report
-        output_stream = io.BytesIO()
-        workbook = xlsxwriter.Workbook(output_stream, {'in_memory': True})
-        worksheet = workbook.add_worksheet('Retroalimentacion_Rackeo')
+        # Generate feedback Excel report with colored cells for errors
+        xlsx_base64 = self._generate_feedback_excel(
+            validated_rows, 
+            raw_headers=headers, 
+            column_mapping=mapping, 
+            row_results_map=row_results_map, 
+            is_preview=False
+        )
         
-        header_format = workbook.add_format({
-            'bold': True,
-            'bg_color': '#0F172A',
-            'font_color': '#FFFFFF',
-            'border': 1,
-            'align': 'center'
-        })
-        cell_format = workbook.add_format({'border': 1})
-        error_format = workbook.add_format({'border': 1, 'font_color': '#DC2626'})
-        ok_format = workbook.add_format({'border': 1, 'font_color': '#16A34A', 'bold': True})
-        
-        original_headers = kw.get('headers', [])
-        if not original_headers:
-            max_col = max(len(row.get('original_row', [])) for row in validated_rows) if validated_rows else 0
-            original_headers = [f"Columna {i+1}" for i in range(max_col)]
-            
-        new_headers = original_headers + ['Ok', 'STOR', 'Estado', 'Detalle']
-        for col_idx, h_text in enumerate(new_headers):
-            worksheet.write(0, col_idx, h_text, header_format)
-            
-        for row_idx, row in enumerate(validated_rows):
-            excel_row_num = row_idx + 1
-            orig_row = row.get('original_row', [])
-            
-            for col_idx, val in enumerate(orig_row):
-                worksheet.write(excel_row_num, col_idx, val, cell_format)
-                
-            is_excluded = row.get('excluded', False)
-            errors = row.get('errors', [])
-            res_info = row_results_map.get(row.get('index'))
-            
-            if is_excluded:
-                ok_val = "Excluido"
-                stor_val = ""
-                estado_val = "Excluido"
-                detalle_val = "Fila excluida por el usuario"
-                fmt = cell_format
-            elif errors:
-                ok_val = "❌"
-                stor_val = ""
-                estado_val = "Con Errores"
-                detalle_val = ", ".join([e.get('message', '') for e in errors])
-                fmt = error_format
-            elif res_info and res_info.get('ok'):
-                ok_val = "✅"
-                stor_val = res_info.get('stor', '')
-                estado_val = "Realizado"
-                detalle_val = res_info.get('msg', 'OK')
-                fmt = ok_format
-            elif res_info:
-                ok_val = "❌"
-                stor_val = ""
-                estado_val = "Error al procesar"
-                detalle_val = res_info.get('msg', 'Error')
-                fmt = error_format
-            else:
-                ok_val = "-"
-                stor_val = ""
-                estado_val = "No procesado"
-                detalle_val = ""
-                fmt = cell_format
-                
-            worksheet.write(excel_row_num, len(orig_row), ok_val, fmt)
-            worksheet.write(excel_row_num, len(orig_row) + 1, stor_val, cell_format)
-            worksheet.write(excel_row_num, len(orig_row) + 2, estado_val, fmt)
-            worksheet.write(excel_row_num, len(orig_row) + 3, detalle_val, cell_format)
-            
-        workbook.close()
-        output_stream.seek(0)
-        xlsx_data = output_stream.read()
-        xlsx_base64 = base64.b64encode(xlsx_data).decode('utf-8')
-        
-        had_errors = any(not r.get('ok') for r in row_results_map.values()) or any(len(r.get('errors', [])) > 0 for r in validated_rows if not r.get('excluded'))
+        had_errors = any(not r.get('ok') for r in row_results_map.values()) or any(len(r.get('errors', [])) > 0 for r in validated_rows)
         
         return {
             'status': 'ok',

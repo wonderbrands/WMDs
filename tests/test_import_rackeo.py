@@ -239,13 +239,133 @@ PO-TEST-RACKEO\t{self.sku_a}\tLOC-SHELF-N1\t16
             self.assertTrue(process_res.get('created_stors'))
             self.assertTrue(process_res.get('xlsx_file'))
 
-            # Verify generated feedback Excel contains columns and STOR name
-            xlsx_bytes = base64.b64decode(process_res['xlsx_file'])
-            wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes))
-            sheet = wb.active
-            headers = [cell.value for cell in sheet[1]]
-            self.assertIn('STOR', headers)
-            self.assertIn('Estado', headers)
+            # Verify purchase_id and wmds.log on created STOR
+            created_stor_id = process_res['created_stors'][0]['stor_id']
+            stor_rec = self.env['stock.picking'].browse(created_stor_id)
+            self.assertEqual(stor_rec.purchase_id.id, po.id)
+            
+            logs = self.env['wmds.log'].search([('pick', '=', stor_rec.id)])
+            self.assertTrue(logs)
+            self.assertIn("automatización", logs[0].log.lower())
 
         finally:
             irc.request = original_request
+
+    def test_04_bom_parent_rejection(self):
+        """Test that SKUs with BoM (parent/combo) are rejected."""
+        product_b = self.env['product.product'].browse(self.product_b_id)
+        if 'mrp.bom' in self.env:
+            self.env['mrp.bom'].create({
+                'product_tmpl_id': product_b.product_tmpl_id.id,
+                'product_id': product_b.id,
+                'type': 'normal',
+                'bom_line_ids': [
+                    (0, 0, {'product_id': self.product_a_id, 'product_qty': 1})
+                ]
+            })
+        po = self.env['purchase.order'].browse(self.po_id)
+        loc_empty_dest = self.env['stock.location'].browse(self.loc_empty_dest_id)
+
+        controller = irc.ImportRackeoController()
+        original_request = irc.request
+        mock_request = MagicMock()
+        mock_request.env = self.env
+        irc.request = mock_request
+
+        try:
+            raw_rows = [{
+                'index': 0,
+                'original_row': [po.name, self.sku_b, loc_empty_dest.barcode, '10'],
+                'data': {'PO': po.name, 'SKU': self.sku_b, 'UBICACION': loc_empty_dest.barcode, 'PZS': '10'},
+            }]
+            val_res = controller.validate_rows(rows=raw_rows)
+            rows_res = val_res.get('rows', [])
+            self.assertTrue(any(e['code'] == 'has_bom' for e in rows_res[0]['errors']))
+        finally:
+            irc.request = original_request
+
+    def test_05_po_exact_match(self):
+        """Test that PO search matches strictly and does not match partial substrings."""
+        po = self.env['purchase.order'].browse(self.po_id)
+        po_prefix = po.name[:6]
+        loc_empty_dest = self.env['stock.location'].browse(self.loc_empty_dest_id)
+
+        controller = irc.ImportRackeoController()
+        original_request = irc.request
+        mock_request = MagicMock()
+        mock_request.env = self.env
+        irc.request = mock_request
+
+        try:
+            raw_rows = [{
+                'index': 0,
+                'original_row': [po_prefix, self.sku_a, loc_empty_dest.barcode, '5'],
+                'data': {'PO': po_prefix, 'SKU': self.sku_a, 'UBICACION': loc_empty_dest.barcode, 'PZS': '5'},
+            }]
+            val_res = controller.validate_rows(rows=raw_rows)
+            rows_res = val_res.get('rows', [])
+            self.assertTrue(any(e['code'] == 'not_found' for e in rows_res[0]['errors']))
+        finally:
+            irc.request = original_request
+
+    def test_06_cumulative_stock_validation(self):
+        """Test that multiple rows for same SKU cumulatively check against reception reservoir."""
+        product_a = self.env['product.product'].browse(self.product_a_id)
+        po = self.env['purchase.order'].browse(self.po_id)
+        loc_empty_dest = self.env['stock.location'].browse(self.loc_empty_dest_id)
+        loc_n1_dest = self.env['stock.location'].browse(self.loc_n1_dest_id)
+        rec_loc = self.env['stock.location'].browse(self.loc_recepcion_id)
+
+        # Set 15 in reception
+        self.env['stock.quant']._update_available_quantity(product_a, rec_loc, 15.0)
+
+        controller = irc.ImportRackeoController()
+        original_request = irc.request
+        mock_request = MagicMock()
+        mock_request.env = self.env
+        irc.request = mock_request
+
+        try:
+            raw_rows = [
+                {
+                    'index': 0,
+                    'original_row': [po.name, self.sku_a, loc_empty_dest.barcode, '10'],
+                    'data': {'PO': po.name, 'SKU': self.sku_a, 'UBICACION': loc_empty_dest.barcode, 'PZS': '10'},
+                },
+                {
+                    'index': 1,
+                    'original_row': [po.name, self.sku_a, loc_n1_dest.barcode, '10'], # 10 + 10 = 20 > 15
+                    'data': {'PO': po.name, 'SKU': self.sku_a, 'UBICACION': loc_n1_dest.barcode, 'PZS': '10'},
+                }
+            ]
+            val_res = controller.validate_rows(rows=raw_rows)
+            rows_res = val_res.get('rows', [])
+            self.assertFalse(rows_res[0]['errors'])
+            self.assertTrue(any(e['code'] == 'no_reservoir' for e in rows_res[1]['errors']))
+        finally:
+            irc.request = original_request
+
+    def test_07_preview_report_route(self):
+        """Test preview report generation without creating pickings."""
+        po = self.env['purchase.order'].browse(self.po_id)
+        loc_empty_dest = self.env['stock.location'].browse(self.loc_empty_dest_id)
+
+        controller = irc.ImportRackeoController()
+        original_request = irc.request
+        mock_request = MagicMock()
+        mock_request.env = self.env
+        irc.request = mock_request
+
+        try:
+            raw_rows = [{
+                'index': 0,
+                'original_row': [po.name, self.sku_a, loc_empty_dest.barcode, '5'],
+                'data': {'PO': po.name, 'SKU': self.sku_a, 'UBICACION': loc_empty_dest.barcode, 'PZS': '5'},
+            }]
+            preview_res = controller.preview_report(rows=raw_rows, headers=['PO', 'SKU', 'UBICACION', 'PZS'])
+            self.assertEqual(preview_res.get('status'), 'ok')
+            self.assertTrue(preview_res.get('xlsx_file'))
+            self.assertEqual(preview_res.get('filename'), 'revision_errores_rackeo.xlsx')
+        finally:
+            irc.request = original_request
+

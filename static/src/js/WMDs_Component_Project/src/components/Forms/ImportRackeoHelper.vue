@@ -120,11 +120,6 @@
           <span class="tab_val bg-danger">{{ errorRowsCount }}</span>
         </button>
         
-        <button class="filter_tab" :class="{ 'active': selectedStatusFilter === 'excluded' }" @click="selectedStatusFilter = 'excluded'">
-          <span class="tab_lbl">Excluidos</span>
-          <span class="tab_val bg-secondary">{{ excludedRowsCount }}</span>
-        </button>
-        
         <button class="filter_tab" :class="{ 'active': selectedStatusFilter === 'ok' }" @click="selectedStatusFilter = 'ok'">
           <span class="tab_lbl">Correctos (OK)</span>
           <span class="tab_val bg-success">{{ okRowsCount }}</span>
@@ -136,7 +131,6 @@
         <table class="spreadsheet_table">
           <thead>
             <tr>
-              <th style="width: 60px;">Excluir</th>
               <th style="width: 90px;">Estado</th>
               <th>PO (Orden de Compra) *</th>
               <th>SKU (Producto) *</th>
@@ -148,7 +142,7 @@
           <tbody v-for="poGroup in groupedRowsByPO" :key="poGroup.name">
             <!-- PO Group Header -->
             <tr class="po_group_header">
-              <td colspan="7">
+              <td colspan="6">
                 <div class="po_header_content" @click="togglePOCollapse(poGroup.name)">
                   <div class="po_header_left">
                     <i class="fa mr-2" :class="collapsedPOs[poGroup.name] ? 'fa-chevron-right' : 'fa-chevron-down'"></i>
@@ -164,18 +158,12 @@
             <!-- PO Rows -->
             <template v-if="!collapsedPOs[poGroup.name]">
               <tr v-for="row in poGroup.rows" :key="row.index" 
-                  :class="{ 'row_excluded': row.excluded, 'row_selected': activeRowDetails && activeRowDetails.index === row.index }"
+                  :class="{ 'row_selected': activeRowDetails && activeRowDetails.index === row.index }"
                   @click="selectRow(row)">
-                
-                <!-- Exclude Checkbox -->
-                <td class="text-center" @click.stop>
-                  <input type="checkbox" v-model="row.excluded" @change="onRowEdit(row)" />
-                </td>
 
                 <!-- Status Badge -->
                 <td class="text-center">
-                  <span v-if="row.excluded" class="badge badge-secondary">EXCL</span>
-                  <span v-else-if="row.errors.length > 0" class="badge badge-danger" :title="getRowErrorsText(row)">
+                  <span v-if="row.errors.length > 0" class="badge badge-danger" :title="getRowErrorsText(row)">
                     ERROR ({{ row.errors.length }})
                   </span>
                   <span v-else class="badge badge-success">OK</span>
@@ -208,9 +196,6 @@
                       <i class="fa fa-exclamation-triangle mr-1"></i> {{ err.message }}
                     </span>
                   </div>
-                  <div v-else-if="row.excluded" class="text-muted text-xs">
-                    Fila excluida
-                  </div>
                   <div v-else class="text-success text-xs font-medium">
                     <i class="fa fa-check-circle mr-1"></i> Ubicación y stock disponible en WH/Recepcion
                   </div>
@@ -237,9 +222,9 @@
 
       <!-- Action Footer -->
       <div class="action_buttons mt-6">
-        <Button label="Reemplazar archivo" severity="danger" icon="fa fa-upload" outlined @click="resetImport" />
-        <Button label="Volver a Validar" severity="info" icon="fa fa-refresh" :loading="store.loading" @click="revalidateRows" />
-        <Button label="Crear y Validar Rackeos (STOR)" severity="success" icon="fa fa-check-double" :disabled="store.loading || okRowsCount === 0" @click="processImport" />
+        <Button label="Reemplazar archivo" severity="secondary" icon="fa fa-upload" outlined @click="resetImport" />
+        <Button label="Revisar Errores (Excel)" severity="warn" icon="fa fa-file-excel-o" :loading="store.loading" @click="downloadErrorsReport" />
+        <Button label="Validar Correctos (Crear STOR)" severity="success" icon="fa fa-check-double" :disabled="store.loading || okRowsCount === 0" @click="processImport" />
       </div>
     </section>
 
@@ -297,13 +282,10 @@ export default {
       return this.rows.length;
     },
     errorRowsCount() {
-      return this.rows.filter(r => !r.excluded && r.errors && r.errors.length > 0).length;
-    },
-    excludedRowsCount() {
-      return this.rows.filter(r => r.excluded).length;
+      return this.rows.filter(r => r.errors && r.errors.length > 0).length;
     },
     okRowsCount() {
-      return this.rows.filter(r => !r.excluded && (!r.errors || r.errors.length === 0)).length;
+      return this.rows.filter(r => !r.errors || r.errors.length === 0).length;
     },
     previewRows() {
       return this.rows.slice(0, 5);
@@ -328,22 +310,19 @@ export default {
         
         let filteredRows = group.rows;
         if (this.selectedStatusFilter === 'error') {
-          filteredRows = group.rows.filter(r => !r.excluded && r.errors && r.errors.length > 0);
-        } else if (this.selectedStatusFilter === 'excluded') {
-          filteredRows = group.rows.filter(r => r.excluded);
+          filteredRows = group.rows.filter(r => r.errors && r.errors.length > 0);
         } else if (this.selectedStatusFilter === 'ok') {
-          filteredRows = group.rows.filter(r => !r.excluded && (!r.errors || r.errors.length === 0));
+          filteredRows = group.rows.filter(r => !r.errors || r.errors.length === 0);
         }
 
         if (filteredRows.length > 0) {
-          const activeRows = filteredRows.filter(r => !r.excluded);
-          const hasErrors = activeRows.some(r => r.errors && r.errors.length > 0);
-          const totalPzs = activeRows.reduce((acc, r) => acc + (parseFloat(r.data.PZS) || 0), 0);
+          const hasErrors = filteredRows.some(r => r.errors && r.errors.length > 0);
+          const totalPzs = filteredRows.reduce((acc, r) => acc + (parseFloat(r.data.PZS) || 0), 0);
           
           result.push({
             name: key,
             rows: filteredRows,
-            activeCount: activeRows.length,
+            activeCount: filteredRows.length,
             totalPzs,
             hasErrors
           });
@@ -357,7 +336,7 @@ export default {
         const current = this.rows.find(r => r.index === this.selectedRow.index);
         if (current) return current;
       }
-      return this.rows.find(r => !r.excluded && r.errors && r.errors.length > 0) || null;
+      return this.rows.find(r => r.errors && r.errors.length > 0) || null;
     }
   },
   methods: {
@@ -506,6 +485,52 @@ export default {
     getRowErrorsText(row) {
       return (row.errors || []).map(e => e.message).join('\n');
     },
+    _downloadBase64File(base64Data, filename) {
+      try {
+        const byteCharacters = atob(base64Data);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+        const link = document.createElement('a');
+        link.href = window.URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch (e) {
+        console.error("Error al descargar archivo excel:", e);
+      }
+    },
+    async downloadErrorsReport() {
+      const res = await this.store.callOdoo('import_rackeo_preview_report', '', { rows: this.rows, headers: this.headers, column_mapping: this.mapping });
+      if (res.error) {
+        this.store.toast.add({
+          severity: 'error',
+          summary: 'Error al Revisar Errores',
+          detail: res.error_msg || 'Error del servidor durante la validación.',
+          life: 5000
+        });
+        return;
+      }
+
+      if (res.rows) {
+        this.rows = res.rows;
+      }
+
+      if (res.xlsx_file) {
+        this._downloadBase64File(res.xlsx_file, res.filename || 'revision_errores_rackeo.xlsx');
+      }
+
+      this.store.toast.add({
+        severity: res.error_count > 0 ? 'warn' : 'success',
+        summary: 'Reporte de Revisión Descargado',
+        detail: res.message || `Filas correctas: ${res.ok_count}, Filas con errores: ${res.error_count}`,
+        life: 6000
+      });
+    },
     async processImport() {
       const res = await this.store.callOdoo('import_rackeo_process', '', { rows: this.rows, headers: this.headers, column_mapping: this.mapping });
       if (res.error) {
@@ -519,23 +544,7 @@ export default {
       }
 
       if (res.xlsx_file) {
-        try {
-          const byteCharacters = atob(res.xlsx_file);
-          const byteNumbers = new Array(byteCharacters.length);
-          for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-          }
-          const byteArray = new Uint8Array(byteNumbers);
-          const blob = new Blob([byteArray], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-          const link = document.createElement('a');
-          link.href = window.URL.createObjectURL(blob);
-          link.download = res.filename || 'retroalimentacion_rackeo.xlsx';
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        } catch (e) {
-          console.error("Error al descargar excel de retroalimentación:", e);
-        }
+        this._downloadBase64File(res.xlsx_file, res.filename || 'retroalimentacion_rackeo.xlsx');
       }
 
       if (res.created_stors && res.created_stors.length > 0) {

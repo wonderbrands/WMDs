@@ -522,6 +522,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             unreserve_and_reserve: {url: '/wmds/v2/picking/unreserve_and_reserve', method: 'POST'},
             import_rackeo_process: {url: '/wmds/v2/import_rackeo/process', method: 'POST'},
             import_rackeo_validate_rows: {url: '/wmds/v2/import_rackeo/validate_rows', method: 'POST'},
+            import_rackeo_preview_report: {url: '/wmds/v2/import_rackeo/preview_report', method: 'POST'},
             compactacion_create: {url: '/wmds/v2/engine/compactacion/create_picking', method: 'POST'},
             compactacion_validate_origin: {url: '/wmds/v2/engine/compactacion/validate_origin_location', method: 'POST'},
             compactacion_add_lines: {url: '/wmds/v2/engine/compactacion/add_location_lines', method: 'POST'},
