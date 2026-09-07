@@ -321,15 +321,22 @@ def process_rackeo_text(raw_text, env=None, commit=True):
             ('state', 'not in', ('done', 'cancel'))
         ])
         
+        candidate_prod_ids = set()
         if open_stors:
             print(f"  ℹ️ Cancelando reservas y poniendo demanda a 0 en {len(open_stors)} STOR(s) original(es) ({', '.join(open_stors.mapped('name'))})...")
             for s in open_stors:
+                candidate_prod_ids.update(s.move_ids.mapped('product_id.id'))
                 s.do_unreserve()
                 for m in s.move_ids:
                     if m.state not in ('done', 'cancel'):
                         m.write({'product_uom_qty': 0.0})
                         m._action_cancel()
                 s.action_cancel()
+
+        for item in parsed_items:
+            candidate_prod_ids.add(item['product'].id)
+        if hasattr(po, 'order_line') and po.order_line:
+            candidate_prod_ids.update(po.order_line.mapped('product_id.id'))
 
         # Check total requested vs available in WH/Recepcion
         items_by_key = {}
@@ -402,16 +409,61 @@ def process_rackeo_text(raw_text, env=None, commit=True):
 
             new_stor.button_validate()
 
+            # Check for remaining unrackeada stock in WH/Recepcion and create a remaining STOR picking
+            rem_moves = []
+            for p_id in candidate_prod_ids:
+                quants = env['stock.quant'].sudo().search([
+                    ('location_id', '=', rec_loc.id),
+                    ('product_id', '=', p_id)
+                ])
+                rem_qty = sum(quants.mapped('quantity')) - sum(quants.mapped('reserved_quantity'))
+                if rem_qty > 0.001:
+                    prod = env['product.product'].sudo().browse(p_id)
+                    rem_moves.append((prod, rem_qty))
+
+            if rem_moves:
+                rem_stor = env['stock.picking'].sudo().create({
+                    'picking_type_id': pt_stor.id,
+                    'location_id': rec_loc.id,
+                    'location_dest_id': dest_stock.id,
+                    'origin': po.name,
+                    'purchase_id': po.id,
+                    'user_id': env.user.id,
+                })
+                for prod, rem_qty in rem_moves:
+                    env['stock.move'].sudo().create({
+                        'name': f"STOR Remanente: {prod.display_name}",
+                        'product_id': prod.id,
+                        'product_uom_qty': rem_qty,
+                        'product_uom': prod.uom_id.id,
+                        'picking_id': rem_stor.id,
+                        'location_id': rec_loc.id,
+                        'location_dest_id': dest_stock.id,
+                    })
+                rem_stor.action_confirm()
+                rem_stor.action_assign()
+                print(f"  ℹ️ STOR remanente creado para saldo pendiente en WH/Recepcion: {rem_stor.name}")
+
+                if 'wmds.log' in env:
+                    rem_log_msg = f"STOR remanente generado automáticamente: {rem_stor.name} ({len(rem_moves)} productos, {sum(q for _, q in rem_moves)} pzs) para PO {po.name}."
+                    env['wmds.log'].sudo().create({
+                        'purchase': po.id,
+                        'pick': rem_stor.id,
+                        'log': rem_log_msg,
+                        'user': env.user.id,
+                    })
+
             # WMDS logs
             total_pzs = sum(it['pzs'] for it in parsed_items)
             user_name = env.user.name or f"Usuario #{env.user.id}"
-            log_msg = f"Rackeo masivo realizado por automatización por {user_name}: {new_stor.name} ({len(parsed_items)} líneas, {total_pzs} pzs) para PO {po.name}."
-            env['wmds.log'].sudo().create({
-                'purchase': po.id,
-                'pick': new_stor.id,
-                'log': log_msg,
-                'user': env.user.id,
-            })
+            if 'wmds.log' in env:
+                log_msg = f"Rackeo masivo realizado por automatización por {user_name}: {new_stor.name} ({len(parsed_items)} líneas, {total_pzs} pzs) para PO {po.name}."
+                env['wmds.log'].sudo().create({
+                    'purchase': po.id,
+                    'pick': new_stor.id,
+                    'log': log_msg,
+                    'user': env.user.id,
+                })
 
             print(f"  ✅ CREADO Y VALIDADO EXITOSAMENTE: {new_stor.name}")
             print(f"     Estado: {new_stor.state.upper()} | Total Líneas: {len(parsed_items)} | Total Pzs: {total_pzs}")

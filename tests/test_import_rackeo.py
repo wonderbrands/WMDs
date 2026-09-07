@@ -175,6 +175,16 @@ PO-TEST-RACKEO\t{self.sku_a}\tLOC-SHELF-N1\t16
         self.assertEqual(move_prior.product_uom_qty, 0.0)
         self.assertEqual(open_stor.state, 'cancel')
 
+        # 7. Verify remaining STOR picking was created for the remaining 20 units in WH/Recepcion
+        rem_stors = self.env['stock.picking'].search([
+            ('origin', '=', po.name),
+            ('picking_type_id.sequence_code', '=', 'STOR'),
+            ('state', 'in', ('assigned', 'confirmed'))
+        ])
+        self.assertEqual(len(rem_stors), 1)
+        self.assertEqual(rem_stors.move_ids[0].product_id.id, product_a.id)
+        self.assertEqual(rem_stors.move_ids[0].product_uom_qty, 20.0)
+
     def test_03_controller_validation_and_process(self):
         """Test controller validation and process routes."""
         product_a = self.env['product.product'].browse(self.product_a_id)

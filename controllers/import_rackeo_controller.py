@@ -651,26 +651,34 @@ class ImportRackeoController(http.Controller):
         row_results_map = {} # map index -> { 'stor_name': ..., 'ok': True/False, 'msg': ... }
 
         for po_name, po_rows in rows_by_po.items():
-            po_record = request.env['purchase.order'].sudo().search([('name', '=', po_name)], limit=1)
-            if not po_record:
+            po_record = request.env['purchase.order'].sudo().browse(po_rows[0]['po_id']) if po_rows[0].get('po_id') else request.env['purchase.order'].sudo().search([('name', '=ilike', po_name)], limit=1)
+            if not po_record or not po_record.exists():
                 for r in po_rows:
                     row_results_map[r['index']] = {'ok': False, 'msg': f'PO {po_name} no encontrada', 'stor': ''}
                 continue
 
             try:
-                # 1. Unreserve and cancel existing open STORs for this PO, set moves demand to 0
+                # 1. Collect candidate products and unreserve/cancel existing open STORs for this PO
                 open_stors = request.env['stock.picking'].sudo().search([
                     ('origin', '=', po_record.name),
                     ('picking_type_id.sequence_code', '=', 'STOR'),
                     ('state', 'not in', ('done', 'cancel'))
                 ])
+                candidate_prod_ids = set()
                 for s in open_stors:
+                    candidate_prod_ids.update(s.move_ids.mapped('product_id.id'))
                     s.do_unreserve()
                     for m in s.move_ids:
                         if m.state not in ('done', 'cancel'):
                             m.write({'product_uom_qty': 0.0})
                             m._action_cancel()
                     s.action_cancel()
+
+                for r in po_rows:
+                    if r.get('product_id'):
+                        candidate_prod_ids.add(r['product_id'])
+                if hasattr(po_record, 'order_line') and po_record.order_line:
+                    candidate_prod_ids.update(po_record.order_line.mapped('product_id.id'))
 
                 # 2. Group items by (product, location) to create moves with exact destination locations
                 items_by_key = {}
@@ -736,16 +744,60 @@ class ImportRackeoController(http.Controller):
                 # 6. Validate the new STOR picking
                 new_stor.button_validate()
 
-                # 7. Create WMDs logs with user and automation note
-                total_pzs = sum(self._safe_float(r['data'].get('PZS')) for r in po_rows)
-                user_name = request.env.user.name or f"Usuario #{request.env.user.id}"
-                log_msg = f"Rackeo masivo realizado por automatización por {user_name}: {new_stor.name} ({len(po_rows)} líneas, {total_pzs} pzs) para PO {po_record.name}."
-                request.env['wmds.log'].sudo().create({
-                    'purchase': po_record.id,
-                    'pick': new_stor.id,
-                    'log': log_msg,
-                    'user': request.env.user.id,
-                })
+                # 7. Check for remaining unrackeada stock in WH/Recepcion and create a remaining STOR picking
+                rem_moves = []
+                for p_id in candidate_prod_ids:
+                    quants = request.env['stock.quant'].sudo().search([
+                        ('location_id', '=', rec_loc.id),
+                        ('product_id', '=', p_id)
+                    ])
+                    rem_qty = sum(quants.mapped('quantity')) - sum(quants.mapped('reserved_quantity'))
+                    if rem_qty > 0.001:
+                        prod = request.env['product.product'].sudo().browse(p_id)
+                        rem_moves.append((prod, rem_qty))
+
+                if rem_moves:
+                    rem_stor = request.env['stock.picking'].sudo().create({
+                        'picking_type_id': pt_stor.id,
+                        'location_id': rec_loc.id,
+                        'location_dest_id': dest_stock.id,
+                        'origin': po_record.name,
+                        'purchase_id': po_record.id,
+                        'user_id': request.env.user.id,
+                    })
+                    for prod, rem_qty in rem_moves:
+                        request.env['stock.move'].sudo().create({
+                            'name': f"STOR Remanente: {prod.display_name}",
+                            'product_id': prod.id,
+                            'product_uom_qty': rem_qty,
+                            'product_uom': prod.uom_id.id,
+                            'picking_id': rem_stor.id,
+                            'location_id': rec_loc.id,
+                            'location_dest_id': dest_stock.id,
+                        })
+                    rem_stor.action_confirm()
+                    rem_stor.action_assign()
+                    
+                    if 'wmds.log' in request.env:
+                        rem_log_msg = f"STOR remanente generado automáticamente: {rem_stor.name} ({len(rem_moves)} productos, {sum(q for _, q in rem_moves)} pzs) para PO {po_record.name}."
+                        request.env['wmds.log'].sudo().create({
+                            'purchase': po_record.id,
+                            'pick': rem_stor.id,
+                            'log': rem_log_msg,
+                            'user': request.env.user.id,
+                        })
+
+                # 8. Create WMDs logs with user and automation note
+                if 'wmds.log' in request.env:
+                    total_pzs = sum(self._safe_float(r['data'].get('PZS')) for r in po_rows)
+                    user_name = request.env.user.name or f"Usuario #{request.env.user.id}"
+                    log_msg = f"Rackeo masivo realizado por automatización por {user_name}: {new_stor.name} ({len(po_rows)} líneas, {total_pzs} pzs) para PO {po_record.name}."
+                    request.env['wmds.log'].sudo().create({
+                        'purchase': po_record.id,
+                        'pick': new_stor.id,
+                        'log': log_msg,
+                        'user': request.env.user.id,
+                    })
 
                 created_stors.append({
                     'po': po_record.name,
