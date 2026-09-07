@@ -16,6 +16,49 @@ class StockWMDSPurchase(models.Model):
         readonly=True, copy=False,
     )
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        if isinstance(vals_list, dict):
+            vals_list = [vals_list]
+        for vals in vals_list:
+            if not vals.get('purchase_id') and vals.get('origin'):
+                orig_name = str(vals['origin']).split(':')[0].strip()
+                if orig_name:
+                    po = self.env['purchase.order'].sudo().search([('name', '=ilike', orig_name)], limit=1)
+                    if po:
+                        vals['purchase_id'] = po.id
+
+        pickings = super().create(vals_list)
+
+        for picking in pickings:
+            if not picking.purchase_id:
+                po = False
+                if picking.origin:
+                    orig_name = str(picking.origin).split(':')[0].strip()
+                    if orig_name:
+                        po = self.env['purchase.order'].sudo().search([('name', '=ilike', orig_name)], limit=1)
+                if not po and picking.move_ids:
+                    orig_pickings = picking.move_ids.mapped('move_orig_ids.picking_id')
+                    pos = orig_pickings.mapped('purchase_id')
+                    if pos:
+                        po = pos[0]
+                if po:
+                    picking.write({'purchase_id': po.id})
+
+        return pickings
+
+    def write(self, vals):
+        res = super().write(vals)
+        if 'origin' in vals or 'move_ids' in vals:
+            for picking in self.filtered(lambda p: not p.purchase_id):
+                if picking.origin:
+                    orig_name = str(picking.origin).split(':')[0].strip()
+                    if orig_name:
+                        po = self.env['purchase.order'].sudo().search([('name', '=ilike', orig_name)], limit=1)
+                        if po:
+                            picking.write({'purchase_id': po.id})
+        return res
+
     def button_validate(self):
         # We now handle quarantine by blocking the target locations themselves in wb_tech_location_blocking
         return super(StockWMDSPurchase, self).button_validate()

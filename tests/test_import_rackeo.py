@@ -369,3 +369,17 @@ PO-TEST-RACKEO\t{self.sku_a}\tLOC-SHELF-N1\t16
         finally:
             irc.request = original_request
 
+    def test_05_auto_link_purchase_id(self):
+        """Test that stock.picking automatically sets purchase_id when origin matches PO."""
+        po = self.env['purchase.order'].browse(self.po_id)
+        pt_stor = self.env['stock.picking.type'].browse(self.pt_stor_id)
+        
+        # Create picking without passing purchase_id, only origin
+        picking = self.env['stock.picking'].create({
+            'picking_type_id': pt_stor.id,
+            'location_id': pt_stor.default_location_src_id.id,
+            'location_dest_id': pt_stor.default_location_dest_id.id,
+            'origin': po.name,
+        })
+        self.assertEqual(picking.purchase_id.id, po.id)
+
