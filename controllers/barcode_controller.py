@@ -102,6 +102,14 @@ class BarcodeController(http.Controller):
             if not pick_type and is_pful:
                 pick_type = 'full'
 
+            sla_level = getattr(record, 'sla_priority_level', 'normal') or 'normal'
+            sla_label = getattr(record, 'sla_priority_label', '') or ''
+            if res_model == 'stock.picking.batch' and not sla_label:
+                first_p = record.picking_ids.filtered(lambda p: p.sla_priority_label)
+                if first_p:
+                    sla_level = first_p[0].sla_priority_level
+                    sla_label = first_p[0].sla_priority_label
+
             return {
                 "status": "ok",
                 "id": record.id,
@@ -110,6 +118,8 @@ class BarcodeController(http.Controller):
                 "pick_type": pick_type,
                 "is_pful": is_pful,
                 "is_dful": is_dful,
+                "sla_priority_level": sla_level,
+                "sla_priority_label": sla_label,
                 "lines": lines_data,
                 "use_backorder": getattr(picking_type, 'barcode_allow_backorder', True),
                 "restrict_scan_source_location": getattr(picking_type, 'restrict_scan_source_location', False),

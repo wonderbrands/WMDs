@@ -95,6 +95,10 @@ class PendingTasks(http.Controller):
                             batch = pick[0].batch_id
                             batch_name = batch.name if batch else None
 
+                sla_level = getattr(record, 'sla_priority_level', 'normal') or 'normal'
+                sla_label = getattr(record, 'sla_priority_label', '') or ''
+                sla_dt = getattr(record, 'sla_date', False) or False
+
                 result.append({
                     "key": record.id,
                     "label": label,
@@ -103,7 +107,10 @@ class PendingTasks(http.Controller):
                     "origin": source_doc,
                     "date": scheduled_date_tz,
                     "carrier": carrier,
-                    "batch": batch_name
+                    "batch": batch_name,
+                    "sla_priority_level": sla_level,
+                    "sla_priority_label": sla_label,
+                    "sla_date": str(sla_dt) if sla_dt else False,
                 })
             
             return result

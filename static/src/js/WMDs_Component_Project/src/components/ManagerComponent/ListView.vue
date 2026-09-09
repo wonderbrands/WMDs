@@ -85,7 +85,14 @@
           </template>
 
           <template #body="slotProps">
-            <Tag v-if="col.type === 'selectable'" 
+            <span v-if="col.field === 'sla_priority_label' && slotProps.data['sla_priority_label']">
+              <Tag :severity="getSlaSeverity(slotProps.data['sla_priority_level'])" 
+                   :class="{'p-tag-blink': slotProps.data['sla_priority_level'] === 'critical_1h'}">
+                <i class="fa fa-clock-o mr-1"></i>{{ slotProps.data['sla_priority_label'] }}
+              </Tag>
+            </span>
+
+            <Tag v-else-if="col.type === 'selectable'" 
                  :severity="getSeverity(slotProps.data[col.field])" 
                  :value="getLabel(slotProps.data[col.field])" />
 
@@ -176,6 +183,20 @@ export default {
     onImportSuccess() {
       this.showImportHelper = false;
       this.fetchFilteredData();
+    },
+    getSlaSeverity(level) {
+      switch (level) {
+        case 'critical_1h':
+        case 'overdue':
+          return 'danger';
+        case 'urgent_2h':
+        case 'warning_6h':
+          return 'warn';
+        case 'notice_24h':
+          return 'info';
+        default:
+          return 'secondary';
+      }
     },
     onRowClick(event, modal) {
       const data = (event && event.data) ? event.data : {};
