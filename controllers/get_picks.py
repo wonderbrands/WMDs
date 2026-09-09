@@ -47,7 +47,7 @@ class GetPicks(http.Controller):
                 for key, value in kw.items():
                     col_domain.append((key, "ilike", value))
 
-            fields_to_read = ["id", "name", "origin", "operator", "bin_id", "scheduled_date", "state", "wmds_status"]
+            fields_to_read = ["id", "name", "origin", "operator", "bin_id", "scheduled_date", "state", "wmds_status", "sla_date", "sla_priority_level", "sla_priority_label"]
             
             picks_raw = request.env['stock.picking'].sudo().search_read(
                 col_domain,
@@ -66,6 +66,8 @@ class GetPicks(http.Controller):
                 {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True, "source": "operadores"},
                 {"name": "BIN", "field": "bin_id", "type": "one2many", "non_blocked_field": True, "source": "get_available_bins"},
                 {"name": "Fecha", "field": "scheduled_date"},
+                {"name": "SLA", "field": "sla_date"},
+                {"name": "Aviso Recolección", "field": "sla_priority_label"},
                 {
                     "name": "Estado",
                     "field": "state",
@@ -119,6 +121,9 @@ class GetPicks(http.Controller):
                     "operator": operator_data,
                     "bin_id": bin_data,
                     "scheduled_date": p['scheduled_date'],
+                    "sla_date": p.get('sla_date') or False,
+                    "sla_priority_level": p.get('sla_priority_level') or 'normal',
+                    "sla_priority_label": p.get('sla_priority_label') or '',
                     "state": {
                         "label": convert_value_in_label(map_cols, p['state'], "state"),
                         "severity": convert_value_in_label(map_cols, p['state'], "state", return_severity=True)
@@ -354,7 +359,7 @@ class GetPicks(http.Controller):
                 for key, value in kw.items():
                     col_domain.append((key, "ilike", value))
 
-            fields_to_read = ["id", "name", "origin", "operator", "bin_id", "scheduled_date", "state", "wmds_status"]
+            fields_to_read = ["id", "name", "origin", "operator", "bin_id", "scheduled_date", "state", "wmds_status", "sla_date", "sla_priority_level", "sla_priority_label"]
             
             picks_raw = request.env['stock.picking'].sudo().search_read(
                 col_domain,
@@ -373,6 +378,8 @@ class GetPicks(http.Controller):
                 {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True, "source": "operadores"},
                 {"name": "BIN", "field": "bin_id", "type": "one2many", "non_blocked_field": True, "source": "get_available_bins"},
                 {"name": "Fecha", "field": "scheduled_date"},
+                {"name": "SLA", "field": "sla_date"},
+                {"name": "Aviso Recolección", "field": "sla_priority_label"},
                 {
                     "name": "Estado",
                     "field": "state",
@@ -426,6 +433,9 @@ class GetPicks(http.Controller):
                     "operator": operator_data,
                     "bin_id": bin_data,
                     "scheduled_date": p['scheduled_date'],
+                    "sla_date": p.get('sla_date') or False,
+                    "sla_priority_level": p.get('sla_priority_level') or 'normal',
+                    "sla_priority_label": p.get('sla_priority_label') or '',
                     "state": {
                         "label": convert_value_in_label(map_cols, p['state'], "state"),
                         "severity": convert_value_in_label(map_cols, p['state'], "state", return_severity=True)

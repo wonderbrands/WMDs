@@ -14,6 +14,10 @@
             <div class="op-info">
                 <span class="op-name">{{ operationData?.name || 'Cargando...' }}</span>
                 <span class="op-type">{{ operationTypeTitle }}</span>
+                <div v-if="operationData?.sla_priority_label" class="sla-priority-badge" :class="operationData.sla_priority_level">
+                    <i class="fa fa-clock-o"></i>
+                    <span>{{ operationData.sla_priority_label }}</span>
+                </div>
             </div>
             <div class="op-actions">
                 <div class="picked-summary-badge">
@@ -1014,5 +1018,41 @@ export default {
 
 :deep(.clickable-rows .p-datatable-tbody > tr) { cursor: pointer; }
 :deep(.p-datatable .p-datatable-tbody > tr > td) { padding: 0.2rem 0.5rem; }
+
+.sla-priority-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    margin-top: 4px;
+}
+.sla-priority-badge.critical_1h {
+    background-color: #ef4444;
+    color: #ffffff;
+    animation: blink-red 1.5s infinite;
+}
+.sla-priority-badge.urgent_2h {
+    background-color: #f97316;
+    color: #ffffff;
+}
+.sla-priority-badge.warning_6h {
+    background-color: #eab308;
+    color: #1e293b;
+}
+.sla-priority-badge.notice_24h {
+    background-color: #3b82f6;
+    color: #ffffff;
+}
+.sla-priority-badge.overdue {
+    background-color: #991b1b;
+    color: #ffffff;
+}
+@keyframes blink-red {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
 
 </style>

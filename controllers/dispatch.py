@@ -22,7 +22,10 @@ class Dispatch(http.Controller):
                     "qty": move.qty_remaining,
                     "total_qty": move.quantity,
                     "origin": move.picking_id.origin or move.picking_id.name,
-                    "dock": move.dock_id.name
+                    "dock": move.dock_id.name,
+                    "sla_priority_level": move.picking_id.sla_priority_level if move.picking_id else 'normal',
+                    "sla_priority_label": move.picking_id.sla_priority_label if move.picking_id else '',
+                    "sla_date": move.picking_id.sla_date if move.picking_id else False,
                 })
             return res
         except Exception as e:

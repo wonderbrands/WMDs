@@ -350,8 +350,32 @@ class DockNBin(http.Controller):
             packages = [tag.display_name_custom for tag in ei_tags]
             packages += [f"{m.product_id.display_name} ({int(m.quantity)})" for m in moves]
 
-            package_details = [{"name": tag.display_name_custom, "so": tag.so_id.name, "is_full": False} for tag in ei_tags]
-            package_details += [{"name": f"{m.product_id.display_name} ({int(m.quantity)})", "so": m.picking_id.name or "N/A", "is_full": True, "move_id": m.id, "qty": m.quantity} for m in moves]
+            package_details = []
+            for tag in ei_tags:
+                out_pick = request.env['stock.picking'].sudo().search([
+                    ('sale_id', '=', tag.so_id.id),
+                    ('state', 'not in', ('done', 'cancel'))
+                ], limit=1) if tag.so_id else False
+                package_details.append({
+                    "name": tag.display_name_custom,
+                    "so": tag.so_id.name if tag.so_id else "N/A",
+                    "is_full": False,
+                    "sla_priority_level": out_pick.sla_priority_level if out_pick else 'normal',
+                    "sla_priority_label": out_pick.sla_priority_label if out_pick else '',
+                    "sla_date": out_pick.sla_date if out_pick else False,
+                })
+            for m in moves:
+                pick = m.picking_id
+                package_details.append({
+                    "name": f"{m.product_id.display_name} ({int(m.quantity)})",
+                    "so": pick.name or "N/A" if pick else "N/A",
+                    "is_full": True,
+                    "move_id": m.id,
+                    "qty": m.quantity,
+                    "sla_priority_level": pick.sla_priority_level if pick else 'normal',
+                    "sla_priority_label": pick.sla_priority_label if pick else '',
+                    "sla_date": pick.sla_date if pick else False,
+                })
 
             return {
                 "valid": True,
@@ -800,8 +824,32 @@ class DockNBin(http.Controller):
                 ('on_dock', '=', True)
             ])
 
-            package_details = [{"name": tag.display_name_custom, "so": tag.so_id.name, "is_full": False} for tag in ei_tags]
-            package_details += [{"name": f"{m.product_id.display_name} ({int(m.quantity)})", "so": m.picking_id.name or "N/A", "is_full": True, "move_id": m.id, "qty": m.quantity} for m in moves]
+            package_details = []
+            for tag in ei_tags:
+                out_pick = request.env['stock.picking'].sudo().search([
+                    ('sale_id', '=', tag.so_id.id),
+                    ('state', 'not in', ('done', 'cancel'))
+                ], limit=1) if tag.so_id else False
+                package_details.append({
+                    "name": tag.display_name_custom,
+                    "so": tag.so_id.name if tag.so_id else "N/A",
+                    "is_full": False,
+                    "sla_priority_level": out_pick.sla_priority_level if out_pick else 'normal',
+                    "sla_priority_label": out_pick.sla_priority_label if out_pick else '',
+                    "sla_date": out_pick.sla_date if out_pick else False,
+                })
+            for m in moves:
+                pick = m.picking_id
+                package_details.append({
+                    "name": f"{m.product_id.display_name} ({int(m.quantity)})",
+                    "so": pick.name or "N/A" if pick else "N/A",
+                    "is_full": True,
+                    "move_id": m.id,
+                    "qty": m.quantity,
+                    "sla_priority_level": pick.sla_priority_level if pick else 'normal',
+                    "sla_priority_label": pick.sla_priority_label if pick else '',
+                    "sla_date": pick.sla_date if pick else False,
+                })
 
             return {
                 "dock": dock.name,

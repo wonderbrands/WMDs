@@ -29,6 +29,11 @@
                             <span class="pick-name">{{ task.pick }}</span>
                             <Tag severity="success" value="Disponible" />
                         </div>
+                        <div v-if="task.sla_priority_label" class="task-sla mt-1">
+                            <Tag :severity="getSlaSeverity(task.sla_priority_level)" :class="{'p-tag-blink': task.sla_priority_level === 'critical_1h'}">
+                                <i class="fa fa-clock-o mr-1"></i>{{ task.sla_priority_label }}
+                            </Tag>
+                        </div>
                         <div class="task-origin">
                             {{ task.origin }}
                         </div>
@@ -119,7 +124,9 @@ export default {
                             pick: p.pick || p,
                             date: p.date || null,
                             carrier: p.carrier,
-                            batch: p.batch
+                            batch: p.batch,
+                            sla_priority_level: p.sla_priority_level || 'normal',
+                            sla_priority_label: p.sla_priority_label || ''
                         }))
                         .sort((a, b) => {
                             const da = a.date ? new Date(a.date.endsWith('Z') || a.date.includes('+') ? a.date : a.date + 'Z') : 0;
@@ -138,6 +145,20 @@ export default {
                 });
             } finally {
                 this.loading = false;
+            }
+        },
+        getSlaSeverity(level) {
+            switch (level) {
+                case 'critical_1h':
+                case 'overdue':
+                    return 'danger';
+                case 'urgent_2h':
+                case 'warning_6h':
+                    return 'warn';
+                case 'notice_24h':
+                    return 'info';
+                default:
+                    return 'secondary';
             }
         },
         async openTask(pickName) {
