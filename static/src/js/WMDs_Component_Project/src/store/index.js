@@ -121,6 +121,8 @@ export const useGeneralStore = defineStore('general_store', {
                         {name: "operator", label: "Operador", non_blocked_field: true, source: "operadores"},
                         {name: "bin_id", label: "BIN", non_blocked_field: true, source: "get_available_bins"},
                         {name: "scheduled_date", label: "Fecha"},
+                        {name: "sla_date", label: "SLA"},
+                        {name: "sla_priority_label", label: "Aviso Recolección"},
                         {name: "state", label: "Estado"},
                         {name: "wmds_status", label: "Estado WMDS"}
                     ],
@@ -216,6 +218,8 @@ export const useGeneralStore = defineStore('general_store', {
                 {name: "operator", label: "Mesa de empaque", non_blocked_field: true, source: "operadores"},
                 {name: "bin_id", label: "BIN", non_blocked_field: true, source: "get_available_bins"},
                 {name: "scheduled_date", label: "Fecha"},
+                {name: "sla_date", label: "SLA"},
+                {name: "sla_priority_label", label: "Aviso Recolección"},
                 {name: "state", label: "Estado"},
                 {name: "wmds_status", label: "Estado WMDS"}
             ],
