@@ -734,6 +734,7 @@ class ImportRackeoController(http.Controller):
                         })
 
                 # 6. Validate the new STOR picking
+                new_stor.write({'validated_by_automation': True})
                 new_stor.button_validate()
 
                 # 7. Create WMDs logs with user and automation note

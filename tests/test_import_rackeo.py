@@ -159,8 +159,10 @@ PO-TEST-RACKEO\t{self.sku_a}\tLOC-SHELF-N1\t16
         self.assertEqual(results[0]['status'], 'ok')
         self.assertTrue(results[0].get('stor_name'))
 
-        # 4. Verify new STOR is validated
+        # 4. Verify new STOR is validated and flagged as validated_by_automation
+        self.assertFalse(open_stor.validated_by_automation)
         created_stor = self.env['stock.picking'].browse(results[0]['stor_id'])
+        self.assertTrue(created_stor.validated_by_automation)
         self.assertEqual(created_stor.state, 'done')
         self.assertEqual(len(created_stor.move_line_ids), 2)
 
@@ -239,10 +241,11 @@ PO-TEST-RACKEO\t{self.sku_a}\tLOC-SHELF-N1\t16
             self.assertTrue(process_res.get('created_stors'))
             self.assertTrue(process_res.get('xlsx_file'))
 
-            # Verify purchase_id and wmds.log on created STOR
+            # Verify purchase_id, validated_by_automation and wmds.log on created STOR
             created_stor_id = process_res['created_stors'][0]['stor_id']
             stor_rec = self.env['stock.picking'].browse(created_stor_id)
             self.assertEqual(stor_rec.purchase_id.id, po.id)
+            self.assertTrue(stor_rec.validated_by_automation)
             
             logs = self.env['wmds.log'].search([('pick', '=', stor_rec.id)])
             self.assertTrue(logs)

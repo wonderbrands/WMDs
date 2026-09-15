@@ -52,6 +52,7 @@ class StockWMDS(models.Model):
     wmds_status = fields.Many2one('wmds.stock.status', 'WMDS Status')
     wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log')
     picking_type_id_name = fields.Char(related='picking_type_id.name', string='Operation Type Name', store=False)
+    validated_by_automation = fields.Boolean('Validated by Automation', default=False)
 
     def button_validate(self):
         # 1. Enforce that destination locations for Rackeo pickings must be empty before validation

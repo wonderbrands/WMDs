@@ -400,6 +400,7 @@ def process_rackeo_text(raw_text, env=None, commit=True):
                     'quantity': item['pzs'],
                 })
 
+            new_stor.write({'validated_by_automation': True})
             new_stor.button_validate()
 
             # WMDS logs
