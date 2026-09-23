@@ -49,7 +49,7 @@ class StockWMDS(models.Model):
 
     operator = fields.Many2one('res.users', 'Operator')
     bin_id = fields.Many2one('bin.storage', string='BIN')
-    wmds_status = fields.Many2one('wmds.stock.status', 'WMDS Status')
+    wmds_status = fields.Many2one('wmds.stock.status', 'WMDS Status', readonly=True)
     wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log')
     picking_type_id_name = fields.Char(related='picking_type_id.name', string='Operation Type Name', store=False)
 
