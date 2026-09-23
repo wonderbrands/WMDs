@@ -528,7 +528,14 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             compactacion_add_lines: {url: '/wmds/v2/engine/compactacion/add_location_lines', method: 'POST'},
             compactacion_validate_dest: {url: '/wmds/v2/engine/compactacion/validate_destination_location', method: 'POST'},
             compactacion_validate_picking: {url: '/wmds/v2/engine/compactacion/validate_picking', method: 'POST'},
+            order_channel_query: {url: '/wmds/v2/engine/get/order_channel_query', method: 'POST'},
+            sla_expiring_alerts: {url: '/wmds/v2/engine/get/sla_expiring_alerts', method: 'POST'},
+            get_available_channels: {url: '/wmds/v2/engine/get/available_channels', method: 'POST'},
+            get_marketplace_schedules: {url: '/wmds/v2/engine/get/marketplace_schedules', method: 'POST'},
+            save_marketplace_schedule: {url: '/wmds/v2/engine/save/marketplace_schedule', method: 'POST'},
+            delete_marketplace_schedule: {url: '/wmds/v2/engine/delete/marketplace_schedule', method: 'POST'},
         };
+
 
 
     }

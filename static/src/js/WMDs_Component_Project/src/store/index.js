@@ -8,6 +8,7 @@ import MandatoryUncompleted from './MandatoryUncompleted'
 export const useGeneralStore = defineStore('general_store', {
   state: () => ({
       role: reactive(RolePickerEngine()),
+      mandatory_uncompleted: reactive(new MandatoryUncompleted()),
       current_role: null,
       loading: false,
       sidebar_collapsed: true,
@@ -16,9 +17,10 @@ export const useGeneralStore = defineStore('general_store', {
       modal_context: null,
       form_context: null,
       last_scanned_element: null,
-      mandatory_uncompleted: reactive(new MandatoryUncompleted()),
-      refreshKey: 0,
+      order_channel_drawer_open: false,
+      sla_critical_count: 0,
       available_main_manager_screens: {
+
         home:{
             title: "Inicio",
             description: "Pantalla principal",
@@ -314,8 +316,14 @@ export const useGeneralStore = defineStore('general_store', {
             title: "Importar Rackeo",
             description: "Carga masiva de rackeos (STOR) a partir de Excel",
             value: "rackeo_import"
+        },
+        order_channel: {
+            title: "Canal SLA & Pedidos",
+            description: "Monitoreo proactivo de estatus de pedidos y fechas límite SLA",
+            value: "order_channel"
         }
       },
+
       main_manager_screen: null,
       odoo_middleware: OdooManagerMiddleware()
   }),
@@ -340,12 +348,13 @@ export const useGeneralStore = defineStore('general_store', {
     triggerRefresh() {
         this.refreshKey++;
     },
-    async callOdoo(context, term, params) {
-        this.loading = true;
+    async callOdoo(context, term, params, options = {}) {
+        const isSilent = options && options.silent;
+        if (!isSilent) this.loading = true;
         try {
             const result = await this.odoo_middleware.getFromOdoo(context, term, params);
 
-            if (result && result.error) {
+            if (result && result.error && !isSilent) {
                 const errorMessage = result.error.data?.message || result.error.message || 'Ocurrió un error inesperado.';
                 const errorDetail = result.error.data?.debug ? `Detalle: ${result.error.data.debug.split('\n')[0]}` : '';
                 
@@ -360,19 +369,25 @@ export const useGeneralStore = defineStore('general_store', {
             
             return result;
         } catch (e) {
-            this.toast.add({ 
-                severity: 'error', 
-                summary: 'Error de Conexión', 
-                detail: 'No se pudo conectar con el servidor. Verifique su conexión.', 
-                life: 5000 
-            });
+            if (!isSilent) {
+                this.toast.add({ 
+                    severity: 'error', 
+                    summary: 'Error de Conexión', 
+                    detail: 'No se pudo conectar con el servidor. Verifique su conexión.', 
+                    life: 5000 
+                });
+            }
             console.error("Error en callOdoo:", e);
             return { error: { message: 'Error de Conexión: No se pudo contactar al servidor.' } };
         }
         finally {
-            this.loading = false;
+            if (!isSilent) this.loading = false;
         }
     },
+    async callOdooSilent(context, term, params) {
+        return this.callOdoo(context, term, params, { silent: true });
+    },
+
     setCurrentScreen(newScreen) {
         this.loading = true
         this.current_screen = newScreen
