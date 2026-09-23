@@ -19,4 +19,6 @@ from . import dispatch_sheet_print_controller
 from . import import_picks_controller
 from . import compactacion
 from . import import_rackeo_controller
+from . import order_channel
+
 

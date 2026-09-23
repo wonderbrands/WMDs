@@ -20,9 +20,13 @@
         "portal",
         "stock",
         "stock_barcode",
+        "stock_picking_batch",
         "purchase",
-        "WB_data_sale_order"
+        "WB_data_sale_order",
+        "SLA_module"
     ],
+
+
 
      'external_dependencies': {
         'python': [

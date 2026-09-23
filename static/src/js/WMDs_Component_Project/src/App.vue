@@ -3,7 +3,7 @@
   <LoadingComponent v-if="store.loading" />
 
   <component 
-    v-if="store.mandatory_uncompleted.component"
+    v-if="store.mandatory_uncompleted && store.mandatory_uncompleted.component"
     :is="store.mandatory_uncompleted.component"
     v-bind="store.mandatory_uncompleted.component_props"
   />
@@ -20,6 +20,8 @@
     :is="currentScreenComponent" 
   />
 </template>
+
+
 
 <script>
 import { nextTick } from "vue"
@@ -60,6 +62,8 @@ export default {
     CycleCountOperator,
     CompactionComponent
   },
+
+
 
   data() {
     return {
@@ -120,16 +124,19 @@ export default {
     this.restorePersistedUser();
   },
   async mounted() {
-    this.store.mandatory_uncompleted.loadFromStorage(this.role);
+    if (this.store.mandatory_uncompleted && typeof this.store.mandatory_uncompleted.loadFromStorage === 'function') {
+        this.store.mandatory_uncompleted.loadFromStorage(this.role);
+    }
 
-    if (this.store.mandatory_uncompleted.component) {
+    if (this.store.mandatory_uncompleted && this.store.mandatory_uncompleted.component) {
         await this.store.executeBeforeMount();
     }
 
-    if (this.store.mandatory_uncompleted.screen) {
+    if (this.store.mandatory_uncompleted && this.store.mandatory_uncompleted.screen) {
         this.store.setCurrentScreen(this.store.mandatory_uncompleted.screen);
         return;
     }
+
 
     if (!this.store.role.is_identified) {
         this.store.loading = true;
