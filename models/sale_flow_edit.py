@@ -8,7 +8,71 @@ _logger = logging.getLogger(__name__)
 class SOWMDS(models.Model):
     _inherit = 'sale.order'
 
+    wmds_status = fields.Many2one('wmds.stock.status', string='WMDS Status')
     wmds_log = fields.One2many('wmds.log', 'sale', string='WMDS Log')
+
+    def _update_wmds_status(self, status_val, log_msg=None):
+        if not status_val:
+            return
+        status_rec = self.env['wmds.stock.status'].sudo().search([('value', '=', status_val)], limit=1)
+        if not status_rec:
+            return
+        for record in self:
+            if record.wmds_status.id != status_rec.id:
+                record.sudo().write({'wmds_status': status_rec.id})
+                msg = log_msg or f"Estado WMDS del pedido actualizado a: {status_rec.name}"
+                self.env['wmds.log'].sudo().create({
+                    'sale': record.id,
+                    'log': msg,
+                    'user': self.env.user.id if self.env.user else False,
+                    'date': fields.Datetime.now(),
+                })
+
+    def _eval_wmds_status(self):
+        for record in self:
+            state = record.state
+            if state == 'cancel':
+                record._update_wmds_status('so_cancelled')
+                continue
+            if state in ('draft', 'sent'):
+                record._update_wmds_status('so_draft')
+                continue
+            
+            pickings = self.env['stock.picking'].sudo().search([('sale_id', '=', record.id)])
+            out_pickings = pickings.filtered(lambda p: any(k in (p.picking_type_id.name or '') for k in ('Delivery Orders', 'Órdenes de entrega', 'Out', 'OUT')))
+            pack_pickings = pickings.filtered(lambda p: 'Pack' in (p.picking_type_id.name or ''))
+            pick_pickings = pickings.filtered(lambda p: 'Pick' in (p.picking_type_id.name or '') and 'Resurtido' not in (p.picking_type_id.name or ''))
+
+            # Check if dispatched
+            if out_pickings and all(p.state == 'done' for p in out_pickings):
+                record._update_wmds_status('so_dispatched')
+                continue
+
+            # Check if on dock / dispatch session
+            has_dock = any(p.move_ids.filtered(lambda m: getattr(m, 'on_dock', False)) for p in pickings)
+            if has_dock:
+                record._update_wmds_status('so_in_dock')
+                continue
+
+            # Wholesale vs Standard order logic
+            if getattr(record, 'data_is_wholesale_sale', False):
+                if pick_pickings and all(p.state == 'done' for p in pick_pickings):
+                    record._update_wmds_status('so_picked_bin')
+                elif pick_pickings and any(p.state in ('assigned', 'in_progress') or p.operator for p in pick_pickings):
+                    record._update_wmds_status('so_picking')
+                else:
+                    record._update_wmds_status('so_pending_assign')
+            else:
+                if pack_pickings and all(p.state == 'done' for p in pack_pickings):
+                    record._update_wmds_status('so_packed')
+                elif pack_pickings and any(p.state in ('assigned', 'in_progress') or p.operator for p in pack_pickings):
+                    record._update_wmds_status('so_packing')
+                elif pick_pickings and all(p.state == 'done' for p in pick_pickings):
+                    record._update_wmds_status('so_picked')
+                elif pick_pickings and any(p.state in ('assigned', 'in_progress') or p.operator for p in pick_pickings):
+                    record._update_wmds_status('so_picking')
+                else:
+                    record._update_wmds_status('so_pending_assign')
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -31,6 +95,7 @@ class SOWMDS(models.Model):
                     'user': self.env.user.id,
                     'date': fields.Datetime.now(),
                 })
+            record._eval_wmds_status()
         return res
 
     def write(self, vals):
@@ -119,6 +184,10 @@ class SOWMDS(models.Model):
                     'date': fields.Datetime.now(),
                 })
         
+        if 'state' in vals:
+            for record in self:
+                record._eval_wmds_status()
+
         return res
 
 

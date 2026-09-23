@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <data noupdate="1">
 
-    <data>
-
+        <!-- Legacy / Base Statuses -->
         <record id="wmds_status" model="wmds.stock.status">
             <field name="name">Not assigned</field>
             <field name="value">not_assigned</field>
@@ -22,8 +22,249 @@
             <field name="name">Completed</field>
             <field name="value">completed</field>
         </record>
-        
-    </data>
-    
 
+        <!-- Sale Order Statuses -->
+        <record id="wmds_status_so_draft" model="wmds.stock.status">
+            <field name="name">Venta: Borrador / Cotización</field>
+            <field name="value">so_draft</field>
+        </record>
+        <record id="wmds_status_so_pending_assign" model="wmds.stock.status">
+            <field name="name">Venta: Confirmada (Pendiente Asignación)</field>
+            <field name="value">so_pending_assign</field>
+        </record>
+        <record id="wmds_status_so_picking" model="wmds.stock.status">
+            <field name="name">Venta: En Pickeo</field>
+            <field name="value">so_picking</field>
+        </record>
+        <record id="wmds_status_so_picked" model="wmds.stock.status">
+            <field name="name">Venta: Pickeado (Pendiente Empaque)</field>
+            <field name="value">so_picked</field>
+        </record>
+        <record id="wmds_status_so_picked_bin" model="wmds.stock.status">
+            <field name="name">Venta: Pickeado en BIN (Mayoreo/Piso)</field>
+            <field name="value">so_picked_bin</field>
+        </record>
+        <record id="wmds_status_so_packing" model="wmds.stock.status">
+            <field name="name">Venta: En Empaque</field>
+            <field name="value">so_packing</field>
+        </record>
+        <record id="wmds_status_so_packed" model="wmds.stock.status">
+            <field name="name">Venta: Empacado y Etiquetado (En BIN)</field>
+            <field name="value">so_packed</field>
+        </record>
+        <record id="wmds_status_so_in_dock" model="wmds.stock.status">
+            <field name="name">Venta: En Muelle (Listo Despacho)</field>
+            <field name="value">so_in_dock</field>
+        </record>
+        <record id="wmds_status_so_dispatched" model="wmds.stock.status">
+            <field name="name">Venta: Despachado</field>
+            <field name="value">so_dispatched</field>
+        </record>
+        <record id="wmds_status_so_cancelled" model="wmds.stock.status">
+            <field name="name">Venta: Cancelado</field>
+            <field name="value">so_cancelled</field>
+        </record>
+
+        <!-- Picking Pick Statuses -->
+        <record id="wmds_status_pick_not_assigned" model="wmds.stock.status">
+            <field name="name">Pick: No Asignado</field>
+            <field name="value">pick_not_assigned</field>
+        </record>
+        <record id="wmds_status_pick_assigned" model="wmds.stock.status">
+            <field name="name">Pick: Asignado</field>
+            <field name="value">pick_assigned</field>
+        </record>
+        <record id="wmds_status_pick_in_progress" model="wmds.stock.status">
+            <field name="name">Pick: En Progreso</field>
+            <field name="value">pick_in_progress</field>
+        </record>
+        <record id="wmds_status_pick_completed" model="wmds.stock.status">
+            <field name="name">Pick: Pickeado</field>
+            <field name="value">pick_completed</field>
+        </record>
+        <record id="wmds_status_pick_cancelled" model="wmds.stock.status">
+            <field name="name">Pick: Cancelado</field>
+            <field name="value">pick_cancelled</field>
+        </record>
+
+        <!-- Picking Pack Statuses -->
+        <record id="wmds_status_pack_not_assigned" model="wmds.stock.status">
+            <field name="name">Pack: Pendiente</field>
+            <field name="value">pack_not_assigned</field>
+        </record>
+        <record id="wmds_status_pack_assigned" model="wmds.stock.status">
+            <field name="name">Pack: Asignado a Mesa</field>
+            <field name="value">pack_assigned</field>
+        </record>
+        <record id="wmds_status_pack_in_progress" model="wmds.stock.status">
+            <field name="name">Pack: En Empaque</field>
+            <field name="value">pack_in_progress</field>
+        </record>
+        <record id="wmds_status_pack_completed" model="wmds.stock.status">
+            <field name="name">Pack: Empacado y Etiquetado</field>
+            <field name="value">pack_completed</field>
+        </record>
+        <record id="wmds_status_pack_cancelled" model="wmds.stock.status">
+            <field name="name">Pack: Cancelado</field>
+            <field name="value">pack_cancelled</field>
+        </record>
+
+        <!-- Picking Out Statuses -->
+        <record id="wmds_status_out_ready" model="wmds.stock.status">
+            <field name="name">Out: Listo en Muelle</field>
+            <field name="value">out_ready</field>
+        </record>
+        <record id="wmds_status_out_in_progress" model="wmds.stock.status">
+            <field name="name">Out: En Carga</field>
+            <field name="value">out_in_progress</field>
+        </record>
+        <record id="wmds_status_out_completed" model="wmds.stock.status">
+            <field name="name">Out: Despachado</field>
+            <field name="value">out_completed</field>
+        </record>
+        <record id="wmds_status_out_cancelled" model="wmds.stock.status">
+            <field name="name">Out: Cancelado</field>
+            <field name="value">out_cancelled</field>
+        </record>
+
+        <!-- Picking Storage / Rackeo Statuses -->
+        <record id="wmds_status_rack_pending" model="wmds.stock.status">
+            <field name="name">Rackeo: Pendiente</field>
+            <field name="value">rack_pending</field>
+        </record>
+        <record id="wmds_status_rack_assigned" model="wmds.stock.status">
+            <field name="name">Rackeo: Asignado</field>
+            <field name="value">rack_assigned</field>
+        </record>
+        <record id="wmds_status_rack_in_progress" model="wmds.stock.status">
+            <field name="name">Rackeo: En Progreso</field>
+            <field name="value">rack_in_progress</field>
+        </record>
+        <record id="wmds_status_rack_completed" model="wmds.stock.status">
+            <field name="name">Rackeo: Completado</field>
+            <field name="value">rack_completed</field>
+        </record>
+        <record id="wmds_status_rack_cancelled" model="wmds.stock.status">
+            <field name="name">Rackeo: Cancelado</field>
+            <field name="value">rack_cancelled</field>
+        </record>
+
+        <!-- Picking Recepción Statuses -->
+        <record id="wmds_status_rec_pending" model="wmds.stock.status">
+            <field name="name">Recepción: Pendiente</field>
+            <field name="value">rec_pending</field>
+        </record>
+        <record id="wmds_status_rec_assigned" model="wmds.stock.status">
+            <field name="name">Recepción: Asignado a Cortina</field>
+            <field name="value">rec_assigned</field>
+        </record>
+        <record id="wmds_status_rec_in_progress" model="wmds.stock.status">
+            <field name="name">Recepción: En Recepción</field>
+            <field name="value">rec_in_progress</field>
+        </record>
+        <record id="wmds_status_rec_completed" model="wmds.stock.status">
+            <field name="name">Recepción: Recibido</field>
+            <field name="value">rec_completed</field>
+        </record>
+        <record id="wmds_status_rec_cancelled" model="wmds.stock.status">
+            <field name="name">Recepción: Cancelado</field>
+            <field name="value">rec_cancelled</field>
+        </record>
+
+        <!-- Resurtido a Ful PFUL / DFUL Statuses -->
+        <record id="wmds_status_pful_not_assigned" model="wmds.stock.status">
+            <field name="name">Ful Pick: No Asignado</field>
+            <field name="value">pful_not_assigned</field>
+        </record>
+        <record id="wmds_status_pful_assigned" model="wmds.stock.status">
+            <field name="name">Ful Pick: Asignado</field>
+            <field name="value">pful_assigned</field>
+        </record>
+        <record id="wmds_status_pful_in_progress" model="wmds.stock.status">
+            <field name="name">Ful Pick: En Pickeo</field>
+            <field name="value">pful_in_progress</field>
+        </record>
+        <record id="wmds_status_pful_picked" model="wmds.stock.status">
+            <field name="name">Ful Pick: Pickeado en Muelle</field>
+            <field name="value">pful_picked</field>
+        </record>
+        <record id="wmds_status_pful_dispatched" model="wmds.stock.status">
+            <field name="name">Ful Pick: Despachado a Full</field>
+            <field name="value">pful_dispatched</field>
+        </record>
+        <record id="wmds_status_pful_cancelled" model="wmds.stock.status">
+            <field name="name">Ful Pick: Cancelado</field>
+            <field name="value">pful_cancelled</field>
+        </record>
+
+        <record id="wmds_status_dful_ready" model="wmds.stock.status">
+            <field name="name">Ful Despacho: Listo en Muelle</field>
+            <field name="value">dful_ready</field>
+        </record>
+        <record id="wmds_status_dful_in_progress" model="wmds.stock.status">
+            <field name="name">Ful Despacho: En Carga</field>
+            <field name="value">dful_in_progress</field>
+        </record>
+        <record id="wmds_status_dful_completed" model="wmds.stock.status">
+            <field name="name">Ful Despacho: Despachado a Full</field>
+            <field name="value">dful_completed</field>
+        </record>
+        <record id="wmds_status_dful_cancelled" model="wmds.stock.status">
+            <field name="name">Ful Despacho: Cancelado</field>
+            <field name="value">dful_cancelled</field>
+        </record>
+
+        <!-- Conteo Cíclico Statuses -->
+        <record id="wmds_status_cc_draft" model="wmds.stock.status">
+            <field name="name">Conteo: Borrador</field>
+            <field name="value">cc_draft</field>
+        </record>
+        <record id="wmds_status_cc_not_started" model="wmds.stock.status">
+            <field name="name">Conteo: No Iniciado</field>
+            <field name="value">cc_not_started</field>
+        </record>
+        <record id="wmds_status_cc_in_progress" model="wmds.stock.status">
+            <field name="name">Conteo: En Progreso</field>
+            <field name="value">cc_in_progress</field>
+        </record>
+        <record id="wmds_status_cc_in_comparison" model="wmds.stock.status">
+            <field name="name">Conteo: En Comparación / Validación</field>
+            <field name="value">cc_in_comparison</field>
+        </record>
+        <record id="wmds_status_cc_completed" model="wmds.stock.status">
+            <field name="name">Conteo: Finalizado</field>
+            <field name="value">cc_completed</field>
+        </record>
+        <record id="wmds_status_cc_cancelled" model="wmds.stock.status">
+            <field name="name">Conteo: Cancelado</field>
+            <field name="value">cc_cancelled</field>
+        </record>
+
+        <!-- Purchase Order Statuses -->
+        <record id="wmds_status_po_draft" model="wmds.stock.status">
+            <field name="name">PO: Borrador</field>
+            <field name="value">po_draft</field>
+        </record>
+        <record id="wmds_status_po_confirmed" model="wmds.stock.status">
+            <field name="name">PO: Confirmado (Pendiente Recepción)</field>
+            <field name="value">po_confirmed</field>
+        </record>
+        <record id="wmds_status_po_receiving" model="wmds.stock.status">
+            <field name="name">PO: En Recepción</field>
+            <field name="value">po_receiving</field>
+        </record>
+        <record id="wmds_status_po_received" model="wmds.stock.status">
+            <field name="name">PO: Recibido (Pendiente Rackeo)</field>
+            <field name="value">po_received</field>
+        </record>
+        <record id="wmds_status_po_completed" model="wmds.stock.status">
+            <field name="name">PO: Completado y Rackeado</field>
+            <field name="value">po_completed</field>
+        </record>
+        <record id="wmds_status_po_cancelled" model="wmds.stock.status">
+            <field name="name">PO: Cancelado</field>
+            <field name="value">po_cancelled</field>
+        </record>
+
+    </data>
 </odoo>

@@ -24,6 +24,7 @@ class StockWMDSPurchase(models.Model):
 class PurchaseWMDS(models.Model):
     _inherit = 'purchase.order'
 
+    wmds_status = fields.Many2one('wmds.stock.status', string='WMDS Status')
     wmds_log = fields.One2many('wmds.log', 'purchase', string='WMDS Log')
     check_commertial = fields.Boolean('Vo.Bo Comex', default=False, copy=False)
     comex_release_date = fields.Datetime(
@@ -36,6 +37,62 @@ class PurchaseWMDS(models.Model):
     quarantine_transfer_count = fields.Integer(
         compute='_compute_quarantine_transfer_count',
     )
+
+    def _update_wmds_status(self, status_val, log_msg=None):
+        if not status_val:
+            return
+        status_rec = self.env['wmds.stock.status'].sudo().search([('value', '=', status_val)], limit=1)
+        if not status_rec:
+            return
+        for record in self:
+            if record.wmds_status.id != status_rec.id:
+                record.sudo().write({'wmds_status': status_rec.id})
+                msg = log_msg or f"Estado WMDS de la orden de compra actualizado a: {status_rec.name}"
+                self.env['wmds.log'].sudo().create({
+                    'purchase': record.id,
+                    'log': msg,
+                    'user': self.env.user.id if self.env.user else False,
+                    'date': fields.Datetime.now(),
+                })
+
+    def _eval_wmds_status(self):
+        for record in self:
+            state = record.state
+            if state == 'cancel':
+                record._update_wmds_status('po_cancelled')
+                continue
+            if state in ('draft', 'sent'):
+                record._update_wmds_status('po_draft')
+                continue
+            
+            pickings = self.env['stock.picking'].sudo().search([('purchase_id', '=', record.id)])
+            rec_pickings = pickings.filtered(lambda p: any(k in (p.picking_type_id.name or '') for k in ('Receipts', 'Recepciones', 'IN', 'In')))
+            
+            # Search rackeos linked via origin
+            rack_pickings = self.env['stock.picking'].sudo().search([('origin', '=', record.name), ('picking_type_id.name', 'ilike', 'Storage')])
+            
+            if rack_pickings and all(p.state == 'done' for p in rack_pickings):
+                record._update_wmds_status('po_completed')
+            elif rec_pickings and all(p.state == 'done' for p in rec_pickings):
+                record._update_wmds_status('po_received')
+            elif rec_pickings and any(p.state in ('assigned', 'in_progress') or p.operator for p in rec_pickings):
+                record._update_wmds_status('po_receiving')
+            else:
+                record._update_wmds_status('po_confirmed')
+
+    @api.model_create_multi
+    def create(self, vals_list):
+        res = super(PurchaseWMDS, self).create(vals_list)
+        for record in res:
+            record._eval_wmds_status()
+        return res
+
+    def write(self, vals):
+        res = super(PurchaseWMDS, self).write(vals)
+        if 'state' in vals:
+            for record in self:
+                record._eval_wmds_status()
+        return res
 
     @api.depends('quarantine_transfer_ids')
     def _compute_quarantine_transfer_count(self):
