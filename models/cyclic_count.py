@@ -16,7 +16,7 @@ class ScheduledCycleCount(models.Model):
     selected_location_ids = fields.One2many("cycle.count.selected.location", "cycle_count_id", string="Ubicaciones Planificadas")
     wave_ids = fields.One2many("cycle.count.wave", "cycle_count_id", string="Olas de Conteo")
     wmds_status = fields.Many2one('wmds.stock.status', string='WMDS Status', readonly=True)
-    wmds_log = fields.One2many("wmds.log", "cycle_count", string="WMDS Log")
+    wmds_log = fields.One2many("wmds.log", "cycle_count", string="WMDS Log", readonly=True)
 
     def _update_wmds_status(self, status_val, log_msg=None):
         if not status_val:

@@ -9,7 +9,7 @@ class SOWMDS(models.Model):
     _inherit = 'sale.order'
 
     wmds_status = fields.Many2one('wmds.stock.status', string='WMDS Status', readonly=True)
-    wmds_log = fields.One2many('wmds.log', 'sale', string='WMDS Log')
+    wmds_log = fields.One2many('wmds.log', 'sale', string='WMDS Log', readonly=True)
 
     def _update_wmds_status(self, status_val, log_msg=None):
         if not status_val:

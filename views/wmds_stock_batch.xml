@@ -9,9 +9,12 @@
             <field name="arch" type="xml">
                 <xpath expr="//notebook" position="inside">
                     <page string="WMDS" name="wmds_logs">
-                        <field name="operator"/>
-                        <field name="wmds_log">
-                            <list>
+                        <group>
+                            <field name="operator"/>
+                            <field name="wmds_status" readonly="1"/>
+                        </group>
+                        <field name="wmds_log" readonly="1">
+                            <list create="false" edit="false" delete="false">
                                 <field name="log"/>
                                 <field name="date"/>
                                 <field name="user"/>

@@ -50,7 +50,7 @@ class StockWMDS(models.Model):
     operator = fields.Many2one('res.users', 'Operator')
     bin_id = fields.Many2one('bin.storage', string='BIN')
     wmds_status = fields.Many2one('wmds.stock.status', 'WMDS Status', readonly=True)
-    wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log')
+    wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log', readonly=True)
     picking_type_id_name = fields.Char(related='picking_type_id.name', string='Operation Type Name', store=False)
 
     def button_validate(self):
@@ -359,7 +359,8 @@ class BatchWMDS(models.Model):
 
     operator = fields.Many2one('res.users', 'Operator')
     bin_id = fields.Many2one('bin.storage', string='BIN')
-    wmds_log = fields.One2many('wmds.log', 'batch_pick', string='WMDS Log')
+    wmds_status = fields.Many2one('wmds.stock.status', string='WMDS Status', readonly=True)
+    wmds_log = fields.One2many('wmds.log', 'batch_pick', string='WMDS Log', readonly=True)
     pick_type = fields.Selection(selection = [
         ('sale', 'Pedido'), 
         ('full', 'Full'),

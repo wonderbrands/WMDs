@@ -25,7 +25,7 @@ class PurchaseWMDS(models.Model):
     _inherit = 'purchase.order'
 
     wmds_status = fields.Many2one('wmds.stock.status', string='WMDS Status', readonly=True)
-    wmds_log = fields.One2many('wmds.log', 'purchase', string='WMDS Log')
+    wmds_log = fields.One2many('wmds.log', 'purchase', string='WMDS Log', readonly=True)
     check_commertial = fields.Boolean('Vo.Bo Comex', default=False, copy=False)
     comex_release_date = fields.Datetime(
         'Fecha VoBo COMEX', readonly=True, copy=False,

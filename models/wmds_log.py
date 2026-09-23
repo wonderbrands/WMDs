@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from odoo import models, fields, api
+from odoo.exceptions import UserError
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -121,6 +122,13 @@ class WMDSLog(models.Model):
                 self.with_context(wmds_log_duplicating=True).create(new_vals)
 
     def write(self, vals):
+        if not self.env.is_superuser() and not self.env.context.get('wmds_log_system_override'):
+            raise UserError("Los registros de WMDS Log son inmutables y no se pueden modificar.")
         if vals.get('log'):
             vals['log'] = vals['log'].replace('\n', ' ').replace('\r', ' ').strip()
         return super(WMDSLog, self).write(vals)
+
+    def unlink(self):
+        if not self.env.is_superuser() and not self.env.context.get('wmds_log_system_override'):
+            raise UserError("Los registros de WMDS Log no pueden ser eliminados.")
+        return super(WMDSLog, self).unlink()
