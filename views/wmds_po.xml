@@ -50,8 +50,11 @@
 
                 <xpath expr="//notebook" position="inside">
                     <page string="WMDS" name="wmds_logs">
-                        <field name="wmds_log">
-                            <list>
+                        <group string="WMDS Info" name="wmds_info">
+                            <field name="wmds_status" readonly="1"/>
+                        </group>
+                        <field name="wmds_log" readonly="1">
+                            <list create="false" edit="false" delete="false">
                                 <field name="log"/>
                                 <field name="date"/>
                                 <field name="user"/>

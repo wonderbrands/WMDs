@@ -49,8 +49,8 @@ class StockWMDS(models.Model):
 
     operator = fields.Many2one('res.users', 'Operator')
     bin_id = fields.Many2one('bin.storage', string='BIN')
-    wmds_status = fields.Many2one('wmds.stock.status', 'WMDS Status')
-    wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log')
+    wmds_status = fields.Many2one('wmds.stock.status', 'WMDS Status', readonly=True)
+    wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log', readonly=True)
     picking_type_id_name = fields.Char(related='picking_type_id.name', string='Operation Type Name', store=False)
     validated_by_automation = fields.Boolean('Validated by Automation', default=False)
 
@@ -78,7 +78,10 @@ class StockWMDS(models.Model):
                                         raise UserError(f"El SKU a rackear debe ser el mismo que ya contiene la ubicación.")
                             else:
                                 raise UserError(f"No se puede rackear en la ubicación '{loc.complete_name}' porque no está vacía.")
-        return super(StockWMDS, self).button_validate()
+        res = super(StockWMDS, self).button_validate()
+        for picking in self:
+            picking._eval_wmds_status()
+        return res
 
     def action_assign(self):
         for picking in self:
@@ -114,7 +117,126 @@ class StockWMDS(models.Model):
                         picking.move_ids.write({'location_id': stock_loc.id})
                         # Re-run reservation to grab from A_Pickable as well
                         super(StockWMDS, picking).action_assign()
+            picking._eval_wmds_status()
         return res
+
+    def _update_wmds_status(self, status_val, log_msg=None):
+        if not status_val:
+            return
+        status_rec = self.env['wmds.stock.status'].sudo().search([('value', '=', status_val)], limit=1)
+        if not status_rec:
+            return
+        for record in self:
+            if record.wmds_status.id != status_rec.id:
+                record.sudo().write({'wmds_status': status_rec.id})
+                msg = log_msg or f"Estado WMDS del albarán actualizado a: {status_rec.name}"
+                self.env['wmds.log'].sudo().create({
+                    'pick': record.id,
+                    'log': msg,
+                    'user': self.env.user.id if self.env.user else False,
+                    'date': fields.Datetime.now(),
+                })
+                if record.sale_id and hasattr(record.sale_id, '_eval_wmds_status'):
+                    record.sale_id._eval_wmds_status()
+                if record.purchase_id and hasattr(record.purchase_id, '_eval_wmds_status'):
+                    record.purchase_id._eval_wmds_status()
+
+    def _eval_wmds_status(self):
+        for picking in self:
+            pt_name = picking.picking_type_id.name or ''
+            state = picking.state
+            has_scans = any(getattr(ml, 'quantity', getattr(ml, 'qty_done', 0.0)) > 0 for ml in picking.move_line_ids)
+            has_operator = bool(picking.operator)
+            
+            status_val = None
+            if 'Pick' in pt_name and 'Resurtido' not in pt_name:
+                if state == 'cancel':
+                    status_val = 'pick_cancelled'
+                elif state == 'done':
+                    status_val = 'pick_completed'
+                elif has_scans:
+                    status_val = 'pick_in_progress'
+                elif has_operator or picking.batch_id:
+                    status_val = 'pick_assigned'
+                else:
+                    status_val = 'pick_not_assigned'
+            elif 'Pack' in pt_name:
+                if state == 'cancel':
+                    status_val = 'pack_cancelled'
+                elif state == 'done':
+                    status_val = 'pack_completed'
+                elif has_scans:
+                    status_val = 'pack_in_progress'
+                elif has_operator:
+                    status_val = 'pack_assigned'
+                else:
+                    status_val = 'pack_not_assigned'
+            elif any(k in pt_name for k in ('Delivery Orders', 'Órdenes de entrega', 'Out', 'OUT')):
+                if state == 'cancel':
+                    status_val = 'out_cancelled'
+                elif state == 'done':
+                    status_val = 'out_completed'
+                elif has_scans:
+                    status_val = 'out_in_progress'
+                else:
+                    status_val = 'out_ready'
+            elif any(k in pt_name for k in ('Storage', 'Rackeo', 'Rackeos')):
+                if state == 'cancel':
+                    status_val = 'rack_cancelled'
+                elif state == 'done':
+                    status_val = 'rack_completed'
+                elif has_scans:
+                    status_val = 'rack_in_progress'
+                elif has_operator:
+                    status_val = 'rack_assigned'
+                else:
+                    status_val = 'rack_pending'
+            elif any(k in pt_name for k in ('Receipts', 'Recepciones')):
+                if state == 'cancel':
+                    status_val = 'rec_cancelled'
+                elif state == 'done':
+                    status_val = 'rec_completed'
+                elif has_scans:
+                    status_val = 'rec_in_progress'
+                elif has_operator:
+                    status_val = 'rec_assigned'
+                else:
+                    status_val = 'rec_pending'
+            elif 'Resurtido a Ful: Pick' in pt_name or 'PFUL' in (picking.name or ''):
+                if state == 'cancel':
+                    status_val = 'pful_cancelled'
+                elif any(getattr(m, 'dispatched', False) for m in picking.move_ids):
+                    status_val = 'pful_dispatched'
+                elif state == 'done':
+                    status_val = 'pful_picked'
+                elif has_scans:
+                    status_val = 'pful_in_progress'
+                elif has_operator:
+                    status_val = 'pful_assigned'
+                else:
+                    status_val = 'pful_not_assigned'
+            elif 'Resurtido a Ful: Despacho' in pt_name or 'DFUL' in (picking.name or ''):
+                if state == 'cancel':
+                    status_val = 'dful_cancelled'
+                elif state == 'done':
+                    status_val = 'dful_completed'
+                elif has_scans:
+                    status_val = 'dful_in_progress'
+                else:
+                    status_val = 'dful_ready'
+            else:
+                if state == 'cancel':
+                    status_val = 'pick_cancelled'
+                elif state == 'done':
+                    status_val = 'completed'
+                elif has_scans:
+                    status_val = 'in_progress'
+                elif has_operator:
+                    status_val = 'not_started'
+                else:
+                    status_val = 'not_assigned'
+            
+            picking._update_wmds_status(status_val)
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -122,20 +244,14 @@ class StockWMDS(models.Model):
             vals_list = [vals_list]
         res = super(StockWMDS, self).create(vals_list)
 
-        not_assigned = None
         for record in res:
-            if not record.operator:
-                if not_assigned is None:
-                    not_assigned = self.env['wmds.stock.status'].search([('value', '=', 'not_assigned')], limit=1)
-                if not_assigned:
-                    record.wmds_status = not_assigned.id
-            else:
-                # Log initial assignment if operator is provided in create
+            if record.operator:
                 self.env['wmds.log'].sudo().create({
                     'pick': record.id,
                     'log': f"Operador asignado: {record.operator.name}",
                     'user': self.env.user.id,
                 })
+            record._eval_wmds_status()
         return res
 
     def write(self, vals):
@@ -181,7 +297,11 @@ class StockWMDS(models.Model):
                         'user': self.env.user.id,
                     })
 
-        return super(StockWMDS, self).write(vals)
+        res = super(StockWMDS, self).write(vals)
+        if any(k in vals for k in ('state', 'operator', 'bin_id', 'batch_id')):
+            for record in self:
+                record._eval_wmds_status()
+        return res
 
     def _get_stock_barcode_data(self):
         res = super()._get_stock_barcode_data()
@@ -240,7 +360,8 @@ class BatchWMDS(models.Model):
 
     operator = fields.Many2one('res.users', 'Operator')
     bin_id = fields.Many2one('bin.storage', string='BIN')
-    wmds_log = fields.One2many('wmds.log', 'batch_pick', string='WMDS Log')
+    wmds_status = fields.Many2one('wmds.stock.status', string='WMDS Status', readonly=True)
+    wmds_log = fields.One2many('wmds.log', 'batch_pick', string='WMDS Log', readonly=True)
     pick_type = fields.Selection(selection = [
         ('sale', 'Pedido'), 
         ('full', 'Full'),

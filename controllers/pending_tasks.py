@@ -65,7 +65,7 @@ class PendingTasks(http.Controller):
                     search_domain.append(('operator', '=', False))
                     search_domain.append(('operator.login', '=', email))
 
-                pending_tasks = env['stock.picking'].sudo().search(search_domain, order='scheduled_date desc, id desc', limit=30)
+                pending_tasks = env['stock.picking'].sudo().search(search_domain, order='scheduled_date desc, id desc', limit=60)
             
             result = []
             for record in pending_tasks:
