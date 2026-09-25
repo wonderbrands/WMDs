@@ -37,7 +37,7 @@ class CycleCount(http.Controller):
             
             parsed_params = {
                 "cur_page": kw.get('page', 1),
-                "per_page": kw.get('per_page', 30),
+                "per_page": kw.get('per_page', 60),
                 "sort_by": kw.get('sort_by'),
                 "sort_order": kw.get('sort_order'),
             }
