@@ -45,9 +45,10 @@ class GetPicks(http.Controller):
             col_domain = [("picking_type_id.name", "=", "Pick")]
             if len(list(kw.keys()))>0:
                 for key, value in kw.items():
-                    col_domain.append((key, "ilike", value))
+                    domain_key = "sale_id.channel" if key == "channel" else key
+                    col_domain.append((domain_key, "ilike", value))
 
-            fields_to_read = ["id", "name", "origin", "operator", "bin_id", "scheduled_date", "state", "wmds_status", "sla_date", "sla_priority_level", "sla_priority_label"]
+            fields_to_read = ["id", "name", "origin", "sale_id", "operator", "bin_id", "scheduled_date", "state", "wmds_status", "sla_date", "sla_priority_level", "sla_priority_label"]
             
             picks_raw = request.env['stock.picking'].sudo().search_read(
                 col_domain,
@@ -63,6 +64,7 @@ class GetPicks(http.Controller):
                 {"name": "ID", "field": "id"},
                 {"name": "Nombre", "field": "name"},
                 {"name": "SO", "field": "origin"},
+                {"name": "Marketplace", "field": "channel"},
                 {"name": "Operador", "field": "operator", "type": "one2many", "non_blocked_field": True, "source": "operadores"},
                 {"name": "BIN", "field": "bin_id", "type": "one2many", "non_blocked_field": True, "source": "get_available_bins"},
                 {"name": "Fecha", "field": "scheduled_date"},
@@ -94,6 +96,12 @@ class GetPicks(http.Controller):
                 }
             ]
 
+            so_ids = [p['sale_id'][0] for p in picks_raw if p.get('sale_id')]
+            so_channel_map = {}
+            if so_ids:
+                orders = request.env['sale.order'].sudo().browse(so_ids)
+                so_channel_map = {so.id: so.channel for so in orders}
+
             data = []
             for p in picks_raw:
                 operator_data = None
@@ -114,10 +122,14 @@ class GetPicks(http.Controller):
                         "id": bin_id
                     }
                 
+                so_id = p['sale_id'][0] if p.get('sale_id') else None
+                ch_name = so_channel_map.get(so_id, '') if so_id else ''
+
                 data.append({
                     "id": p['id'],
                     "name": p['name'],
                     "origin": p['origin'],
+                    "channel": ch_name,
                     "operator": operator_data,
                     "bin_id": bin_data,
                     "scheduled_date": p['scheduled_date'],

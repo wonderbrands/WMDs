@@ -291,7 +291,6 @@ class OrderChannelController(http.Controller):
                     'id': s.id,
                     'marketplace': s.marketplace,
                     'sla_source': s.sla_source,
-                    'collection_cutoff_time': s.collection_cutoff_time,
                     'monday_to_friday_': s.monday_to_friday_,
                     'saturday': s.saturday,
                     'sunday': s.sunday,
@@ -335,7 +334,6 @@ class OrderChannelController(http.Controller):
             vals = {
                 'marketplace': marketplace,
                 'sla_source': data.get('sla_source', 'auto'),
-                'collection_cutoff_time': float(data.get('collection_cutoff_time') or 17.0),
                 'monday_to_friday_': float(data.get('monday_to_friday_') or 0.0),
                 'saturday': float(data.get('saturday') or 0.0),
                 'sunday': float(data.get('sunday') or 0.0),

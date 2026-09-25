@@ -150,7 +150,6 @@
                 <tr>
                   <th>Marketplace</th>
                   <th>Origen SLA</th>
-                  <th>Límite Recolección</th>
                   <th>Lun-Vie</th>
                   <th>Sáb</th>
                   <th>Dom</th>
@@ -160,10 +159,10 @@
               </thead>
               <tbody>
                 <tr v-if="schedulesLoading">
-                  <td colspan="8" class="text-center py-3"><i class="fa fa-spinner fa-spin mr-1"></i> Cargando reglas...</td>
+                  <td colspan="7" class="text-center py-3"><i class="fa fa-spinner fa-spin mr-1"></i> Cargando reglas...</td>
                 </tr>
                 <tr v-else-if="schedulesList.length === 0">
-                  <td colspan="8" class="text-center py-3 text-muted">No hay reglas SLA configuradas. Haz clic en "Nueva Regla SLA" para agregar una.</td>
+                  <td colspan="7" class="text-center py-3 text-muted">No hay reglas SLA configuradas. Haz clic en "Nueva Regla SLA" para agregar una.</td>
                 </tr>
                 <tr v-for="rule in schedulesList" :key="rule.id" :class="{ 'row-editing': formRule.id === rule.id }">
                   <td><strong>{{ rule.marketplace }}</strong></td>
@@ -172,7 +171,6 @@
                       {{ getSlaSourceLabel(rule.sla_source) }}
                     </span>
                   </td>
-                  <td>{{ formatCutoffTime(rule.collection_cutoff_time) }}</td>
                   <td>{{ rule.monday_to_friday_ }}h</td>
                   <td>{{ rule.saturday }}h</td>
                   <td>{{ rule.sunday }}h</td>
@@ -208,11 +206,6 @@
                   <option value="yuju">Yuju (Fecha Límite Marketplace)</option>
                   <option value="calculated">Cálculo por Horario (SLA Schedule)</option>
                 </select>
-              </div>
-
-              <div class="form-group">
-                <label>Hora Límite Recolección (ej. 17.0 = 5:00 PM):</label>
-                <input type="number" step="0.5" min="0" max="24" v-model.number="formRule.collection_cutoff_time" class="custom-input-sm" />
               </div>
 
               <div class="form-group">
@@ -285,7 +278,6 @@ export default {
         id: null,
         marketplace: "",
         sla_source: "auto",
-        collection_cutoff_time: 17.0,
         monday_to_friday_: 24,
         saturday: 0,
         sunday: 0,
@@ -408,7 +400,6 @@ export default {
         id: null,
         marketplace: this.availableChannels.length > 0 ? this.availableChannels[0] : "",
         sla_source: "auto",
-        collection_cutoff_time: 17.0,
         monday_to_friday_: 24,
         saturday: 0,
         sunday: 0,
