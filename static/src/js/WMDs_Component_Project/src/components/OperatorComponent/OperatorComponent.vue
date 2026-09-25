@@ -40,8 +40,8 @@
                     <div class="flex flex-column gap-3">
                         <span class="pending-badge">
                             {{ getFilteredCount(task) }} pendientes
-                            <small v-if="task.assigned[0].children.length > 10" class="text-secondary block">
-                                (Mostrando 10 de {{ task.assigned[0].children.length }})
+                            <small v-if="task.assigned[0].children.length > 60" class="text-secondary block">
+                                (Mostrando 60 de {{ task.assigned[0].children.length }})
                             </small>
                         </span>
                         <div v-if="expandedKeys[task.id + '-root']" class="search-wrapper">
@@ -244,8 +244,8 @@ export default {
                 );
             }
 
-            // Limit to 10 results
-            const displayedChildren = filteredChildren.slice(0, 10);
+            // Limit to 60 results
+            const displayedChildren = filteredChildren.slice(0, 60);
             
             return [{
                 ...task.assigned[0],
