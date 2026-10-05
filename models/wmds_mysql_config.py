@@ -83,10 +83,14 @@ class WmdsMysqlConfig(models.Model):
             )
             cursor = conn.cursor()
             
+            order_col = f"`{self.order_id_field.strip('`')}`"
+            sla_col = f"`{self.sla_date_field.strip('`')}`"
+            table_col = f"`{self.table_name.strip('`')}`"
+
             sql = f"""
-                SELECT {self.order_id_field} AS order_ref, {self.sla_date_field} AS sla_dt
-                FROM {self.table_name}
-                WHERE {self.sla_date_field} IS NOT NULL AND {self.order_id_field} IS NOT NULL
+                SELECT {order_col} AS order_ref, {sla_col} AS sla_dt
+                FROM {table_col}
+                WHERE {sla_col} IS NOT NULL AND {order_col} IS NOT NULL
                 ORDER BY updated_at DESC
                 LIMIT %s;
             """

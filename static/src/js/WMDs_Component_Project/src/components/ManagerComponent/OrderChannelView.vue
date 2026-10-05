@@ -492,7 +492,7 @@ export default {
       if (!dtStr) return "";
       try {
         const dt = new Date(dtStr.endsWith("Z") ? dtStr : dtStr + "Z");
-        return dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return dt.toLocaleString([], { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       } catch (e) {
         return dtStr;
       }
