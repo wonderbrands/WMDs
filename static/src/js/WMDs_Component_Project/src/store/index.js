@@ -321,12 +321,6 @@ export const useGeneralStore = defineStore('general_store', {
             title: "Canal SLA & Pedidos",
             description: "Monitoreo proactivo de estatus de pedidos y fechas límite SLA",
             value: "order_channel"
-        },
-        mysql_driver: {
-            title: "MySqlDriver",
-            description: "Configuración y Sincronización MySQL SLA",
-            value: "mysql_driver",
-            dev_only: true
         }
       },
 

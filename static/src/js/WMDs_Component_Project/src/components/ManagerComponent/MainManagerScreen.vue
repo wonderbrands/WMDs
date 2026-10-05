@@ -5,7 +5,6 @@
     <LocationBlocking v-else-if="store.main_manager_screen.value === 'location_blocking'" />
     <LocationUnblocking v-else-if="store.main_manager_screen.value === 'location_unblocking'" />
     <ImportRackeoHelper v-else-if="store.main_manager_screen.value === 'rackeo_import'" />
-    <MySqlDriverView v-else-if="store.main_manager_screen && store.main_manager_screen.value === 'mysql_driver' && store.role && store.role.is_developer" />
     <OrderChannelView v-else-if="store.main_manager_screen && store.main_manager_screen.value === 'order_channel'" />
     <div v-else class="home-screen">
         <h1>Bienvenido al WMDs Manager</h1>
@@ -22,7 +21,6 @@
     import LocationUnblocking from './LocationUnblocking.vue'
     import ImportRackeoHelper from '../Forms/ImportRackeoHelper.vue'
     import OrderChannelView from './OrderChannelView.vue'
-    import MySqlDriverView from './MySqlDriverView.vue'
     export default {
       name: 'MainManagerScreen',
 
@@ -44,8 +42,7 @@
           LocationBlocking,
           LocationUnblocking,
           ImportRackeoHelper,
-          OrderChannelView,
-          MySqlDriverView
+          OrderChannelView
       }
     }
 </script>

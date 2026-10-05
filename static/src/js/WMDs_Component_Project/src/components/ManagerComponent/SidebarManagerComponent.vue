@@ -4,25 +4,25 @@
         <div class="sidebar_content" v-show="!store.sidebar_collapsed">
             <div style="margin-top: 1em; width: 100%; margin-bottom: 5em;">
                 <img src="https://mma.prnewswire.com/media/1447948/LogoWonderBrands_Logo.jpg?p=facebook" style="max-width: 100%;">
-                <div class="options" v-for="option in Object.keys(filteredScreens)" :key="option">
+                <div class="options" v-for="option in Object.keys(store.available_main_manager_screens)" :key="option">
                     
                     <Button v-if="!with_submenu.includes(option)" 
                         @click="selectScreen(option)"
                         :class="{'selected_option': selected == option}"
                         :disabled="selected == option"
                     >
-                        {{ filteredScreens[option].title }}
+                        {{ store.available_main_manager_screens[option].title }}
                     </Button>
 
                     <Button v-else 
                         @click="deploySubMenu(option)"
                         :class="{'active_submenu': deployed_submenus.includes(option)}"
                     >
-                        {{ filteredScreens[option].title }}
+                        {{ store.available_main_manager_screens[option].title }}
                     </Button>
 
                     <template v-if="deployed_submenus.includes(option)">
-                        <Button v-for="child in filteredScreens[option].children" 
+                        <Button v-for="child in store.available_main_manager_screens[option].children" 
                             :key="child.screen"
                             @click="selectScreen(child.screen)"
                             class="submenu_child"
@@ -57,18 +57,6 @@
                 with_submenu: ["pick"],
                 deployed_submenus: [],
                 selected: null
-            }
-        },
-        computed: {
-            filteredScreens() {
-                const screens = {};
-                for (const [key, config] of Object.entries(this.store.available_main_manager_screens)) {
-                    if (config.dev_only && !this.store.role?.is_developer) {
-                        continue;
-                    }
-                    screens[key] = config;
-                }
-                return screens;
             }
         },
         methods: {
