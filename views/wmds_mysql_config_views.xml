@@ -79,21 +79,13 @@
             </field>
         </record>
 
-        <!-- Menuitem under WMDS root menu restricted to wmds_developer and wmds_manager -->
+        <!-- Menuitem under WMDS root menu restricted strictly to wmds_developer -->
         <menuitem id="menu_wmds_mysql_driver"
                   name="MySqlDriver"
                   action="action_wmds_mysql_config"
                   parent="wmds_menu"
                   sequence="90"
-                  groups="wmds.group_wmds_developer,wmds.group_wmds_manager"/>
-
-        <!-- Menuitem under Sale config menu restricted to wmds_developer and wmds_manager -->
-        <menuitem id="menu_sale_wmds_mysql_driver"
-                  name="MySqlDriver SLA MySQL"
-                  action="action_wmds_mysql_config"
-                  parent="sale.menu_sale_config"
-                  sequence="95"
-                  groups="wmds.group_wmds_developer,wmds.group_wmds_manager"/>
+                  groups="wmds.group_wmds_developer"/>
 
     </data>
 </odoo>
