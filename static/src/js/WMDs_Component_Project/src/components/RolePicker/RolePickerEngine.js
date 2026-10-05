@@ -7,6 +7,7 @@ class RolePickerEngineDefinition {
         this.is_identified = false
         this.packer_uuid = null
         this.packer_barcode_image = null
+        this.is_developer = false
     }
 
     async getRole() {
@@ -28,6 +29,7 @@ class RolePickerEngineDefinition {
 class RolePickerDev extends RolePickerEngineDefinition {
     constructor() {
         super()
+        this.is_developer = true
     }
 
     async getRole() {
@@ -47,6 +49,7 @@ class RolePickerDev extends RolePickerEngineDefinition {
         this.user = "John Doe"
         this.email = "test@valid.com"
         this.is_identified = true
+        this.is_developer = true
         this.persistSessionInStorage()
     }
 }
@@ -92,6 +95,7 @@ class RolePickerProd extends RolePickerEngineDefinition {
             this.email = data.result.login
             this.packer_uuid = data.result.packer_uuid
             this.packer_barcode_image = data.result.packer_barcode_image
+            this.is_developer = !!data.result.is_developer
             this.is_identified = true
             this.persistSessionInStorage()
         } catch (error) {
@@ -133,6 +137,7 @@ class RolePickerProd extends RolePickerEngineDefinition {
             this.permissions = result.result.permissions
             this.packer_uuid = result.result.packer_uuid
             this.packer_barcode_image = result.result.packer_barcode_image
+            this.is_developer = !!result.result.is_developer
             this.persistSessionInStorage()
         } catch (error) {
             console.error(error);
@@ -150,6 +155,7 @@ class RolePickerProd extends RolePickerEngineDefinition {
                 "is_identified": this.is_identified,
                 "packer_uuid": this.packer_uuid,
                 "packer_barcode_image": this.packer_barcode_image,
+                "is_developer": this.is_developer,
                 "logged_at": new Date()
             }))
     }
@@ -167,6 +173,7 @@ class RolePickerProd extends RolePickerEngineDefinition {
             this.is_identified = loggedUser.is_identified;
             this.packer_uuid = loggedUser.packer_uuid;
             this.packer_barcode_image = loggedUser.packer_barcode_image;
+            this.is_developer = !!loggedUser.is_developer;
             
             const loggedAt = new Date(loggedUser.logged_at);
             const now = new Date();
@@ -191,6 +198,7 @@ class RolePickerProd extends RolePickerEngineDefinition {
         this.is_identified = false
         this.packer_uuid = null
         this.packer_barcode_image = null
+        this.is_developer = false
     }
 }
 

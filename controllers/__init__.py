@@ -20,5 +20,6 @@ from . import import_picks_controller
 from . import compactacion
 from . import import_rackeo_controller
 from . import order_channel
+from . import mysql_driver_controller
 
 

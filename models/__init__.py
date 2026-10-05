@@ -15,4 +15,5 @@ from . import stock_move_line
 from . import dispatch_session_report
 from . import dispatch_sheet
 from . import wmds_queued_tasks
+from . import wmds_mysql_config
 

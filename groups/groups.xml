@@ -89,6 +89,15 @@
             <field name="category_id" ref="module_category_wmds"/>
         </record>
         
+        <record id="group_wmds_developer" model="res.groups">
+            <field name="name">WMDs Developer</field>
+            <field name="category_id" ref="module_category_wmds"/>
+            <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+        </record>
+
+        <record id="base.group_system" model="res.groups">
+            <field name="implied_ids" eval="[(4, ref('wmds.group_wmds_developer'))]"/>
+        </record>
     </data>
     
 </odoo>
