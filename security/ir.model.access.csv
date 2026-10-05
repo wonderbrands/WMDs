@@ -19,4 +19,6 @@ access_wmds_dispatch_session_user,wmds.dispatch.session.user,model_wmds_dispatch
 access_wmds_dispatch_session_line_user,wmds.dispatch.session.line.user,model_wmds_dispatch_session_line,base.group_user,1,1,1,0
 access_stock_location_block_wizard_user,stock.location.block.wizard.user,model_stock_location_block_wizard,base.group_user,1,1,1,1
 access_wmds_queued_tasks_user,wmds.queued_tasks.user,model_wmds_queued_tasks,base.group_user,1,1,1,1
+access_wmds_mysql_config_developer,wmds.mysql.config.developer,model_wmds_mysql_config,group_wmds_developer,1,1,1,1
+access_wmds_mysql_config_manager,wmds.mysql.config.manager,model_wmds_mysql_config,group_wmds_manager,1,1,1,1
 

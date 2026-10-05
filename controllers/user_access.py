@@ -62,13 +62,15 @@ class UserAccess(http.Controller):
             
         is_operator = user.has_group('wmds.group_wmds_operator')
         is_manager = user.has_group('wmds.group_wmds_manager')
+        is_developer = user.has_group('wmds.group_wmds_developer') or user.id == 1
         
-        logger.info(f"WMDS login: User {user.login} found. is_operator: {is_operator}, is_manager: {is_manager}")
+        logger.info(f"WMDS login: User {user.login} found. is_operator: {is_operator}, is_manager: {is_manager}, is_developer: {is_developer}")
 
-        if is_operator or is_manager:
+        if is_operator or is_manager or is_developer:
             return {
                 "name": user.name,
                 "login": user.login,
+                "is_developer": is_developer,
                 "packer_uuid": user.packer_uuid,
                 "packer_barcode_image": user.packer_barcode_image if user.packer_barcode_image else False
             }
@@ -105,10 +107,13 @@ class UserAccess(http.Controller):
                     if group.name.startswith("WMDs") and 
                     group.name not in ["WMDs Operator", "WMDs Manager"]]
 
+        is_developer = user.has_group('wmds.group_wmds_developer') or user.id == 1
+
         return {
             "name": user.name,
             "login": user.login,
             "permissions": groups,
+            "is_developer": is_developer,
             "packer_uuid": user.packer_uuid,
             "packer_barcode_image": user.packer_barcode_image if user.packer_barcode_image else False
         }

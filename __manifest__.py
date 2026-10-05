@@ -19,6 +19,7 @@
         "website",
         "portal",
         "stock",
+        "stock_picking_batch",
         "stock_barcode",
         "stock_picking_batch",
         "purchase",
@@ -55,7 +56,9 @@
         "views/stock_location_block_wizard_view.xml",
         'views/report_dispatch_sheet.xml',
         "data/wmds_queued_tasks_cron.xml",
+        "data/wmds_mysql_cron.xml",
         "views/wmds_queued_tasks_views.xml",
+        "views/wmds_mysql_config_views.xml",
         "security/ir.model.access.csv",
 
     ],

@@ -534,6 +534,10 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_marketplace_schedules: {url: '/wmds/v2/engine/get/marketplace_schedules', method: 'POST'},
             save_marketplace_schedule: {url: '/wmds/v2/engine/save/marketplace_schedule', method: 'POST'},
             delete_marketplace_schedule: {url: '/wmds/v2/engine/delete/marketplace_schedule', method: 'POST'},
+            get_mysql_configs: {url: '/wmds/v2/engine/get/mysql_configs', method: 'POST'},
+            save_mysql_config: {url: '/wmds/v2/engine/save/mysql_config', method: 'POST'},
+            test_mysql_connection: {url: '/wmds/v2/engine/test/mysql_connection', method: 'POST'},
+            sync_mysql_sla: {url: '/wmds/v2/engine/sync/mysql_sla', method: 'POST'},
         };
 
 
