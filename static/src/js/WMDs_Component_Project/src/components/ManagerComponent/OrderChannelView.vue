@@ -13,6 +13,10 @@
         <button class="btn-config-sla mr-2" @click="openSlaModal">
           <i class="fa fa-sliders mr-1"></i> Configurar SLA
         </button>
+        <div v-if="pendingCount > 0" class="alert-summary-badge pending-badge">
+          <i class="fa fa-hourglass-half mr-1"></i>
+          <span>{{ pendingCount }} Pendientes <span class="badge-subtitle" v-if="activeChannel !== 'all'">({{ activeChannel }})</span></span>
+        </div>
         <div v-if="overdueCount > 0" class="alert-summary-badge overdue-badge">
           <i class="fa fa-exclamation-triangle mr-1"></i>
           <span>{{ overdueCount }} Vencidos</span>
@@ -55,13 +59,34 @@
         </button>
       </div>
 
-      <!-- Channel Select & Refresh -->
+      <!-- Channel Select, View Mode & Refresh -->
       <div class="channel-controls">
-        <label class="filter-label"><i class="fa fa-filter mr-1"></i>Canal:</label>
-        <select v-model="activeChannel" @change="fetchOrders" class="custom-select">
-          <option value="all">Todos los Canales</option>
-          <option v-for="ch in availableChannels" :key="ch" :value="ch">{{ ch }}</option>
+        <select v-model="activeChannel" @change="onChannelChange" class="custom-select">
+          <option value="all">Todos los Canales {{ totalPendingAll > 0 ? `(${totalPendingAll} pendientes)` : '' }}</option>
+          <option v-for="ch in availableChannels" :key="ch" :value="ch">
+            {{ ch }} {{ marketplacePending[ch] ? `(${marketplacePending[ch]} pendientes)` : '' }}
+          </option>
         </select>
+
+        <!-- View Mode Switcher -->
+        <div class="view-mode-toggle">
+          <button 
+            class="btn-toggle" 
+            :class="{ active: viewMode === 'grid' }" 
+            @click="viewMode = 'grid'" 
+            title="Vista Cuadrícula / Tarjetas"
+          >
+            <i class="fa fa-th-large"></i>
+          </button>
+          <button 
+            class="btn-toggle" 
+            :class="{ active: viewMode === 'list' }" 
+            @click="viewMode = 'list'" 
+            title="Vista Lista / Tabla"
+          >
+            <i class="fa fa-list"></i>
+          </button>
+        </div>
 
         <button class="btn-refresh" @click="fetchOrders" title="Actualizar Datos">
           <i class="fa fa-refresh" :class="{'fa-spin': isRefreshing}"></i>
@@ -81,7 +106,8 @@
         <p>No se encontraron pedidos con los criterios de búsqueda aplicados.</p>
       </div>
 
-      <div v-else class="orders-grid">
+      <!-- 1. Grid Cards View -->
+      <div v-else-if="viewMode === 'grid'" class="orders-grid">
         <div 
           v-for="ord in orders" 
           :key="ord.id" 
@@ -108,6 +134,14 @@
             </span>
           </div>
 
+          <!-- Carrier / Paquetería Row -->
+          <div class="carrier-info-box">
+            <span class="carrier-tag" :class="ord.carrier ? 'carrier-assigned' : 'carrier-unassigned'">
+              <i class="fa fa-truck mr-1"></i>
+              <span>{{ ord.carrier || 'Sin paquetería' }}</span>
+            </span>
+          </div>
+
           <!-- SLA Priority Row -->
           <div v-if="ord.sla_priority_label || ord.sla_date" class="sla-info-box">
             <div class="sla-status-tag" :class="ord.sla_priority_level || 'normal'">
@@ -118,11 +152,109 @@
               Límite: {{ formatSlaTime(ord.sla_date) }}
             </span>
           </div>
+          <div v-else class="sla-info-box">
+            <div class="sla-status-tag" style="color: #6b7280;">
+              <i class="fa fa-question-circle mr-1"></i>
+              <span>SLA aún no definido</span>
+            </div>
+          </div>
 
           <div v-if="ord.yuju_due_date" class="yuju-due-box">
             <i class="fa fa-calendar-check-o mr-1"></i>
             <span>Due Marketplace: <strong>{{ ord.yuju_due_date }}</strong></span>
           </div>
+        </div>
+      </div>
+
+      <!-- 2. Table List View -->
+      <div v-else-if="viewMode === 'list'" class="orders-table-wrapper">
+        <table class="orders-table">
+          <thead>
+            <tr>
+              <th>Pedido</th>
+              <th>Canal</th>
+              <th>Último Traslado</th>
+              <th>Paquetería</th>
+              <th>Estado SLA</th>
+              <th>Límite SLA (México)</th>
+              <th>Due Marketplace</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr 
+              v-for="ord in orders" 
+              :key="ord.id"
+              :class="{'row-alert-critical': ord.sla_priority_level === 'critical_1h' || ord.sla_priority_level === 'overdue'}"
+            >
+              <td><strong>{{ ord.sale_order_name || ord.name }}</strong></td>
+              <td>
+                <span class="channel-pill" :class="getChannelClass(ord.channel)">
+                  {{ ord.channel || 'Directo' }}
+                </span>
+              </td>
+              <td>
+                <span 
+                  class="pick-code-wrapper"
+                  :title="ord.latest_wmds_log ? ('Último log WMDS (' + (ord.latest_wmds_log_date || '') + ' - ' + (ord.latest_wmds_log_user || 'Sistema') + '):\n' + ord.latest_wmds_log) : 'Sin logs WMDS registrados para este traslado'"
+                >
+                  <i class="fa fa-cube mr-1 text-primary"></i>
+                  <span>{{ ord.name }}</span>
+                  <i v-if="ord.latest_wmds_log" class="fa fa-info-circle ml-1 log-hover-icon"></i>
+                </span>
+              </td>
+              <td>
+                <span class="carrier-tag" :class="ord.carrier ? 'carrier-assigned' : 'carrier-unassigned'">
+                  <i class="fa fa-truck mr-1"></i>
+                  {{ ord.carrier || 'Sin paquetería' }}
+                </span>
+              </td>
+              <td>
+                <div v-if="ord.sla_priority_label || ord.sla_date" class="sla-status-tag" :class="ord.sla_priority_level || 'normal'">
+                  <i class="fa fa-clock-o mr-1"></i>
+                  <span>{{ ord.sla_priority_label || 'Programado' }}</span>
+                </div>
+                <span v-else class="text-muted font-italic">Sin SLA</span>
+              </td>
+              <td>
+                <span v-if="ord.sla_date" class="sla-timestamp-table">
+                  {{ formatSlaTime(ord.sla_date) }}
+                </span>
+                <span v-else class="text-muted">-</span>
+              </td>
+              <td>
+                <span v-if="ord.yuju_due_date" class="badge-due">
+                  {{ ord.yuju_due_date }}
+                </span>
+                <span v-else class="text-muted">-</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Pagination Footer Bar -->
+      <div v-if="orders.length > 0 || totalCount > 0" class="pagination-bar">
+        <div class="pagination-info">
+          Mostrando <strong>{{ paginationFrom }} - {{ paginationTo }}</strong> de <strong>{{ totalCount }}</strong> pedidos
+        </div>
+        <div class="pagination-controls">
+          <button 
+            class="btn-page" 
+            :disabled="currentPage <= 1 || isRefreshing" 
+            @click="goToPage(currentPage - 1)"
+            title="Página Anterior"
+          >
+            <i class="fa fa-chevron-left mr-1"></i> Anterior
+          </button>
+          <span class="page-current">Pág. {{ currentPage }} de {{ totalPages }}</span>
+          <button 
+            class="btn-page" 
+            :disabled="currentPage >= totalPages || isRefreshing" 
+            @click="goToPage(currentPage + 1)"
+            title="Página Siguiente"
+          >
+            Siguiente <i class="fa fa-chevron-right ml-1"></i>
+          </button>
         </div>
       </div>
     </div>
@@ -262,10 +394,17 @@ export default {
       searchTimeout: null,
       activeStatus: "all",
       activeChannel: "all",
+      viewMode: "grid", // "grid" o "list"
       availableChannels: [],
       orders: [],
+      totalCount: 0,
+      currentPage: 1,
+      pageSize: 50,
       criticalCount: 0,
       overdueCount: 0,
+      pendingCount: 0,
+      totalPendingAll: 0,
+      marketplacePending: {},
       timerId: null,
 
       // Modal SLA Config
@@ -288,9 +427,20 @@ export default {
     };
   },
   computed: {
+    totalPages() {
+      return Math.max(1, Math.ceil(this.totalCount / this.pageSize));
+    },
+    paginationFrom() {
+      if (this.totalCount === 0 || this.orders.length === 0) return 0;
+      return (this.currentPage - 1) * this.pageSize + 1;
+    },
+    paginationTo() {
+      return Math.min(this.totalCount, (this.currentPage - 1) * this.pageSize + this.orders.length);
+    },
     statusOptions() {
       return [
         { label: "Todos", value: "all" },
+        { label: "Sin SLA Definido", value: "no_sla" },
         { label: "Vencidos", value: "overdue", count: this.overdueCount },
         { label: "Críticos (< 1h)", value: "critical_1h", count: this.criticalCount },
         { label: "Urgentes (< 2h)", value: "urgent_2h" },
@@ -308,16 +458,29 @@ export default {
   methods: {
     setStatusFilter(val) {
       this.activeStatus = val;
+      this.currentPage = 1;
       this.fetchOrders();
     },
     onSearchInput() {
       if (this.searchTimeout) clearTimeout(this.searchTimeout);
       this.searchTimeout = setTimeout(() => {
+        this.currentPage = 1;
         this.fetchOrders();
       }, 400);
     },
     clearSearch() {
       this.searchQuery = "";
+      this.currentPage = 1;
+      this.fetchOrders();
+    },
+    onChannelChange() {
+      this.currentPage = 1;
+      this.fetchOrders();
+      this.checkExpiringAlerts();
+    },
+    goToPage(pg) {
+      if (pg < 1 || pg > this.totalPages || pg === this.currentPage) return;
+      this.currentPage = pg;
       this.fetchOrders();
     },
     async fetchOrders() {
@@ -327,7 +490,8 @@ export default {
           query: this.searchQuery,
           status_filter: this.activeStatus,
           channel_filter: this.activeChannel,
-          limit: 50
+          limit: this.pageSize,
+          page: this.currentPage
         });
 
         if (res) {
@@ -335,6 +499,11 @@ export default {
             this.orders = res.results;
           } else {
             this.orders = [];
+          }
+          if (res.total_count !== undefined) {
+            this.totalCount = res.total_count;
+          } else {
+            this.totalCount = this.orders.length;
           }
           if (res.available_channels && Array.isArray(res.available_channels) && res.available_channels.length > 0) {
             this.availableChannels = res.available_channels;
@@ -348,11 +517,19 @@ export default {
     },
     async checkExpiringAlerts() {
       try {
-        const res = await this.store.callOdooSilent("sla_expiring_alerts", "", {});
+        const res = await this.store.callOdooSilent("sla_expiring_alerts", "", {
+          channel_filter: this.activeChannel
+        });
         if (res && res.success) {
           const prevCount = this.criticalCount;
-          this.criticalCount = res.critical_count !== undefined ? res.critical_count : (res.total_critical || 0);
-          this.overdueCount = res.overdue_count !== undefined ? res.overdue_count : (res.total_overdue || 0);
+          this.criticalCount = res.critical_count !== undefined ? res.critical_count : 0;
+          this.overdueCount = res.overdue_count !== undefined ? res.overdue_count : 0;
+          this.pendingCount = res.current_channel_pending !== undefined ? res.current_channel_pending : (res.total_pending || 0);
+          this.totalPendingAll = res.total_pending !== undefined ? res.total_pending : 0;
+          if (res.marketplace_pending) {
+            this.marketplacePending = res.marketplace_pending;
+          }
+
           this.store.sla_critical_count = this.criticalCount;
           this.store.sla_overdue_count = this.overdueCount;
 
@@ -492,7 +669,14 @@ export default {
       if (!dtStr) return "";
       try {
         const dt = new Date(dtStr.endsWith("Z") ? dtStr : dtStr + "Z");
-        return dt.toLocaleString([], { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        return dt.toLocaleString("es-MX", { 
+          timeZone: "America/Mexico_City",
+          day: '2-digit', 
+          month: '2-digit', 
+          year: 'numeric', 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
       } catch (e) {
         return dtStr;
       }
@@ -579,11 +763,20 @@ export default {
   box-shadow: 0 2px 4px rgba(239, 68, 68, 0.2);
   margin-left: 8px;
 }
+.pending-badge {
+  background-color: #2563eb;
+  box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+}
 .overdue-badge {
   background-color: #dc2626;
 }
 .critical-badge {
   background-color: #f59e0b;
+}
+.badge-subtitle {
+  font-weight: 500;
+  opacity: 0.9;
+  margin-left: 2px;
 }
 
 .toolbar-card {
@@ -666,6 +859,31 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.view-mode-toggle {
+  display: flex;
+  background: #e5e7eb;
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+.btn-toggle {
+  background: none;
+  border: none;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #4b5563;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-toggle:hover {
+  color: #111827;
+}
+.btn-toggle.active {
+  background: #ffffff;
+  color: #2563eb;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
 }
 .filter-label {
   font-size: 0.85rem;
@@ -769,6 +987,45 @@ export default {
   color: #3b82f6;
   font-size: 0.85rem;
 }
+.carrier-info-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #f1f5f9;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+}
+.carrier-tag {
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.carrier-assigned {
+  color: #1e40af;
+}
+.carrier-unassigned {
+  color: #94a3b8;
+  font-style: italic;
+  font-weight: 500;
+}
+.tracking-tag {
+  color: #475569;
+  font-family: monospace;
+  font-size: 0.74rem;
+  background: #e2e8f0;
+  padding: 2px 6px;
+  border-radius: 4px;
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .sla-info-box {
   display: flex;
@@ -800,6 +1057,105 @@ export default {
 .yuju-due-box {
   font-size: 0.78rem;
   color: #475569;
+}
+
+/* Orders Table Styles */
+.orders-table-wrapper {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow-x: auto;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.orders-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  text-align: left;
+}
+.orders-table thead th {
+  background: #f9fafb;
+  padding: 10px 14px;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
+  white-space: nowrap;
+}
+.orders-table tbody td {
+  padding: 10px 14px;
+  border-bottom: 1px solid #f3f4f6;
+  color: #1f2937;
+  vertical-align: middle;
+}
+.orders-table tbody tr:hover {
+  background: #f8fafc;
+}
+.orders-table tbody tr.row-alert-critical {
+  background-color: #fef2f2;
+}
+.sla-timestamp-table {
+  font-weight: 500;
+  color: #4b5563;
+  white-space: nowrap;
+}
+.badge-due {
+  display: inline-block;
+  background: #f1f5f9;
+  color: #475569;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: monospace;
+}
+
+/* Pagination Styles */
+.pagination-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-top: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+.pagination-info {
+  font-size: 0.85rem;
+  color: #4b5563;
+}
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.btn-page {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  background-color: #f9fafb;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.btn-page:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+  color: #111827;
+}
+.btn-page:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: #f3f4f6;
+}
+.page-current {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 /* Modal CSS */

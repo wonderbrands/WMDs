@@ -43,7 +43,7 @@
                             </group>
                         </group>
                         <group string="Log de Última Ejecución">
-                            <field name="last_sync_status" nolabel="1" readonly="1" widget="ace" options="{'mode': 'text'}"/>
+                            <field name="last_sync_status" nolabel="1" readonly="1" widget="text"/>
                         </group>
                     </sheet>
                 </form>
