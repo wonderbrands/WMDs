@@ -26,6 +26,8 @@ class OrderChannelController(http.Controller):
             status_filter = (kw.get('status_filter') or 'all').strip()
             channel_filter = (kw.get('channel_filter') or 'all').strip()
             limit = int(kw.get('limit') or 50)
+            page = int(kw.get('page') or 1)
+            offset = int(kw.get('offset') or ((page - 1) * limit if page > 1 else 0))
 
             env = request.env
             client_tz = kw.get('tz')
@@ -45,49 +47,55 @@ class OrderChannelController(http.Controller):
             raw_channels = [r[0] for r in env.cr.fetchall() if r[0]]
             available_channels = sorted(list(set(c.strip() for c in raw_channels if c and c.strip())))
 
-            domain = [('sale_id', '!=', False)]
+            # Base domain: Solo órdenes activas pendientes (no sent, no shipped, no refunded, no canceladas)
+            domain = [
+                ('sale_id', '!=', False),
+                ('sale_id.state', '!=', 'cancel'),
+                ('sale_id.order_progress', '!=', 'sent'),
+                ('sale_id.order_progress', 'not ilike', 'shipped'),
+                ('sale_id.order_progress', 'not ilike', 'refunded'),
+                ('sale_id.order_progress', 'not ilike', 'cancel'),
+                ('sale_id.yuju_shipping_status', '!=', 'sent'),
+                ('state', 'not in', ('done', 'cancel'))
+            ]
 
             # 1. Status Filter (Precisión basada en tiempo real de SLA)
             if status_filter == 'overdue':
                 domain.extend([
-                    ('state', 'not in', ('done', 'cancel')),
                     ('sla_date', '!=', False),
                     ('sla_date', '<', now_utc)
                 ])
             elif status_filter == 'critical_1h':
                 domain.extend([
-                    ('state', 'not in', ('done', 'cancel')),
                     ('sla_date', '!=', False),
                     ('sla_date', '>=', now_utc),
                     ('sla_date', '<=', in_1h_utc)
                 ])
             elif status_filter == 'urgent_2h':
                 domain.extend([
-                    ('state', 'not in', ('done', 'cancel')),
                     ('sla_date', '!=', False),
                     ('sla_date', '>', in_1h_utc),
                     ('sla_date', '<=', in_2h_utc)
                 ])
             elif status_filter == 'warning_6h':
                 domain.extend([
-                    ('state', 'not in', ('done', 'cancel')),
                     ('sla_date', '!=', False),
                     ('sla_date', '>', in_2h_utc),
                     ('sla_date', '<=', in_6h_utc)
                 ])
             elif status_filter == 'notice_24h':
                 domain.extend([
-                    ('state', 'not in', ('done', 'cancel')),
                     ('sla_date', '!=', False),
                     ('sla_date', '>', in_6h_utc),
                     ('sla_date', '<=', in_24h_utc)
                 ])
             elif status_filter == 'normal':
                 domain.extend([
-                    ('state', 'not in', ('done', 'cancel')),
                     ('sla_date', '!=', False),
                     ('sla_date', '>', in_24h_utc)
                 ])
+            elif status_filter == 'no_sla':
+                domain.append(('sla_date', '=', False))
 
             # 2. Text Search Query
             if query:
@@ -105,7 +113,8 @@ class OrderChannelController(http.Controller):
             if channel_filter and channel_filter != 'all':
                 domain.append(('sale_id.channel', 'ilike', channel_filter))
 
-            pickings = picking_model.sudo().search(domain, order='id desc', limit=limit)
+            total_count = picking_model.sudo().search_count(domain)
+            pickings = picking_model.sudo().search(domain, order='id desc', limit=limit, offset=offset)
 
             # Optimización masiva BATCH para logs de WMDS (1 sola consulta SQL para los 50 resultados)
             pick_ids = tuple(p.id for p in pickings if p.id)
@@ -154,8 +163,11 @@ class OrderChannelController(http.Controller):
                 effective_sla_date = pick.sla_date
                 if not effective_sla_date and so and yuju_due_date:
                     try:
-                        from extra_addons.wonderbrands2026.wb_SLA_module.SLA_module.models.stock_picking import parse_yuju_date
-                        effective_sla_date = parse_yuju_date(yuju_due_date)
+                        clean_date_str = str(yuju_due_date).strip().replace('Z', '')
+                        if 'T' in clean_date_str:
+                            effective_sla_date = datetime.fromisoformat(clean_date_str)
+                        else:
+                            effective_sla_date = datetime.strptime(clean_date_str, "%Y-%m-%d %H:%M:%S")
                     except Exception:
                         pass
 
@@ -196,6 +208,20 @@ class OrderChannelController(http.Controller):
                 latest_log_date = log_info[1] if log_info else ''
                 latest_log_user = users_map.get(log_info[2], '') if log_info and log_info[2] else ''
 
+                # Paquetería / Carrier y Guía
+                carrier_name = ''
+                if pick.carrier_id:
+                    carrier_name = pick.carrier_id.name
+                elif so:
+                    if getattr(so, 'data_carrier_selection_relational', False):
+                        carrier_name = so.data_carrier_selection_relational.name
+                    elif getattr(so, 'carrier_id', False):
+                        carrier_name = so.carrier_id.name
+                    elif getattr(so, 'yuju_carrier', False):
+                        carrier_name = so.yuju_carrier
+
+                tracking_ref = pick.carrier_tracking_ref or (getattr(so, 'yuju_carrier_tracking_ref', '') if so else '') or ''
+
                 results.append({
                     'id': pick.id,
                     'name': pick.name,
@@ -203,6 +229,8 @@ class OrderChannelController(http.Controller):
                     'partner_name': pick.partner_id.display_name if pick.partner_id else '',
                     'channel': channel,
                     'fulfillment': fulfillment,
+                    'carrier': carrier_name,
+                    'carrier_tracking_ref': tracking_ref,
                     'state': pick.state,
                     'scheduled_date': fields.Datetime.to_string(pick.scheduled_date) if pick.scheduled_date else False,
                     'sla_date': sla_dt_str,
@@ -217,6 +245,9 @@ class OrderChannelController(http.Controller):
             return {
                 'success': True,
                 'count': len(results),
+                'total_count': total_count,
+                'page': page,
+                'limit': limit,
                 'available_channels': available_channels,
                 'results': results
             }
@@ -234,37 +265,85 @@ class OrderChannelController(http.Controller):
     )
     def check_sla_expiring_alerts(self, **kw):
         """
-        Return count of active pickings expiring in < 1h vs overdue.
+        Return count of active pickings expiring in < 1h vs overdue, and pending orders by marketplace.
+        Supports optional channel_filter parameter.
         """
         try:
             env = request.env
-            picking_model = env['stock.picking']
+            channel_filter = (kw.get('channel_filter') or 'all').strip()
 
             now_utc = fields.Datetime.now()
             in_1h_utc = now_utc + timedelta(hours=1)
 
-            # 1. Críticos: vencen en los próximos 60 minutos (now <= sla_date <= in_1h)
-            critical_count = picking_model.sudo().search_count([
-                ('state', 'not in', ('done', 'cancel')),
-                ('sale_id', '!=', False),
-                ('sla_date', '!=', False),
-                ('sla_date', '>=', now_utc),
-                ('sla_date', '<=', in_1h_utc)
-            ])
+            # Query general de conteo de pendientes activos agrupados por marketplace
+            env.cr.execute('''
+                SELECT 
+                    COALESCE(s.channel, 'Directo/Otro') AS channel,
+                    COUNT(DISTINCT s.id) AS pending_count
+                FROM sale_order s
+                JOIN stock_picking p ON p.sale_id = s.id
+                WHERE s.state != 'cancel'
+                  AND (s.order_progress != 'sent' OR s.order_progress IS NULL)
+                  AND (s.order_progress NOT ILIKE '%shipped%' OR s.order_progress IS NULL)
+                  AND (s.order_progress NOT ILIKE '%refunded%' OR s.order_progress IS NULL)
+                  AND (s.order_progress NOT ILIKE '%cancel%' OR s.order_progress IS NULL)
+                  AND (s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)
+                  AND p.state NOT IN ('done', 'cancel')
+                GROUP BY COALESCE(s.channel, 'Directo/Otro')
+                ORDER BY pending_count DESC
+            ''')
+            marketplace_pending = {row[0]: row[1] for row in env.cr.fetchall()}
+            total_pending = sum(marketplace_pending.values())
 
-            # 2. Vencidos: la fecha límite ya transcurrió (sla_date < now)
-            overdue_count = picking_model.sudo().search_count([
-                ('state', 'not in', ('done', 'cancel')),
-                ('sale_id', '!=', False),
-                ('sla_date', '!=', False),
-                ('sla_date', '<', now_utc)
-            ])
+            # Query con LATERAL para contar críticos y vencidos por último picking de cada SO activa
+            filter_clause = ""
+            params = []
+            if channel_filter and channel_filter != 'all':
+                filter_clause = " AND s.channel = %s "
+                params.append(channel_filter)
+
+            sql_alerts = f'''
+                SELECT p.sla_date
+                FROM sale_order s
+                JOIN LATERAL (
+                    SELECT state, sla_date
+                    FROM stock_picking
+                    WHERE sale_id = s.id
+                    ORDER BY id DESC
+                    LIMIT 1
+                ) p ON true
+                WHERE s.state != 'cancel'
+                  AND (s.order_progress != 'sent' OR s.order_progress IS NULL)
+                  AND (s.order_progress NOT ILIKE '%shipped%' OR s.order_progress IS NULL)
+                  AND (s.order_progress NOT ILIKE '%refunded%' OR s.order_progress IS NULL)
+                  AND (s.order_progress NOT ILIKE '%cancel%' OR s.order_progress IS NULL)
+                  AND (s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)
+                  AND p.state NOT IN ('done', 'cancel')
+                  AND p.sla_date IS NOT NULL
+                  {filter_clause}
+            '''
+            env.cr.execute(sql_alerts, params)
+            rows = env.cr.fetchall()
+
+            critical_count = 0
+            overdue_count = 0
+            for (sla_date,) in rows:
+                if sla_date < now_utc:
+                    overdue_count += 1
+                elif now_utc <= sla_date <= in_1h_utc:
+                    critical_count += 1
+
+            # Pendientes filtrados para el canal actual
+            current_pending = marketplace_pending.get(channel_filter, 0) if channel_filter != 'all' else total_pending
 
             return {
                 'success': True,
                 'critical_count': critical_count,
                 'overdue_count': overdue_count,
-                'total_alerts': critical_count + overdue_count
+                'total_alerts': critical_count + overdue_count,
+                'total_pending': total_pending,
+                'current_channel_pending': current_pending,
+                'marketplace_pending': marketplace_pending
             }
 
         except Exception as e:
