@@ -701,7 +701,11 @@ class CycleCount(http.Controller):
                 quant.with_context(active_test=False).inventory_quantity = new_qty
             
             # Aplicar el inventario
-            quant.with_context(inventory_name=f"Ajuste Conteo {count_name}: {reason}", active_test=False).action_apply_inventory()
+            quant.with_context(
+                inventory_name=f"Ajuste Conteo {count_name}: {reason}",
+                active_test=False,
+                skip_blocking_check=True,
+            ).action_apply_inventory()
             
             loc_name = location.complete_name
             
