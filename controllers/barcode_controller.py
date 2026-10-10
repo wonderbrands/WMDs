@@ -359,7 +359,7 @@ class BarcodeController(http.Controller):
                     scanned_location = target_loc
                     vobo_message = f"Traslado automático a {target_loc.display_name}."
 
-            if picking and p_type_name == 'Rackeos':
+            if picking and p_type_name in ('Rackeo', 'Rackeos'):
                 # Intentar encontrar la PO. A veces el origin tiene prefijos o múltiples referencias.
                 origin = picking.origin or ''
                 # Buscar cualquier secuencia que parezca una PO (típicamente empieza con P o PO)
@@ -427,6 +427,7 @@ class BarcodeController(http.Controller):
                 return {"status": "error", "message": f"La ubicación {scanned_location.display_name} no es válida. Debe ser {original_dest.display_name} o una de sus hijas."}
 
         except Exception as e:
+            request.env.cr.rollback()
             logger.error(traceback.format_exc())
             return {"status": "error", "message": str(e)}
 
@@ -605,11 +606,12 @@ class BarcodeController(http.Controller):
 
                 logger.info(f"WMDS_DEBUG: Calling Odoo native validation... res_model: {res_model}. {_mem()}")
                 if res_model == 'stock.picking':
-                    res = record.button_validate()
+                    res = record.with_context(skip_blocking_check=True).button_validate()
                 else:
-                    res = record.action_done()
+                    res = record.with_context(skip_blocking_check=True).action_done()
                 logger.info(f"WMDS_DEBUG: Native validation completed. Result: {res}. {_mem()}")
             except Exception as odoo_e:
+                request.env.cr.rollback()
                 logger.error(f"WMDS_DEBUG: Odoo Validation Exception caught! Memory: {_mem()}\n{traceback.format_exc()}")
                 return {"status": "error", "message": f"Error de Odoo: {str(odoo_e)}"}
 
@@ -656,10 +658,12 @@ class BarcodeController(http.Controller):
             if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
                 logger.info(f"WMDS_DEBUG: Handling backorder confirmation wizard... {_mem()}")
                 pickings_to_backorder = record if res_model == 'stock.picking' else record.picking_ids
-                wizard = request.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
+                wizard_ctx = dict(res.get('context', {}))
+                wizard_ctx['skip_blocking_check'] = True
+                wizard = request.env['stock.backorder.confirmation'].with_context(wizard_ctx).sudo().create({
                     'pick_ids': [(4, p.id) for p in pickings_to_backorder]
                 })
-                wizard.process()
+                wizard.with_context(skip_blocking_check=True).process()
                 logger.info(f"WMDS_DEBUG: Backorder wizard processed. {_mem()}")
 
             # Create summary log for the operation
@@ -685,5 +689,6 @@ class BarcodeController(http.Controller):
                 "is_dful": is_dful
             }
         except Exception as e:
+            request.env.cr.rollback()
             logger.error(f"WMDS_DEBUG: Exception caught in main block! Memory: {_mem()}\n{traceback.format_exc()}")
             return {"status": "error", "message": str(e)}
