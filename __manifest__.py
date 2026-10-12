@@ -33,6 +33,7 @@
         'python': [
             'qrcode',
             'openpyxl',
+            'pymysql',
         ],
     },
 
