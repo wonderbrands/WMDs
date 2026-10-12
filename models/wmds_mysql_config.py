@@ -21,6 +21,11 @@ class WmdsMysqlConfig(models.Model):
     name = fields.Char(string='Nombre de Conexión', required=True, default='Amazon RDS SLA')
     active = fields.Boolean(string='Activo', default=True)
     marketplace = fields.Char(string='Marketplace / Canal', required=True, default='Amazon')
+    sla_timezone = fields.Selection([
+        ('utc', 'UTC'),
+        ('local', 'Hora Local'),
+    ], string='Zona horaria del SLA', default='utc',
+       help='Si el sla_date de este marketplace se guarda en UTC o en hora local (México). Determinante al filtrar por fecha.')
     
     host = fields.Char(string='Host MySQL', required=True, default='wonderbrands1.cuwd36ifbz5t.us-east-1.rds.amazonaws.com')
     port = fields.Integer(string='Puerto MySQL', default=3306, required=True)

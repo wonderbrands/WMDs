@@ -28,6 +28,24 @@
       </div>
     </div>
 
+    <!-- Main Top Tabs (SLA vs Execution) -->
+    <div class="main-tabs-bar">
+      <button 
+        class="main-tab-btn" 
+        :class="{ active: currentMainTab === 'sla' }" 
+        @click="switchMainTab('sla')"
+      >
+        <i class="fa fa-clock-o mr-2"></i> Compromisos SLA & Pendientes
+      </button>
+      <button 
+        class="main-tab-btn" 
+        :class="{ active: currentMainTab === 'execution' }" 
+        @click="switchMainTab('execution')"
+      >
+        <i class="fa fa-check-circle mr-2"></i> Operaciones en Almacén (Hecho en el Día)
+      </button>
+    </div>
+
     <!-- Filters and Search Toolbar -->
     <div class="toolbar-card">
       <div class="search-input-wrapper">
@@ -36,8 +54,8 @@
           type="text" 
           v-model="searchQuery" 
           @input="onSearchInput"
-          @keyup.enter="fetchOrders"
-          placeholder="Buscar por Folio SO, Picking, Guía o Cliente..." 
+          @keyup.enter="onSearchEnter"
+          :placeholder="currentMainTab === 'sla' ? 'Buscar por Folio SO, Picking, Guía o Cliente...' : 'Buscar por Folio SO, Albarán, Guía o Cliente...'" 
           class="custom-input"
         />
         <button v-if="searchQuery" class="btn-clear" @click="clearSearch">
@@ -45,8 +63,8 @@
         </button>
       </div>
 
-      <!-- Status Filter Chips -->
-      <div class="filter-chips">
+      <!-- Status Filter Chips (For SLA Tab) -->
+      <div v-if="currentMainTab === 'sla'" class="filter-chips">
         <button 
           v-for="st in statusOptions" 
           :key="st.value"
@@ -55,18 +73,64 @@
           @click="setStatusFilter(st.value)"
         >
           {{ st.label }}
-          <span v-if="st.count !== undefined" class="chip-badge">({{ st.count }})</span>
         </button>
+      </div>
+
+      <!-- Sub-controls for Execution Tab (Matiz Switcher and Stage Chips) -->
+      <div v-if="currentMainTab === 'execution'" class="execution-toolbar-sub">
+        <div class="matiz-switcher">
+          <button 
+            class="matiz-btn" 
+            :class="{ active: matizMode === 'by_sale' }"
+            @click="setMatizMode('by_sale')"
+          >
+            <i class="fa fa-shopping-cart mr-1"></i> Por Venta (Flujo SO)
+          </button>
+          <button 
+            class="matiz-btn" 
+            :class="{ active: matizMode === 'by_stage' }"
+            @click="setMatizMode('by_stage')"
+          >
+            <i class="fa fa-cubes mr-1"></i> Por Etapa de Inventario
+          </button>
+        </div>
+
+        <div v-if="matizMode === 'by_stage'" class="stage-chips">
+          <button 
+            v-for="stg in stageOptions" 
+            :key="stg.value"
+            class="chip-button"
+            :class="{ active: stageFilter === stg.value }"
+            @click="setStageFilter(stg.value)"
+          >
+            {{ stg.label }}
+          </button>
+        </div>
       </div>
 
       <!-- Channel Select, View Mode & Refresh -->
       <div class="channel-controls">
         <select v-model="activeChannel" @change="onChannelChange" class="custom-select">
-          <option value="all">Todos los Canales {{ totalPendingAll > 0 ? `(${totalPendingAll} pendientes)` : '' }}</option>
+          <option value="all">Todos los Canales {{ currentMainTab === 'sla' && globalOldestDate ? `(${globalOldestDate})` : '' }}</option>
           <option v-for="ch in availableChannels" :key="ch" :value="ch">
-            {{ ch }} {{ marketplacePending[ch] ? `(${marketplacePending[ch]} pendientes)` : '' }}
+            {{ ch }} {{ currentMainTab === 'sla' && channelOldestDate[ch] ? `(${channelOldestDate[ch]})` : '' }}
           </option>
         </select>
+
+        <input
+          v-model="dateFrom"
+          type="date"
+          class="custom-select date-filter"
+          @change="onDateChange"
+          title="Fecha desde"
+        />
+        <input
+          v-model="dateTo"
+          type="date"
+          class="custom-select date-filter"
+          @change="onDateChange"
+          title="Fecha hasta"
+        />
 
         <!-- View Mode Switcher -->
         <div class="view-mode-toggle">
@@ -88,176 +152,418 @@
           </button>
         </div>
 
-        <button class="btn-refresh" @click="fetchOrders" title="Actualizar Datos">
+        <button class="btn-refresh" @click="fetchAll" title="Actualizar Datos">
           <i class="fa fa-refresh" :class="{'fa-spin': isRefreshing}"></i>
         </button>
       </div>
     </div>
 
-    <!-- Data Display Content -->
-    <div class="content-body">
-      <div v-if="isRefreshing && orders.length === 0" class="state-message">
-        <i class="fa fa-spinner fa-spin fa-2x mb-2"></i>
-        <p>Cargando información de pedidos...</p>
+    <!-- SLA Metrics Cards (SLA Tab) -->
+    <div v-if="currentMainTab === 'sla'" class="metrics-bar">
+      <div class="metric-card" title="Total de pedidos (OUT) con fecha SLA dentro del rango de fechas seleccionado, sin importar estado.">
+        <div class="metric-value">{{ metrics.pedidos }}</div>
+        <div class="metric-label">Pedidos</div>
       </div>
-
-      <div v-else-if="orders.length === 0" class="state-message">
-        <i class="fa fa-inbox fa-3x mb-2 text-muted"></i>
-        <p>No se encontraron pedidos con los criterios de búsqueda aplicados.</p>
+      <div class="metric-card metric-hover" title="OUT cerrados (state = done). Incluye los entregados, sin importar si la fecha de envío cayó dentro del rango.">
+        <div class="metric-value metric-sent">{{ metrics.enviados }}</div>
+        <div class="metric-label">Enviados</div>
       </div>
-
-      <!-- 1. Grid Cards View -->
-      <div v-else-if="viewMode === 'grid'" class="orders-grid">
-        <div 
-          v-for="ord in orders" 
-          :key="ord.id" 
-          class="order-data-card"
-          :class="{'card-alert-critical': ord.sla_priority_level === 'critical_1h' || ord.sla_priority_level === 'overdue'}"
-        >
-          <!-- Top Row: Order Name & Channel -->
-          <div class="card-row-top">
-            <span class="so-number">{{ ord.sale_order_name || ord.name }}</span>
-            <span class="channel-pill" :class="getChannelClass(ord.channel)">
-              {{ ord.channel || 'Directo' }}
-            </span>
-          </div>
-
-          <!-- Middle Row: Latest Registered Picking & WMDS Log Hover -->
-          <div class="card-row-sub">
-            <span 
-              class="pick-code-wrapper"
-              :title="ord.latest_wmds_log ? ('Último log WMDS (' + (ord.latest_wmds_log_date || '') + ' - ' + (ord.latest_wmds_log_user || 'Sistema') + '):\n' + ord.latest_wmds_log) : 'Sin logs WMDS registrados para este traslado'"
-            >
-              <i class="fa fa-cube mr-1 text-primary"></i>
-              <span class="pick-name">Último Traslado: <strong>{{ ord.name }}</strong></span>
-              <i v-if="ord.latest_wmds_log" class="fa fa-info-circle ml-1 log-hover-icon"></i>
-            </span>
-          </div>
-
-          <!-- Carrier / Paquetería Row -->
-          <div class="carrier-info-box">
-            <span class="carrier-tag" :class="ord.carrier ? 'carrier-assigned' : 'carrier-unassigned'">
-              <i class="fa fa-truck mr-1"></i>
-              <span>{{ ord.carrier || 'Sin paquetería' }}</span>
-            </span>
-          </div>
-
-          <!-- SLA Priority Row -->
-          <div v-if="ord.sla_priority_label || ord.sla_date" class="sla-info-box">
-            <div class="sla-status-tag" :class="ord.sla_priority_level || 'normal'">
-              <i class="fa fa-clock-o mr-1"></i>
-              <span>{{ ord.sla_priority_label || 'SLA Programado' }}</span>
-            </div>
-            <span v-if="ord.sla_date" class="sla-timestamp">
-              Límite: {{ formatSlaTime(ord.sla_date) }}
-            </span>
-          </div>
-          <div v-else class="sla-info-box">
-            <div class="sla-status-tag" style="color: #6b7280;">
-              <i class="fa fa-question-circle mr-1"></i>
-              <span>SLA aún no definido</span>
-            </div>
-          </div>
-
-          <div v-if="ord.yuju_due_date" class="yuju-due-box">
-            <i class="fa fa-calendar-check-o mr-1"></i>
-            <span>Due Marketplace: <strong>{{ ord.yuju_due_date }}</strong></span>
-          </div>
-        </div>
+      <div class="metric-card metric-hover" title="OUT no cerrados (state != done). Pueden estar pendientes, en flujo, o entregados pero sin cerrar el OUT.">
+        <div class="metric-value metric-pending">{{ metrics.no_enviados }}</div>
+        <div class="metric-label">No enviados</div>
       </div>
-
-      <!-- 2. Table List View -->
-      <div v-else-if="viewMode === 'list'" class="orders-table-wrapper">
-        <table class="orders-table">
-          <thead>
-            <tr>
-              <th>Pedido</th>
-              <th>Canal</th>
-              <th>Último Traslado</th>
-              <th>Paquetería</th>
-              <th>Estado SLA</th>
-              <th>Límite SLA (México)</th>
-              <th>Due Marketplace</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr 
-              v-for="ord in orders" 
-              :key="ord.id"
-              :class="{'row-alert-critical': ord.sla_priority_level === 'critical_1h' || ord.sla_priority_level === 'overdue'}"
-            >
-              <td><strong>{{ ord.sale_order_name || ord.name }}</strong></td>
-              <td>
-                <span class="channel-pill" :class="getChannelClass(ord.channel)">
-                  {{ ord.channel || 'Directo' }}
-                </span>
-              </td>
-              <td>
-                <span 
-                  class="pick-code-wrapper"
-                  :title="ord.latest_wmds_log ? ('Último log WMDS (' + (ord.latest_wmds_log_date || '') + ' - ' + (ord.latest_wmds_log_user || 'Sistema') + '):\n' + ord.latest_wmds_log) : 'Sin logs WMDS registrados para este traslado'"
-                >
-                  <i class="fa fa-cube mr-1 text-primary"></i>
-                  <span>{{ ord.name }}</span>
-                  <i v-if="ord.latest_wmds_log" class="fa fa-info-circle ml-1 log-hover-icon"></i>
-                </span>
-              </td>
-              <td>
-                <span class="carrier-tag" :class="ord.carrier ? 'carrier-assigned' : 'carrier-unassigned'">
-                  <i class="fa fa-truck mr-1"></i>
-                  {{ ord.carrier || 'Sin paquetería' }}
-                </span>
-              </td>
-              <td>
-                <div v-if="ord.sla_priority_label || ord.sla_date" class="sla-status-tag" :class="ord.sla_priority_level || 'normal'">
-                  <i class="fa fa-clock-o mr-1"></i>
-                  <span>{{ ord.sla_priority_label || 'Programado' }}</span>
-                </div>
-                <span v-else class="text-muted font-italic">Sin SLA</span>
-              </td>
-              <td>
-                <span v-if="ord.sla_date" class="sla-timestamp-table">
-                  {{ formatSlaTime(ord.sla_date) }}
-                </span>
-                <span v-else class="text-muted">-</span>
-              </td>
-              <td>
-                <span v-if="ord.yuju_due_date" class="badge-due">
-                  {{ ord.yuju_due_date }}
-                </span>
-                <span v-else class="text-muted">-</span>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="metric-card metric-hover" title="De los no enviados: OUT con movimientos sin stock reservado (en espera de abastecimiento).">
+        <div class="metric-value metric-waiting">{{ metrics.en_espera }}</div>
+        <div class="metric-label">En espera (sin stock)</div>
       </div>
-
-      <!-- Pagination Footer Bar -->
-      <div v-if="orders.length > 0 || totalCount > 0" class="pagination-bar">
-        <div class="pagination-info">
-          Mostrando <strong>{{ paginationFrom }} - {{ paginationTo }}</strong> de <strong>{{ totalCount }}</strong> pedidos
-        </div>
-        <div class="pagination-controls">
-          <button 
-            class="btn-page" 
-            :disabled="currentPage <= 1 || isRefreshing" 
-            @click="goToPage(currentPage - 1)"
-            title="Página Anterior"
-          >
-            <i class="fa fa-chevron-left mr-1"></i> Anterior
-          </button>
-          <span class="page-current">Pág. {{ currentPage }} de {{ totalPages }}</span>
-          <button 
-            class="btn-page" 
-            :disabled="currentPage >= totalPages || isRefreshing" 
-            @click="goToPage(currentPage + 1)"
-            title="Página Siguiente"
-          >
-            Siguiente <i class="fa fa-chevron-right ml-1"></i>
-          </button>
-        </div>
+      <div class="metric-note" title="Entregados cuyo OUT aún no se cierra (tienen fecha de envío pero state != done). Por eso no siempre cuadran con la vista de pedidos pendientes.">
+        <i class="fa fa-info-circle mr-1"></i>
+        <strong>{{ metrics.sin_out_cerrado }}</strong> Enviado/entregado sin OUT cerrado
       </div>
     </div>
+
+    <!-- Execution Metrics Cards (Execution Tab) -->
+    <div v-if="currentMainTab === 'execution'" class="metrics-bar">
+      <div class="metric-card" title="Albaranes PICK completados (state = done) en el rango de fechas seleccionado (hora CDMX).">
+        <div class="metric-value text-primary">{{ executedMetrics.picked_count }}</div>
+        <div class="metric-label"><i class="fa fa-cube mr-1"></i> Pickeados</div>
+      </div>
+      <div class="metric-card" title="Albaranes PACK completados (state = done) en el rango de fechas seleccionado (hora CDMX).">
+        <div class="metric-value text-info">{{ executedMetrics.packed_count }}</div>
+        <div class="metric-label"><i class="fa fa-archive mr-1"></i> Empacados</div>
+      </div>
+      <div class="metric-card" title="Albaranes OUT completados (state = done) en el rango de fechas seleccionado (hora CDMX).">
+        <div class="metric-value metric-sent">{{ executedMetrics.dispatched_count }}</div>
+        <div class="metric-label"><i class="fa fa-truck mr-1"></i> Despachados</div>
+      </div>
+      <div class="metric-card" title="Total de órdenes de venta con albaranes completados en el rango.">
+        <div class="metric-value">{{ executedMetrics.total_orders_touched }}</div>
+        <div class="metric-label"><i class="fa fa-check-square-o mr-1"></i> Órdenes Procesadas</div>
+      </div>
+      <div class="metric-card" title="Órdenes de venta con albarán OUT completado en el rango.">
+        <div class="metric-value metric-sent">{{ executedMetrics.orders_dispatched_count }}</div>
+        <div class="metric-label"><i class="fa fa-flag-checkered mr-1"></i> Órdenes Despachadas</div>
+      </div>
+    </div>
+
+    <!-- Data Display Content -->
+    <div class="content-body">
+      <!-- 1. SLA TAB CONTENT -->
+      <div v-if="currentMainTab === 'sla'">
+        <div v-if="isRefreshing && orders.length === 0" class="state-message">
+          <i class="fa fa-spinner fa-spin fa-2x mb-2"></i>
+          <p>Cargando información de pedidos...</p>
+        </div>
+
+        <div v-else-if="orders.length === 0" class="state-message">
+          <i class="fa fa-inbox fa-3x mb-2 text-muted"></i>
+          <p>No se encontraron pedidos con los criterios de búsqueda aplicados.</p>
+        </div>
+
+        <!-- 1. Grid Cards View -->
+        <div v-else-if="viewMode === 'grid'" class="orders-grid">
+          <div 
+            v-for="ord in orders" 
+            :key="ord.id" 
+            class="order-data-card"
+            :class="{'card-alert-critical': ord.sla_priority_level === 'critical_1h' || ord.sla_priority_level === 'overdue'}"
+          >
+            <!-- Top Row: Order Name & Channel -->
+            <div class="card-row-top">
+              <span class="so-number">{{ ord.sale_order_name || ord.name }}</span>
+              <span class="channel-pill" :class="getChannelClass(ord.channel)">
+                {{ ord.channel || 'Directo' }}
+              </span>
+            </div>
+
+            <!-- Middle Row: Latest Registered Picking & WMDS Log Hover -->
+            <div class="card-row-sub">
+              <span 
+                v-if="ord.has_pick"
+                class="pick-code-wrapper"
+                :title="ord.latest_wmds_log ? ('Último log WMDS (' + (ord.latest_wmds_log_date || '') + ' - ' + (ord.latest_wmds_log_user || 'Sistema') + '):\n' + ord.latest_wmds_log) : 'Sin logs WMDS registrados para este traslado'"
+              >
+                <i class="fa fa-cube mr-1 text-primary"></i>
+                <span class="pick-name">Último Traslado: <strong>{{ ord.name }}</strong></span>
+                <i v-if="ord.latest_wmds_log" class="fa fa-info-circle ml-1 log-hover-icon"></i>
+              </span>
+              <span v-else class="no-pick-badge">
+                <i class="fa fa-cube mr-1"></i> Sin pick asignado
+              </span>
+            </div>
+
+            <!-- Carrier / Paquetería Row -->
+            <div class="carrier-info-box">
+              <span class="carrier-tag" :class="ord.carrier ? 'carrier-assigned' : 'carrier-unassigned'">
+                <i class="fa fa-truck mr-1"></i>
+                <span>{{ ord.carrier || 'Sin paquetería' }}</span>
+              </span>
+            </div>
+
+            <!-- SLA Priority Row -->
+            <div v-if="ord.sla_priority_label || ord.sla_date" class="sla-info-box">
+              <div class="sla-status-tag" :class="ord.sla_priority_level || 'normal'">
+                <i class="fa fa-clock-o mr-1"></i>
+                <span>{{ ord.sla_priority_label || 'SLA Programado' }}</span>
+              </div>
+              <span v-if="ord.sla_date" class="sla-timestamp">
+                Límite: {{ formatSlaTime(ord.sla_date, ord.sla_timezone) }}
+              </span>
+            </div>
+            <div v-else class="sla-info-box">
+              <div class="sla-status-tag" style="color: #6b7280;">
+                <i class="fa fa-question-circle mr-1"></i>
+                <span>SLA aún no definido</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Table List View -->
+        <div v-else-if="viewMode === 'list'" class="orders-table-wrapper">
+          <table class="orders-table">
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Canal</th>
+                <th>Último Traslado</th>
+                <th>Paquetería</th>
+                <th>Estado SLA</th>
+                <th>Límite SLA (México)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr 
+                v-for="ord in orders" 
+                :key="ord.id"
+                :class="{'row-alert-critical': ord.sla_priority_level === 'critical_1h' || ord.sla_priority_level === 'overdue'}"
+              >
+                <td><strong>{{ ord.sale_order_name || ord.name }}</strong></td>
+                <td>
+                  <span class="channel-pill" :class="getChannelClass(ord.channel)">
+                    {{ ord.channel || 'Directo' }}
+                  </span>
+                </td>
+                <td>
+                  <span 
+                    v-if="ord.has_pick"
+                    class="pick-code-wrapper"
+                    :title="ord.latest_wmds_log ? ('Último log WMDS (' + (ord.latest_wmds_log_date || '') + ' - ' + (ord.latest_wmds_log_user || 'Sistema') + '):\n' + ord.latest_wmds_log) : 'Sin logs WMDS registrados para este traslado'"
+                  >
+                    <i class="fa fa-cube mr-1 text-primary"></i>
+                    <span>{{ ord.name }}</span>
+                    <i v-if="ord.latest_wmds_log" class="fa fa-info-circle ml-1 log-hover-icon"></i>
+                  </span>
+                  <span v-else class="no-pick-badge">
+                    <i class="fa fa-cube mr-1"></i> Sin pick asignado
+                  </span>
+                </td>
+                <td>
+                  <span class="carrier-tag" :class="ord.carrier ? 'carrier-assigned' : 'carrier-unassigned'">
+                    <i class="fa fa-truck mr-1"></i>
+                    {{ ord.carrier || 'Sin paquetería' }}
+                  </span>
+                </td>
+                <td>
+                  <div v-if="ord.sla_priority_label || ord.sla_date" class="sla-status-tag" :class="ord.sla_priority_level || 'normal'">
+                    <i class="fa fa-clock-o mr-1"></i>
+                    <span>{{ ord.sla_priority_label || 'Programado' }}</span>
+                  </div>
+                  <span v-else class="text-muted font-italic">Sin SLA</span>
+                </td>
+                <td>
+                  <span v-if="ord.sla_date" class="sla-timestamp-table">
+                    {{ formatSlaTime(ord.sla_date, ord.sla_timezone) }}
+                  </span>
+                  <span v-else class="text-muted">-</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- SLA Pagination Footer Bar -->
+        <div v-if="orders.length > 0 || totalCount > 0" class="pagination-bar">
+          <div class="pagination-info">
+            Mostrando <strong>{{ paginationFrom }} - {{ paginationTo }}</strong> de <strong>{{ totalCount }}</strong> pedidos
+          </div>
+          <div class="pagination-controls">
+            <button 
+              class="btn-page" 
+              :disabled="currentPage <= 1 || isRefreshing" 
+              @click="goToPage(currentPage - 1)"
+              title="Página Anterior"
+            >
+              <i class="fa fa-chevron-left mr-1"></i> Anterior
+            </button>
+            <span class="page-current">Pág. {{ currentPage }} de {{ totalPages }}</span>
+            <button 
+              class="btn-page" 
+              :disabled="currentPage >= totalPages || isRefreshing" 
+              @click="goToPage(currentPage + 1)"
+              title="Página Siguiente"
+            >
+              Siguiente <i class="fa fa-chevron-right ml-1"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. EXECUTION TAB CONTENT -->
+      <div v-else-if="currentMainTab === 'execution'">
+        <div v-if="isRefreshing && executedResults.length === 0" class="state-message">
+          <i class="fa fa-spinner fa-spin fa-2x mb-2"></i>
+          <p>Cargando operaciones realizadas...</p>
+        </div>
+
+        <div v-else-if="executedResults.length === 0" class="state-message">
+          <i class="fa fa-inbox fa-3x mb-2 text-muted"></i>
+          <p>No se encontraron operaciones ejecutadas en la fecha o criterios seleccionados.</p>
+        </div>
+
+        <!-- Matiz A: Por Venta -->
+        <div v-else-if="matizMode === 'by_sale'">
+          <!-- Grid Mode -->
+          <div v-if="viewMode === 'grid'" class="orders-grid">
+            <div 
+              v-for="so in executedResults" 
+              :key="so.sale_id" 
+              class="order-data-card exec-card"
+            >
+              <div class="card-row-top">
+                <span class="so-number">{{ so.so_name }}</span>
+                <span class="channel-pill" :class="getChannelClass(so.channel)">
+                  {{ so.channel }}
+                </span>
+              </div>
+              <div class="card-row-sub">
+                <span class="text-muted"><i class="fa fa-user mr-1"></i>{{ so.partner_name || 'Cliente' }}</span>
+                <span v-if="so.carrier_name" class="carrier-mini-tag"><i class="fa fa-truck mr-1"></i>{{ so.carrier_name }}</span>
+              </div>
+              
+              <div class="wmds-status-row">
+                <span class="wmds-badge" :class="'wmds-' + (so.wmds_status_value || 'default')">
+                  <i class="fa fa-tag mr-1"></i>{{ so.wmds_status_name || 'Sin Estado WMDS' }}
+                </span>
+              </div>
+
+              <!-- Pipeline 3 Pasos Stepper -->
+              <div class="exec-pipeline-stepper">
+                <div class="pipeline-step" :class="{ 'step-done': so.stages.pick.state === 'done' }">
+                  <div class="step-icon"><i class="fa fa-cube"></i></div>
+                  <div class="step-text">
+                    <strong>Pick</strong>
+                    <span v-if="so.stages.pick.state === 'done'" class="step-sub">{{ so.stages.pick.operator_name || so.stages.pick.batch_name || 'Hecho' }}</span>
+                    <span v-else class="step-sub text-muted">Pendiente</span>
+                  </div>
+                </div>
+                <div class="pipeline-arrow"><i class="fa fa-chevron-right"></i></div>
+                <div class="pipeline-step" :class="{ 'step-done': so.stages.pack.state === 'done' }">
+                  <div class="step-icon"><i class="fa fa-archive"></i></div>
+                  <div class="step-text">
+                    <strong>Pack</strong>
+                    <span v-if="so.stages.pack.state === 'done'" class="step-sub">{{ so.stages.pack.operator_name || 'Hecho' }}</span>
+                    <span v-else class="step-sub text-muted">Pendiente</span>
+                  </div>
+                </div>
+                <div class="pipeline-arrow"><i class="fa fa-chevron-right"></i></div>
+                <div class="pipeline-step" :class="{ 'step-done': so.stages.out.state === 'done' }">
+                  <div class="step-icon"><i class="fa fa-truck"></i></div>
+                  <div class="step-text">
+                    <strong>OUT</strong>
+                    <span v-if="so.stages.out.state === 'done'" class="step-sub">{{ so.stages.out.carrier_name || 'Despachado' }}</span>
+                    <span v-else class="step-sub text-muted">Pendiente</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Table Mode -->
+          <div v-else-if="viewMode === 'list'" class="orders-table-wrapper">
+            <table class="orders-table">
+              <thead>
+                <tr>
+                  <th>Pedido</th>
+                  <th>Canal</th>
+                  <th>Cliente</th>
+                  <th>Estado WMDS</th>
+                  <th>Fase Pick</th>
+                  <th>Fase Pack</th>
+                  <th>Fase OUT</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="so in executedResults" :key="so.sale_id">
+                  <td><strong>{{ so.so_name }}</strong></td>
+                  <td><span class="channel-pill" :class="getChannelClass(so.channel)">{{ so.channel }}</span></td>
+                  <td>{{ so.partner_name }}</td>
+                  <td>
+                    <span class="wmds-badge" :class="'wmds-' + (so.wmds_status_value || 'default')">
+                      {{ so.wmds_status_name || 'Sin Estado' }}
+                    </span>
+                  </td>
+                  <td>
+                    <span v-if="so.stages.pick.state === 'done'" class="stage-pill-done">
+                      <i class="fa fa-check mr-1"></i>{{ so.stages.pick.operator_name || so.stages.pick.batch_name || 'Hecho' }}
+                      <small class="text-muted block-sub" v-if="so.stages.pick.date_done">{{ formatSlaDate(so.stages.pick.date_done) }}</small>
+                    </span>
+                    <span v-else class="text-muted font-italic">Pendiente</span>
+                  </td>
+                  <td>
+                    <span v-if="so.stages.pack.state === 'done'" class="stage-pill-done">
+                      <i class="fa fa-check mr-1"></i>{{ so.stages.pack.operator_name || 'Hecho' }}
+                      <small class="text-muted block-sub" v-if="so.stages.pack.date_done">{{ formatSlaDate(so.stages.pack.date_done) }}</small>
+                    </span>
+                    <span v-else class="text-muted font-italic">Pendiente</span>
+                  </td>
+                  <td>
+                    <span v-if="so.stages.out.state === 'done'" class="stage-pill-done stage-pill-out">
+                      <i class="fa fa-truck mr-1"></i>{{ so.stages.out.carrier_name || 'Despachado' }}
+                      <small class="text-muted block-sub" v-if="so.stages.out.date_done">{{ formatSlaDate(so.stages.out.date_done) }}</small>
+                    </span>
+                    <span v-else class="text-muted font-italic">Pendiente</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Matiz B: Por Etapa de Inventario -->
+        <div v-else-if="matizMode === 'by_stage'" class="orders-table-wrapper">
+          <table class="orders-table">
+            <thead>
+              <tr>
+                <th>Hora Fin (CDMX)</th>
+                <th>Etapa</th>
+                <th>Albarán</th>
+                <th>Pedido</th>
+                <th>Canal</th>
+                <th>Lote Batch / Operador</th>
+                <th>Paquetería & Guía</th>
+                <th>Estado WMDS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in executedResults" :key="item.id">
+                <td><strong>{{ formatSlaDate(item.date_done) }}</strong></td>
+                <td>
+                  <span class="stage-badge" :class="'stage-' + item.stage.toLowerCase()">
+                    {{ item.stage_label }}
+                  </span>
+                </td>
+                <td><code>{{ item.name }}</code></td>
+                <td><strong>{{ item.so_name }}</strong></td>
+                <td><span class="channel-pill" :class="getChannelClass(item.channel)">{{ item.channel }}</span></td>
+                <td>
+                  <div>
+                    <span v-if="item.batch_name" class="batch-badge mr-1"><i class="fa fa-tags mr-1"></i>{{ item.batch_name }}</span>
+                    <span v-if="item.operator_name" class="operator-txt"><i class="fa fa-user mr-1"></i>{{ item.operator_name }}</span>
+                    <span v-if="!item.batch_name && !item.operator_name" class="text-muted">-</span>
+                  </div>
+                </td>
+                <td>
+                  <div v-if="item.carrier_name || item.carrier_tracking_ref">
+                    <span v-if="item.carrier_name" class="carrier-tag carrier-assigned mr-1">{{ item.carrier_name }}</span>
+                    <span v-if="item.carrier_tracking_ref" class="text-muted"><small>{{ item.carrier_tracking_ref }}</small></span>
+                  </div>
+                  <span v-else class="text-muted">-</span>
+                </td>
+                <td>
+                  <span class="wmds-badge-sm">{{ item.wmds_status_name || '-' }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Execution Pagination Footer Bar -->
+        <div v-if="executedResults.length > 0 || executedTotalCount > 0" class="pagination-bar">
+          <div class="pagination-info">
+            Mostrando <strong>{{ executedPaginationFrom }} - {{ executedPaginationTo }}</strong> de <strong>{{ executedTotalCount }}</strong> registros
+          </div>
+          <div class="pagination-controls">
+            <button 
+              class="btn-page" 
+              :disabled="executedCurrentPage <= 1 || isRefreshing" 
+              @click="goToExecutedPage(executedCurrentPage - 1)"
+              title="Página Anterior"
+            >
+              <i class="fa fa-chevron-left mr-1"></i> Anterior
+            </button>
+            <span class="page-current">Pág. {{ executedCurrentPage }} de {{ executedTotalPages }}</span>
+            <button 
+              class="btn-page" 
+              :disabled="executedCurrentPage >= executedTotalPages || isRefreshing" 
+              @click="goToExecutedPage(executedCurrentPage + 1)"
+              title="Página Siguiente"
+            >
+              Siguiente <i class="fa fa-chevron-right ml-1"></i>
+            </button>
+          </div>
+        </div>
+      </div>
 
     <!-- SLA Configuration Modal -->
     <div v-if="showSlaModal" class="modal-backdrop" @click.self="closeSlaModal">
@@ -379,6 +685,7 @@
       </div>
     </div>
   </div>
+  </div>
 </template>
 
 <script>
@@ -392,19 +699,43 @@ export default {
       isRefreshing: false,
       searchQuery: "",
       searchTimeout: null,
+      currentMainTab: "sla", // "sla" | "execution"
+      matizMode: "by_sale", // "by_sale" | "by_stage"
+      stageFilter: "all", // "all" | "PICK" | "PACK" | "OUT"
       activeStatus: "all",
       activeChannel: "all",
       viewMode: "grid", // "grid" o "list"
+      dateFrom: "",
+      dateTo: "",
+      metrics: {
+        pedidos: 0,
+        enviados: 0,
+        no_enviados: 0,
+        en_espera: 0,
+        sin_out_cerrado: 0
+      },
+      executedMetrics: {
+        picked_count: 0,
+        packed_count: 0,
+        dispatched_count: 0,
+        orders_dispatched_count: 0,
+        total_orders_touched: 0
+      },
       availableChannels: [],
       orders: [],
       totalCount: 0,
       currentPage: 1,
       pageSize: 50,
+      executedResults: [],
+      executedTotalCount: 0,
+      executedCurrentPage: 1,
+      executedPageSize: 50,
       criticalCount: 0,
       overdueCount: 0,
       pendingCount: 0,
       totalPendingAll: 0,
       marketplacePending: {},
+      channelOldestDate: {},
       timerId: null,
 
       // Modal SLA Config
@@ -437,12 +768,37 @@ export default {
     paginationTo() {
       return Math.min(this.totalCount, (this.currentPage - 1) * this.pageSize + this.orders.length);
     },
+    executedTotalPages() {
+      return Math.max(1, Math.ceil(this.executedTotalCount / this.executedPageSize));
+    },
+    executedPaginationFrom() {
+      if (this.executedTotalCount === 0 || this.executedResults.length === 0) return 0;
+      return (this.executedCurrentPage - 1) * this.executedPageSize + 1;
+    },
+    executedPaginationTo() {
+      return Math.min(this.executedTotalCount, (this.executedCurrentPage - 1) * this.executedPageSize + this.executedResults.length);
+    },
+    stageOptions() {
+      return [
+        { label: "Todos", value: "all" },
+        { label: "Solo Pick", value: "PICK" },
+        { label: "Solo Pack", value: "PACK" },
+        { label: "Solo OUT", value: "OUT" }
+      ];
+    },
+    globalOldestDate() {
+      let oldest = null;
+      Object.values(this.channelOldestDate).forEach((d) => {
+        if (d && (!oldest || d < oldest)) oldest = d;
+      });
+      return oldest ? this.formatSlaDate(oldest) : "";
+    },
     statusOptions() {
       return [
         { label: "Todos", value: "all" },
         { label: "Sin SLA Definido", value: "no_sla" },
-        { label: "Vencidos", value: "overdue", count: this.overdueCount },
-        { label: "Críticos (< 1h)", value: "critical_1h", count: this.criticalCount },
+        { label: "Vencidos", value: "overdue" },
+        { label: "Críticos (< 1h)", value: "critical_1h" },
         { label: "Urgentes (< 2h)", value: "urgent_2h" },
         { label: "Advertencia (< 6h)", value: "warning_6h" },
         { label: "En Tiempo (< 24h)", value: "notice_24h" },
@@ -456,27 +812,88 @@ export default {
     }
   },
   methods: {
+    switchMainTab(tab) {
+      if (this.currentMainTab === tab) return;
+      this.currentMainTab = tab;
+      this.fetchAll();
+    },
+    setMatizMode(m) {
+      if (this.matizMode === m) return;
+      this.matizMode = m;
+      this.executedCurrentPage = 1;
+      this.fetchExecutionData();
+    },
+    setStageFilter(stg) {
+      if (this.stageFilter === stg) return;
+      this.stageFilter = stg;
+      this.executedCurrentPage = 1;
+      this.fetchExecutionData();
+    },
+    goToExecutedPage(pg) {
+      if (pg < 1 || pg > this.executedTotalPages || pg === this.executedCurrentPage) return;
+      this.executedCurrentPage = pg;
+      this.fetchExecutionData();
+    },
     setStatusFilter(val) {
       this.activeStatus = val;
       this.currentPage = 1;
       this.fetchOrders();
     },
+    onSearchEnter() {
+      if (this.currentMainTab === 'sla') {
+        this.currentPage = 1;
+        this.fetchOrders();
+      } else {
+        this.executedCurrentPage = 1;
+        this.fetchExecutionData();
+      }
+    },
     onSearchInput() {
       if (this.searchTimeout) clearTimeout(this.searchTimeout);
       this.searchTimeout = setTimeout(() => {
-        this.currentPage = 1;
-        this.fetchOrders();
+        if (this.currentMainTab === 'sla') {
+          this.currentPage = 1;
+          this.fetchOrders();
+        } else {
+          this.executedCurrentPage = 1;
+          this.fetchExecutionData();
+        }
       }, 400);
     },
     clearSearch() {
       this.searchQuery = "";
-      this.currentPage = 1;
-      this.fetchOrders();
+      if (this.currentMainTab === 'sla') {
+        this.currentPage = 1;
+        this.fetchOrders();
+      } else {
+        this.executedCurrentPage = 1;
+        this.fetchExecutionData();
+      }
     },
     onChannelChange() {
       this.currentPage = 1;
-      this.fetchOrders();
+      this.executedCurrentPage = 1;
+      this.fetchAll();
       this.checkExpiringAlerts();
+    },
+    onDateChange() {
+      this.currentPage = 1;
+      this.executedCurrentPage = 1;
+      this.fetchAll();
+    },
+    async fetchAll() {
+      this.store.loading = true;
+      this.isRefreshing = true;
+      try {
+        if (this.currentMainTab === 'sla') {
+          await Promise.all([this.fetchOrders(), this.fetchMetrics()]);
+        } else {
+          await Promise.all([this.fetchExecutionMetrics(), this.fetchExecutionData()]);
+        }
+      } finally {
+        this.store.loading = false;
+        this.isRefreshing = false;
+      }
     },
     goToPage(pg) {
       if (pg < 1 || pg > this.totalPages || pg === this.currentPage) return;
@@ -484,12 +901,15 @@ export default {
       this.fetchOrders();
     },
     async fetchOrders() {
+      this.store.loading = true;
       this.isRefreshing = true;
       try {
         const res = await this.store.callOdooSilent("order_channel_query", "", {
           query: this.searchQuery,
           status_filter: this.activeStatus,
           channel_filter: this.activeChannel,
+          date_from: this.dateFrom,
+          date_to: this.dateTo,
           limit: this.pageSize,
           page: this.currentPage
         });
@@ -508,10 +928,84 @@ export default {
           if (res.available_channels && Array.isArray(res.available_channels) && res.available_channels.length > 0) {
             this.availableChannels = res.available_channels;
           }
+          if (res.channel_oldest_date) {
+            this.channelOldestDate = res.channel_oldest_date;
+          }
         }
       } catch (e) {
         console.error("Error al consultar el canal de pedidos:", e);
       } finally {
+        this.isRefreshing = false;
+        this.store.loading = false;
+      }
+    },
+    async fetchMetrics() {
+      try {
+        const res = await this.store.callOdooSilent("order_sla_metrics", "", {
+          date_from: this.dateFrom,
+          date_to: this.dateTo,
+          channel_filter: this.activeChannel
+        });
+        if (res && res.success) {
+          this.metrics = {
+            pedidos: res.total_orders || 0,
+            enviados: res.sent_orders || 0,
+            no_enviados: res.pending_orders || 0,
+            en_espera: res.waiting_orders || 0,
+            sin_out_cerrado: res.delivered_out_not_closed || 0
+          };
+        }
+      } catch (e) {
+        console.error("Error al obtener métricas SLA:", e);
+      }
+    },
+    async fetchExecutionMetrics() {
+      try {
+        const res = await this.store.callOdooSilent("executed_operations_metrics", "", {
+          date_from: this.dateFrom,
+          date_to: this.dateTo,
+          channel_filter: this.activeChannel
+        });
+        if (res && res.success) {
+          this.executedMetrics = {
+            picked_count: res.picked_count || 0,
+            packed_count: res.packed_count || 0,
+            dispatched_count: res.dispatched_count || 0,
+            orders_dispatched_count: res.orders_dispatched_count || 0,
+            total_orders_touched: res.total_orders_touched || 0
+          };
+        }
+      } catch (e) {
+        console.error("Error al obtener métricas de ejecución:", e);
+      }
+    },
+    async fetchExecutionData() {
+      this.store.loading = true;
+      this.isRefreshing = true;
+      try {
+        const res = await this.store.callOdooSilent("executed_operations_query", "", {
+          query: this.searchQuery,
+          channel_filter: this.activeChannel,
+          date_from: this.dateFrom,
+          date_to: this.dateTo,
+          matiz_mode: this.matizMode,
+          stage_filter: this.stageFilter,
+          limit: this.executedPageSize,
+          page: this.executedCurrentPage
+        });
+        if (res && res.success) {
+          this.executedResults = res.results || [];
+          this.executedTotalCount = res.total_count !== undefined ? res.total_count : this.executedResults.length;
+        } else {
+          this.executedResults = [];
+          this.executedTotalCount = 0;
+        }
+      } catch (e) {
+        console.error("Error al consultar operaciones ejecutadas:", e);
+        this.executedResults = [];
+        this.executedTotalCount = 0;
+      } finally {
+        this.store.loading = false;
         this.isRefreshing = false;
       }
     },
@@ -665,9 +1159,30 @@ export default {
         default: return st || "Procesando";
       }
     },
-    formatSlaTime(dtStr) {
+    formatSlaDate(dtStr) {
+      if (!dtStr) return "";
+      const clean = String(dtStr).trim().replace("T", " ");
+      const m = clean.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/);
+      if (m) {
+        const [, y, mo, d, h, mi] = m;
+        return `${d}/${mo}/${y} ${h}:${mi}`;
+      }
+      return clean.slice(0, 16);
+    },
+    formatSlaTime(dtStr, tz) {
       if (!dtStr) return "";
       try {
+        // tz 'local' => el sla_date del marketplace ya está en hora local (ej. Mercado Libre).
+        // tz 'utc' (default) => sla_date en UTC, se convierte a CDMX.
+        if (tz === 'local') {
+          const clean = String(dtStr).replace("T", " ").split(".")[0];
+          const m = clean.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{1,2}):(\d{2})(?::(\d{2}))?/);
+          if (m) {
+            const [y, mo, d, h, mi, s] = [m[1], m[2], m[3], m[4], m[5], m[6] || "00"];
+            return `${d}/${mo}/${y}, ${h.padStart(2, "0")}:${mi} ${Number(h) >= 12 ? "p.m." : "a.m."}`;
+          }
+          return clean;
+        }
         const dt = new Date(dtStr.endsWith("Z") ? dtStr : dtStr + "Z");
         return dt.toLocaleString("es-MX", { 
           timeZone: "America/Mexico_City",
@@ -683,7 +1198,10 @@ export default {
     }
   },
   mounted() {
-    this.fetchOrders();
+    const today = new Date().toLocaleDateString("sv-SE", { timeZone: "America/Mexico_City" });
+    this.dateFrom = today;
+    this.dateTo = today;
+    this.fetchAll();
     this.checkExpiringAlerts();
     this.timerId = setInterval(() => {
       this.checkExpiringAlerts();
@@ -859,6 +1377,66 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+.date-filter {
+  max-width: 150px;
+}
+.no-pick-badge {
+  display: inline-flex;
+  align-items: center;
+  background: #fef3c7;
+  color: #92400e;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.metrics-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.metric-card {
+  flex: 1;
+  min-width: 140px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 16px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+.metric-value {
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: #111827;
+  line-height: 1.2;
+}
+.metric-sent { color: #059669; }
+.metric-pending { color: #dc2626; }
+.metric-waiting { color: #d97706; }
+.metric-label {
+  font-size: 0.8rem;
+  color: #6b7280;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.metric-hover {
+  cursor: help;
+}
+.metric-note {
+  flex-basis: 100%;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.8rem;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px dashed #f59e0b;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: help;
 }
 .view-mode-toggle {
   display: flex;
@@ -1325,4 +1903,284 @@ export default {
   cursor: pointer;
 }
 .btn-secondary-sm:hover { background-color: #d1d5db; }
+
+/* ==========================================================================
+   Execution / Hecho en el Día Tab Styles
+   ========================================================================== */
+.main-tabs-bar {
+  display: flex;
+  gap: 8px;
+  background-color: #f1f5f9;
+  padding: 6px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+
+.main-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.main-tab-btn:hover {
+  color: #1e293b;
+  background-color: rgba(255, 255, 255, 0.6);
+}
+
+.main-tab-btn.active {
+  color: #2563eb;
+  background-color: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.main-tab-btn .badge-pill {
+  background-color: #e2e8f0;
+  color: #475569;
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  border-radius: 9999px;
+  font-weight: 700;
+}
+
+.main-tab-btn.active .badge-pill {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+}
+
+.execution-toolbar-sub {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #ffffff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+}
+
+.matiz-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.matiz-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-right: 6px;
+}
+
+.matiz-btn {
+  background-color: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.matiz-btn:hover {
+  background-color: #e2e8f0;
+}
+
+.matiz-btn.active {
+  background-color: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+.stage-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stage-chip-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #64748b;
+  margin-right: 4px;
+}
+
+.stage-chip {
+  background-color: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  padding: 4px 10px;
+  border-radius: 9999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.stage-chip:hover {
+  background-color: #e2e8f0;
+}
+
+.stage-chip.active {
+  background-color: #0f172a;
+  color: #ffffff;
+  border-color: #0f172a;
+}
+
+.stage-chip.pick.active { background-color: #0284c7; border-color: #0284c7; }
+.stage-chip.pack.active { background-color: #d97706; border-color: #d97706; }
+.stage-chip.out.active { background-color: #16a34a; border-color: #16a34a; }
+
+/* Stage Badges */
+.stage-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+.stage-pick {
+  background-color: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #bae6fd;
+}
+.stage-pack {
+  background-color: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+.stage-out {
+  background-color: #dcfce7;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+.batch-badge {
+  display: inline-block;
+  background-color: #f1f5f9;
+  color: #334155;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  border: 1px solid #e2e8f0;
+}
+
+/* Stepper inside By-Sale cards & table */
+.exec-pipeline-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pipeline-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  background-color: #f1f5f9;
+  color: #94a3b8;
+  border: 1px solid #e2e8f0;
+}
+
+.pipeline-step.step-done {
+  background-color: #ecfdf5;
+  color: #059669;
+  border-color: #a7f3d0;
+}
+
+.pipeline-arrow {
+  color: #cbd5e1;
+  font-size: 0.62rem;
+}
+
+.exec-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.exec-card {
+  background-color: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.exec-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.exec-card-channel {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.exec-card-body {
+  margin-bottom: 10px;
+}
+
+.exec-card-partner {
+  font-size: 0.82rem;
+  color: #334155;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.exec-card-pickings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background-color: #f8fafc;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.exec-picking-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+}
+
+.exec-picking-name {
+  color: #475569;
+  font-family: monospace;
+}
+
+.exec-picking-date {
+  color: #64748b;
+}
+
+.exec-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 6px;
+  border-top: 1px solid #f1f5f9;
+}
 </style>

@@ -6,6 +6,52 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+UTC_LOCAL = -6
+
+
+def _channel_utc_offset(env, channel):
+    """
+    Devuelve las horas a SUMAR a un sla_date para obtener hora local.
+    - Marketplace config 'utc'  -> sla_date en UTC, sumar UTC_LOCAL (-6).
+    - Marketplace config 'local' o sin config -> sla_date ya en hora local, sumar 0.
+    Parametrizable por marketplace vía wmds.mysql.config.sla_timezone.
+    """
+    if not channel:
+        return 0
+    ch = str(channel).strip()
+    try:
+        configs = env['wmds.mysql.config'].sudo().search([])
+        for c in configs:
+            m = (c.marketplace or '').strip()
+            if m and (m.lower() == ch.lower() or m.lower() in ch.lower()):
+                return UTC_LOCAL if c.sla_timezone == 'utc' else 0
+    except Exception:
+        pass
+    return 0
+
+
+def _channel_offset_sql(env):
+    """
+    Expresión SQL (CASE) que resuelve el offset en horas por canal para pasar sla_date a hora local.
+    Marketplace 'utc' -> -6, 'local'/sin config -> 0. Parametrizable por wmds.mysql.config.
+    Uso: sla_local = sla_date + ({expr} * interval '1 hour')
+    """
+    cases = []
+    defaults = []
+    try:
+        configs = env['wmds.mysql.config'].sudo().search([])
+        for c in configs:
+            m = (c.marketplace or '').strip()
+            if not m:
+                continue
+            off = UTC_LOCAL if c.sla_timezone == 'utc' else 0
+            cases.append(f"WHEN lower(s.channel) LIKE '%%{m.lower()}%%' THEN {off}")
+    except Exception:
+        pass
+    if cases:
+        return "CASE " + " ".join(cases) + " ELSE 0 END"
+    return "0"
+
 
 class OrderChannelController(http.Controller):
 
@@ -25,6 +71,8 @@ class OrderChannelController(http.Controller):
             query = (kw.get('query') or '').strip()
             status_filter = (kw.get('status_filter') or 'all').strip()
             channel_filter = (kw.get('channel_filter') or 'all').strip()
+            date_from = (kw.get('date_from') or '').strip()
+            date_to = (kw.get('date_to') or '').strip()
             limit = int(kw.get('limit') or 50)
             page = int(kw.get('page') or 1)
             offset = int(kw.get('offset') or ((page - 1) * limit if page > 1 else 0))
@@ -35,6 +83,7 @@ class OrderChannelController(http.Controller):
                 env = env(context=dict(env.context, tz=client_tz))
 
             picking_model = env['stock.picking']
+            sale_model = env['sale.order']
 
             now_utc = fields.Datetime.now()
             in_1h_utc = now_utc + timedelta(hours=1)
@@ -47,90 +96,210 @@ class OrderChannelController(http.Controller):
             raw_channels = [r[0] for r in env.cr.fetchall() if r[0]]
             available_channels = sorted(list(set(c.strip() for c in raw_channels if c and c.strip())))
 
-            # Base domain: Solo órdenes activas pendientes (no sent, no shipped, no refunded, no canceladas)
-            domain = [
-                ('sale_id', '!=', False),
-                ('sale_id.state', '!=', 'cancel'),
-                ('sale_id.order_progress', '!=', 'sent'),
-                ('sale_id.order_progress', 'not ilike', 'shipped'),
-                ('sale_id.order_progress', 'not ilike', 'refunded'),
-                ('sale_id.order_progress', 'not ilike', 'cancel'),
-                ('sale_id.yuju_shipping_status', '!=', 'sent'),
-                ('state', 'not in', ('done', 'cancel'))
+            # Dominio base sobre SALE ORDER (1 fila por SO):
+            # La fecha relevante es la del SLA de la ORDEN DE VENTA (no del OUT).
+            # Solo órdenes activas pendientes (no sent, no shipped, no refunded, no canceladas)
+            domain_so = [
+                ('state', '!=', 'cancel'),
+                ('order_progress', '!=', 'sent'),
+                ('order_progress', 'not ilike', 'shipped'),
+                ('order_progress', 'not ilike', 'refunded'),
+                ('order_progress', 'not ilike', 'cancel'),
+                ('yuju_shipping_status', '!=', 'sent'),
             ]
 
-            # 1. Status Filter (Precisión basada en tiempo real de SLA)
-            if status_filter == 'overdue':
-                domain.extend([
-                    ('sla_date', '!=', False),
-                    ('sla_date', '<', now_utc)
-                ])
-            elif status_filter == 'critical_1h':
-                domain.extend([
-                    ('sla_date', '!=', False),
-                    ('sla_date', '>=', now_utc),
-                    ('sla_date', '<=', in_1h_utc)
-                ])
-            elif status_filter == 'urgent_2h':
-                domain.extend([
-                    ('sla_date', '!=', False),
-                    ('sla_date', '>', in_1h_utc),
-                    ('sla_date', '<=', in_2h_utc)
-                ])
-            elif status_filter == 'warning_6h':
-                domain.extend([
-                    ('sla_date', '!=', False),
-                    ('sla_date', '>', in_2h_utc),
-                    ('sla_date', '<=', in_6h_utc)
-                ])
-            elif status_filter == 'notice_24h':
-                domain.extend([
-                    ('sla_date', '!=', False),
-                    ('sla_date', '>', in_6h_utc),
-                    ('sla_date', '<=', in_24h_utc)
-                ])
-            elif status_filter == 'normal':
-                domain.extend([
-                    ('sla_date', '!=', False),
-                    ('sla_date', '>', in_24h_utc)
-                ])
-            elif status_filter == 'no_sla':
-                domain.append(('sla_date', '=', False))
-
-            # 2. Text Search Query
+            # 2. Text Search Query (incluye posible picking/guía/folio)
             if query:
-                sub_domain = [
-                    '|', '|', '|', '|',
+                matching_picks = picking_model.sudo().search([
+                    '|', '|',
                     ('name', 'ilike', query),
-                    ('origin', 'ilike', query),
-                    ('partner_id.name', 'ilike', query),
                     ('carrier_tracking_ref', 'ilike', query),
-                    ('sale_id.channel_order_id', 'ilike', query)
-                ]
-                domain.extend(sub_domain)
+                    ('origin', 'ilike', query)
+                ], limit=100)
+                so_ids_from_picks = matching_picks.mapped('sale_id').ids
+                domain_so.extend([
+                    '|', '|', '|',
+                    ('name', 'ilike', query),
+                    ('partner_id.name', 'ilike', query),
+                    ('channel_order_id', 'ilike', query),
+                    ('id', 'in', so_ids_from_picks)
+                ])
 
             # 3. Channel Filter
             if channel_filter and channel_filter != 'all':
-                domain.append(('sale_id.channel', 'ilike', channel_filter))
+                domain_so.append(('channel', 'ilike', channel_filter))
 
-            total_count = picking_model.sudo().search_count(domain)
-            pickings = picking_model.sudo().search(domain, order='id desc', limit=limit, offset=offset)
+            # 4. Determinar SO candidatas por fecha SLA (del último picking o yuju_due_date),
+            #    filtrado en SQL para no truncar por "recientes" y coincidir con las métricas.
+            so_where = [
+                "s.state != 'cancel'",
+                "(s.order_progress != 'sent' OR s.order_progress IS NULL)",
+                "(s.order_progress NOT ILIKE '%%shipped%%' OR s.order_progress IS NULL)",
+                "(s.order_progress NOT ILIKE '%%refunded%%' OR s.order_progress IS NULL)",
+                "(s.order_progress NOT ILIKE '%%cancel%%' OR s.order_progress IS NULL)",
+                "(s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)",
+                # Lista: solo pedidos NO ENVIADOS (sin OUT cerrado)
+                """NOT EXISTS (
+                    SELECT 1 FROM stock_picking o
+                    JOIN stock_picking_type ot ON ot.id = o.picking_type_id
+                    WHERE o.sale_id = s.id AND ot.code = 'outgoing' AND o.state = 'done'
+                )""",
+            ]
+            sql_params = []
+            if channel_filter and channel_filter != 'all':
+                so_where.append("s.channel ILIKE %s")
+                sql_params.append(f"%{channel_filter}%")
 
-            # Optimización masiva BATCH para logs de WMDS (1 sola consulta SQL para los 50 resultados)
-            pick_ids = tuple(p.id for p in pickings if p.id)
-            so_ids = tuple(p.sale_id.id for p in pickings if p.sale_id)
+            # Filtro de fecha sobre el SLA efectivo (último picking sla_date o yuju_due_date),
+            # convertido a hora local con offset por canal (parametrizable por marketplace).
+            offset_expr = _channel_offset_sql(env)
+            offset_frag = f"({offset_expr} * interval '1 hour')"
+            if date_from or date_to:
+                clauses = []
+                if date_from:
+                    clauses.append(f"(COALESCE(lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
+                if date_to:
+                    clauses.append(f"(COALESCE(lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) <= %s")
+                so_where.append(f"({' AND '.join(clauses)})")
+                if date_from:
+                    sql_params.append(date_from)
+                if date_to:
+                    sql_params.append(f"{date_to} 23:59:59")
+
+            # Búsqueda textual (SO o pálido)
+            if query:
+                pick_hits = picking_model.sudo().search([
+                    '|', '|',
+                    ('name', 'ilike', query),
+                    ('carrier_tracking_ref', 'ilike', query),
+                    ('origin', 'ilike', query)
+                ], limit=200)
+                hit_so_ids = list(dict.fromkeys(pick_hits.mapped('sale_id').ids))
+                txt_clauses = ["(s.name ILIKE %s)", "(s.channel_order_id ILIKE %s)"]
+                txt_params = [f"%{query}%", f"%{query}%"]
+                if hit_so_ids:
+                    txt_clauses.append("s.id IN %s")
+                    txt_params.append(tuple(hit_so_ids))
+                so_where.append(f"({' OR '.join(txt_clauses)})")
+                sql_params.extend(txt_params)
+
+            # Inyectar el SLA date del último pick vía LATERAL para el filtro de fecha
+            sla_sel = "lp.sla_date" if date_from or date_to else "lp.sla_date"
+            base_from = f"""
+                FROM sale_order s
+                LEFT JOIN LATERAL (
+                    SELECT sla_date FROM stock_picking
+                    WHERE sale_id = s.id ORDER BY id DESC LIMIT 1
+                ) lp ON true
+            """
+
+            # Conteo total
+            count_sql = f"SELECT COUNT(*) {base_from} WHERE {' AND '.join(so_where)}"
+            env.cr.execute(count_sql, sql_params)
+            total_count = env.cr.fetchone()[0]
+
+            # Paginación SQL
+            page_sql = f"""
+                SELECT s.id {base_from}
+                WHERE {' AND '.join(so_where)}
+                ORDER BY s.id DESC
+                LIMIT %s OFFSET %s
+            """
+            page_params = list(sql_params) + [limit, offset]
+            env.cr.execute(page_sql, page_params)
+            so_ids_page = [r[0] for r in env.cr.fetchall()]
+
+            sale_orders = sale_model.sudo().browse(so_ids_page)
+
+            # Construir mapa SO -> último picking (más recientemente creado)
+            last_picks_by_so = {}
+            if so_ids_page:
+                picks = picking_model.sudo().search(
+                    [('sale_id', 'in', so_ids_page)],
+                    order='id desc'
+                )
+                for p in picks:
+                    if p.sale_id and p.sale_id.id not in last_picks_by_so:
+                        last_picks_by_so[p.sale_id.id] = p
+
+            # Filas válidas para la página (recalcular SLA efectivo igual que las métricas)
+            valid_sos = []
+            for so in sale_orders:
+                last_pick = last_picks_by_so.get(so.id, False)
+                effective = last_pick.sla_date if last_pick else False
+                if not effective:
+                    yuju_due = getattr(so, 'yuju_due_date', False)
+                    if yuju_due:
+                        try:
+                            clean = str(yuju_due).strip().replace('Z', '')
+                            if 'T' in clean:
+                                effective = datetime.fromisoformat(clean)
+                            else:
+                                effective = datetime.strptime(clean, "%Y-%m-%d %H:%M:%S")
+                        except Exception:
+                            pass
+
+                if date_from or date_to:
+                    if not effective:
+                        continue
+                    off = _channel_utc_offset(env, so.channel)
+                    effective_local = effective + timedelta(hours=off)
+                    if date_from:
+                        try:
+                            fd = datetime.fromisoformat(date_from) if 'T' in date_from else datetime.strptime(date_from, "%Y-%m-%d")
+                            if effective_local < fd:
+                                continue
+                        except Exception:
+                            pass
+                    if date_to:
+                        try:
+                            td = datetime.fromisoformat(date_to) if 'T' in date_to else datetime.strptime(f"{date_to} 23:59:59", "%Y-%m-%d %H:%M:%S")
+                            if effective_local > td:
+                                continue
+                        except Exception:
+                            pass
+
+                if status_filter != 'all':
+                    if not effective:
+                        if status_filter != 'no_sla':
+                            continue
+                    else:
+                        if status_filter == 'overdue' and not (effective < now_utc):
+                            continue
+                        elif status_filter == 'critical_1h' and not (now_utc <= effective <= in_1h_utc):
+                            continue
+                        elif status_filter == 'urgent_2h' and not (in_1h_utc < effective <= in_2h_utc):
+                            continue
+                        elif status_filter == 'warning_6h' and not (in_2h_utc < effective <= in_6h_utc):
+                            continue
+                        elif status_filter == 'notice_24h' and not (in_6h_utc < effective <= in_24h_utc):
+                            continue
+                        elif status_filter == 'normal' and not (effective > in_24h_utc):
+                            continue
+                        elif status_filter == 'no_sla' and effective:
+                            continue
+
+                valid_sos.append((so, last_pick, effective))
+
+            # NOTA: total_count NO se sobreescribe; ya vino del COUNT(*) SQL (línea 153).
+            # valid_sos solo contiene la página actual.
+
+            # BATCH de logs WMDS para todas las SO/filas válidas
+            all_pick_ids = tuple(p.id for p in last_picks_by_so.values() if p and p.id)
+            all_so_ids = tuple(s.id for s, _p, _e in valid_sos if s.id)
 
             wmds_logs = {}
-            if pick_ids or so_ids:
+            tmp_pick_ids = tuple(i for i in all_pick_ids if i)
+            tmp_so_ids = tuple(i for i in all_so_ids if i)
+            if tmp_pick_ids or tmp_so_ids:
                 where_parts = []
                 params = []
-                if pick_ids:
+                if tmp_pick_ids:
                     where_parts.append("pick IN %s")
-                    params.append(pick_ids)
-                if so_ids:
+                    params.append(tmp_pick_ids)
+                if tmp_so_ids:
                     where_parts.append("sale IN %s")
-                    params.append(so_ids)
-                
+                    params.append(tmp_so_ids)
                 sql_logs = f"""
                     SELECT pick, sale, log, date, "user"
                     FROM wmds_log
@@ -152,36 +321,30 @@ class OrderChannelController(http.Controller):
                 users_map = {u.id: u.name for u in users}
 
             results = []
-            for pick in pickings:
-                so = pick.sale_id
-                so_name = so.name if so else (pick.origin.split(',')[0].strip() if pick.origin else '')
-                channel = so.channel if so else ''
+            # NOTA: la paginación ya la hace el SQL (LIMIT/OFFSET). valid_sos es la página.
+            page_entries = valid_sos[:limit]
+            for so, pick, effective in page_entries:
+                so_name = so.name or ''
+                channel = so.channel or ''
                 fulfillment = so.fulfillment if so else ''
-                yuju_due_date = getattr(so, 'yuju_due_date', False) if so else False
+                yuju_due_date = getattr(so, 'yuju_due_date', False) or False
 
-                # Determinar fecha SLA efectiva (de pick.sla_date o sale.order.yuju_due_date)
-                effective_sla_date = pick.sla_date
-                if not effective_sla_date and so and yuju_due_date:
-                    try:
-                        clean_date_str = str(yuju_due_date).strip().replace('Z', '')
-                        if 'T' in clean_date_str:
-                            effective_sla_date = datetime.fromisoformat(clean_date_str)
-                        else:
-                            effective_sla_date = datetime.strptime(clean_date_str, "%Y-%m-%d %H:%M:%S")
-                    except Exception:
-                        pass
+                # TZ de esta SO según su canal (parametrizable por marketplace)
+                sla_tz_mode = 'local' if _channel_utc_offset(env, channel) == 0 else 'utc'
 
-                # Cómputo exacto en tiempo real para evitar valores estancados en BD
-                if effective_sla_date:
-                    sla_dt_str = fields.Datetime.to_string(effective_sla_date)
-                    if effective_sla_date < now_utc:
+                has_pick = bool(pick)
+
+                # Cómputo exacto en tiempo real del SLA sobre la fecha efectiva
+                if effective:
+                    sla_dt_str = fields.Datetime.to_string(effective)
+                    if effective < now_utc:
                         sla_level = 'overdue'
                         sla_label = 'SLA Vencido'
-                    elif effective_sla_date <= in_1h_utc:
+                    elif effective <= in_1h_utc:
                         sla_level = 'critical_1h'
                         sla_label = 'Está a punto de llegar la recolecta (< 1h)'
                     else:
-                        diff_hours = (effective_sla_date - now_utc).total_seconds() / 3600.0
+                        diff_hours = (effective - now_utc).total_seconds() / 3600.0
                         if diff_hours <= 2.0:
                             sla_level = 'urgent_2h'
                             sla_label = 'Quedan 2 horas para la recolecta'
@@ -199,9 +362,10 @@ class OrderChannelController(http.Controller):
                     sla_label = ''
                     sla_dt_str = False
 
-                # Buscar log en dict precargado en memoria
-                log_info = wmds_logs.get(('pick', pick.id))
-                if not log_info and so:
+                log_info = None
+                if pick:
+                    log_info = wmds_logs.get(('pick', pick.id))
+                if not log_info and so.id:
                     log_info = wmds_logs.get(('sale', so.id))
 
                 latest_log = log_info[0] if log_info else ''
@@ -210,30 +374,37 @@ class OrderChannelController(http.Controller):
 
                 # Paquetería / Carrier y Guía
                 carrier_name = ''
-                if pick.carrier_id:
-                    carrier_name = pick.carrier_id.name
-                elif so:
-                    if getattr(so, 'data_carrier_selection_relational', False):
+                tracking_ref = ''
+                if pick:
+                    if pick.carrier_id:
+                        carrier_name = pick.carrier_id.name
+                if so:
+                    if not carrier_name and getattr(so, 'data_carrier_selection_relational', False):
                         carrier_name = so.data_carrier_selection_relational.name
-                    elif getattr(so, 'carrier_id', False):
+                    elif not carrier_name and getattr(so, 'carrier_id', False):
                         carrier_name = so.carrier_id.name
-                    elif getattr(so, 'yuju_carrier', False):
+                    elif not carrier_name and getattr(so, 'yuju_carrier', False):
                         carrier_name = so.yuju_carrier
-
-                tracking_ref = pick.carrier_tracking_ref or (getattr(so, 'yuju_carrier_tracking_ref', '') if so else '') or ''
+                if pick and pick.carrier_tracking_ref:
+                    tracking_ref = pick.carrier_tracking_ref
+                elif so and getattr(so, 'yuju_carrier_tracking_ref', ''):
+                    tracking_ref = so.yuju_carrier_tracking_ref
 
                 results.append({
-                    'id': pick.id,
-                    'name': pick.name,
+                    'id': so.id,
+                    'pick_id': pick.id if pick else False,
+                    'name': pick.name if pick else '',
                     'sale_order_name': so_name,
-                    'partner_name': pick.partner_id.display_name if pick.partner_id else '',
+                    'partner_name': so.partner_id.display_name if so.partner_id else '',
                     'channel': channel,
                     'fulfillment': fulfillment,
                     'carrier': carrier_name,
                     'carrier_tracking_ref': tracking_ref,
-                    'state': pick.state,
-                    'scheduled_date': fields.Datetime.to_string(pick.scheduled_date) if pick.scheduled_date else False,
+                    'state': pick.state if pick else '',
+                    'has_pick': has_pick,
+                    'scheduled_date': fields.Datetime.to_string(pick.scheduled_date) if pick and pick.scheduled_date else False,
                     'sla_date': sla_dt_str,
+                    'sla_timezone': sla_tz_mode,
                     'sla_priority_level': sla_level,
                     'sla_priority_label': sla_label,
                     'yuju_due_date': str(yuju_due_date) if yuju_due_date else False,
@@ -242,6 +413,34 @@ class OrderChannelController(http.Controller):
                     'latest_wmds_log_date': latest_log_date,
                 })
 
+            # Fecha SLA (local) más antigua por canal: pedido más rezagado entre pendientes activos
+            channel_oldest = {}
+            try:
+                off_expr = _channel_offset_sql(env)
+                env.cr.execute(f"""
+                    SELECT COALESCE(s.channel, 'Directo/Otro') AS channel,
+                           MIN(p.sla_date + ({off_expr} * interval '1 hour')) AS oldest
+                    FROM stock_picking p
+                    JOIN stock_picking_type pt ON pt.id = p.picking_type_id
+                    JOIN sale_order s ON s.id = p.sale_id
+                    WHERE p.sale_id IS NOT NULL
+                      AND pt.code = 'outgoing'
+                      AND s.state != 'cancel'
+                      AND (s.order_progress != 'sent' OR s.order_progress IS NULL)
+                      AND (s.order_progress NOT ILIKE '%%shipped%%' OR s.order_progress IS NULL)
+                      AND (s.order_progress NOT ILIKE '%%refunded%%' OR s.order_progress IS NULL)
+                      AND (s.order_progress NOT ILIKE '%%cancel%%' OR s.order_progress IS NULL)
+                      AND (s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)
+                      AND p.state NOT IN ('done', 'cancel')
+                      AND p.sla_date IS NOT NULL
+                    GROUP BY COALESCE(s.channel, 'Directo/Otro')
+                """)
+                for ch, oldest in env.cr.fetchall():
+                    if oldest:
+                        channel_oldest[ch] = fields.Datetime.to_string(oldest)
+            except Exception:
+                pass
+
             return {
                 'success': True,
                 'count': len(results),
@@ -249,11 +448,469 @@ class OrderChannelController(http.Controller):
                 'page': page,
                 'limit': limit,
                 'available_channels': available_channels,
+                'channel_oldest_date': channel_oldest,
                 'results': results
             }
 
         except Exception as e:
             _logger.error(f"Error querying order channel: {e}", exc_info=True)
+            return {'error': {'message': str(e)}}
+
+    @http.route(
+        '/wmds/v2/engine/get/order_sla_metrics',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def order_sla_metrics(self, **kw):
+        """
+        Métricas SLA por rango de fechas sobre la ORDEN DE VENTA.
+        Universo = SO activas pendientes cuya fecha SLA (último picking sla_date o yuju_due_date)
+        cae en el rango (hora local). Enviado = la SO tiene un OUT cerrado (done).
+        """
+        try:
+            env = request.env
+            date_from = (kw.get('date_from') or '').strip()
+            date_to = (kw.get('date_to') or '').strip()
+            channel_filter = (kw.get('channel_filter') or 'all').strip()
+
+            where = [
+                "s.state != 'cancel'",
+                "(s.order_progress != 'sent' OR s.order_progress IS NULL)",
+                "(s.order_progress NOT ILIKE '%%shipped%%' OR s.order_progress IS NULL)",
+                "(s.order_progress NOT ILIKE '%%refunded%%' OR s.order_progress IS NULL)",
+                "(s.order_progress NOT ILIKE '%%cancel%%' OR s.order_progress IS NULL)",
+                "(s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)",
+            ]
+            params = []
+            if channel_filter and channel_filter != 'all':
+                where.append("s.channel ILIKE %s")
+                params.append(f"%{channel_filter}%")
+            offset_expr = _channel_offset_sql(env)
+            offset_frag = f"({offset_expr} * interval '1 hour')"
+            if date_from:
+                where.append(f"(COALESCE(lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
+                params.append(date_from)
+            if date_to:
+                where.append(f"(COALESCE(lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) <= %s")
+                params.append(f"{date_to} 23:59:59")
+
+            from_clause = """
+                FROM sale_order s
+                LEFT JOIN LATERAL (
+                    SELECT sla_date FROM stock_picking
+                    WHERE sale_id = s.id ORDER BY id DESC LIMIT 1
+                ) lp ON true
+            """
+            where_sql = " AND ".join(where)
+
+            total_sql = f"SELECT COUNT(*) {from_clause} WHERE {where_sql}"
+            env.cr.execute(total_sql, params)
+            total_orders = env.cr.fetchone()[0]
+
+            # Enviados = la SO tiene un OUT cerrado (done)
+            sent_sql = f"""
+                SELECT COUNT(*)
+                FROM sale_order s2
+                LEFT JOIN LATERAL (
+                    SELECT sla_date FROM stock_picking
+                    WHERE sale_id = s2.id ORDER BY id DESC LIMIT 1
+                ) lp ON true
+                WHERE {where_sql.replace('s.', 's2.')}
+                  AND EXISTS (
+                      SELECT 1 FROM stock_picking o
+                      JOIN stock_picking_type ot ON ot.id = o.picking_type_id
+                      WHERE o.sale_id = s2.id AND ot.code = 'outgoing' AND o.state = 'done'
+                  )
+            """
+            env.cr.execute(sent_sql, params)
+            sent_orders = env.cr.fetchone()[0]
+            pending_orders = total_orders - sent_orders
+
+            # En espera / sin stock: de los no enviados, último pick pendiente con moves sin reservar
+            waiting_sql = f"""
+                SELECT COUNT(*)
+                FROM sale_order s3
+                LEFT JOIN LATERAL (
+                    SELECT id, sla_date FROM stock_picking
+                    WHERE sale_id = s3.id ORDER BY id DESC LIMIT 1
+                ) lp ON true
+                WHERE {where_sql.replace('s.', 's3.')}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM stock_picking o
+                      JOIN stock_picking_type ot ON ot.id = o.picking_type_id
+                      WHERE o.sale_id = s3.id AND ot.code = 'outgoing' AND o.state = 'done'
+                  )
+                  AND EXISTS (
+                      SELECT 1 FROM stock_move m
+                      WHERE m.picking_id = lp.id
+                        AND m.state IN ('waiting', 'confirmed')
+                        AND m.product_uom_qty > 0
+                  )
+            """
+            env.cr.execute(waiting_sql, params)
+            waiting_orders = env.cr.fetchone()[0]
+
+            return {
+                'success': True,
+                'date_from': date_from,
+                'date_to': date_to,
+                'total_orders': total_orders,
+                'sent_orders': sent_orders,
+                'pending_orders': pending_orders,
+                'waiting_orders': waiting_orders,
+                'delivered_out_not_closed': 0,
+            }
+
+        except Exception as e:
+            _logger.error(f"Error computing SLA metrics: {e}", exc_info=True)
+            return {'error': {'message': str(e)}}
+
+    @http.route(
+        '/wmds/v2/engine/get/executed_operations_metrics',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def executed_operations_metrics(self, **kw):
+        """
+        Métricas de operaciones ejecutadas (Pick, Pack, OUT hechos) dentro del rango de fechas local (CDMX UTC-6).
+        """
+        try:
+            env = request.env
+            date_from = (kw.get('date_from') or '').strip()
+            date_to = (kw.get('date_to') or '').strip()
+            channel_filter = (kw.get('channel_filter') or 'all').strip()
+
+            if not date_from:
+                date_from = fields.Date.context_today(env['stock.picking']).strftime('%Y-%m-%d')
+            if not date_to:
+                date_to = date_from
+
+            where = [
+                "p.state = 'done'",
+                "p.date_done IS NOT NULL",
+                "(p.date_done - interval '6 hour')::date >= %s::date",
+                "(p.date_done - interval '6 hour')::date <= %s::date"
+            ]
+            params = [date_from, date_to]
+
+            if channel_filter and channel_filter != 'all':
+                where.append("s.channel ILIKE %s")
+                params.append(f"%{channel_filter}%")
+
+            sql_metrics = f"""
+                SELECT 
+                    COUNT(*) FILTER (WHERE pt.sequence_code = 'PICK') AS picked_count,
+                    COUNT(*) FILTER (WHERE pt.sequence_code = 'PACK') AS packed_count,
+                    COUNT(*) FILTER (WHERE pt.sequence_code = 'OUT') AS dispatched_count,
+                    COUNT(DISTINCT p.sale_id) FILTER (WHERE pt.sequence_code = 'OUT' AND p.sale_id IS NOT NULL) AS orders_dispatched_count,
+                    COUNT(DISTINCT p.sale_id) FILTER (WHERE p.sale_id IS NOT NULL) AS total_orders_touched
+                FROM stock_picking p
+                JOIN stock_picking_type pt ON pt.id = p.picking_type_id
+                LEFT JOIN sale_order s ON s.id = p.sale_id
+                WHERE {' AND '.join(where)}
+            """
+            env.cr.execute(sql_metrics, params)
+            row = env.cr.dictfetchone() or {}
+
+            return {
+                'success': True,
+                'date_from': date_from,
+                'date_to': date_to,
+                'picked_count': row.get('picked_count') or 0,
+                'packed_count': row.get('packed_count') or 0,
+                'dispatched_count': row.get('dispatched_count') or 0,
+                'orders_dispatched_count': row.get('orders_dispatched_count') or 0,
+                'total_orders_touched': row.get('total_orders_touched') or 0,
+            }
+        except Exception as e:
+            _logger.error(f"Error computing executed metrics: {e}", exc_info=True)
+            return {'error': {'message': str(e)}}
+
+    @http.route(
+        '/wmds/v2/engine/get/executed_operations_query',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def executed_operations_query(self, **kw):
+        """
+        Detalle de operaciones ejecutadas con matices:
+        - matiz_mode == 'by_sale': Órdenes de venta con estado WMDS y pipeline PICK/PACK/OUT.
+        - matiz_mode == 'by_stage': Albaranes individuales (PICK, PACK, OUT) completados en el día.
+        """
+        try:
+            env = request.env
+            date_from = (kw.get('date_from') or '').strip()
+            date_to = (kw.get('date_to') or '').strip()
+            channel_filter = (kw.get('channel_filter') or 'all').strip()
+            matiz_mode = (kw.get('matiz_mode') or 'by_sale').strip()
+            stage_filter = (kw.get('stage_filter') or 'all').strip().upper()
+            query = (kw.get('query') or '').strip()
+            limit = int(kw.get('limit') or 50)
+            page = int(kw.get('page') or 1)
+            offset = (page - 1) * limit if page > 1 else 0
+
+            if not date_from:
+                date_from = fields.Date.context_today(env['stock.picking']).strftime('%Y-%m-%d')
+            if not date_to:
+                date_to = date_from
+
+            if matiz_mode == 'by_stage':
+                where = [
+                    "p.state = 'done'",
+                    "p.date_done IS NOT NULL",
+                    "(p.date_done - interval '6 hour')::date >= %s::date",
+                    "(p.date_done - interval '6 hour')::date <= %s::date"
+                ]
+                params = [date_from, date_to]
+
+                if stage_filter in ('PICK', 'PACK', 'OUT'):
+                    where.append("pt.sequence_code = %s")
+                    params.append(stage_filter)
+                else:
+                    where.append("pt.sequence_code IN ('PICK', 'PACK', 'OUT')")
+
+                if channel_filter and channel_filter != 'all':
+                    where.append("s.channel ILIKE %s")
+                    params.append(f"%{channel_filter}%")
+
+                if query:
+                    where.append("(p.name ILIKE %s OR s.name ILIKE %s OR p.carrier_tracking_ref ILIKE %s OR rp.name ILIKE %s)")
+                    params.extend([f"%{query}%", f"%{query}%", f"%{query}%", f"%{query}%"])
+
+                from_clause = """
+                    FROM stock_picking p
+                    JOIN stock_picking_type pt ON pt.id = p.picking_type_id
+                    LEFT JOIN sale_order s ON s.id = p.sale_id
+                    LEFT JOIN res_partner rp ON rp.id = s.partner_id
+                    LEFT JOIN stock_picking_batch b ON b.id = p.batch_id
+                    LEFT JOIN res_users ru_op ON ru_op.id = p.operator
+                    LEFT JOIN res_partner u_op ON u_op.id = ru_op.partner_id
+                    LEFT JOIN res_users ru_b ON ru_b.id = b.user_id
+                    LEFT JOIN res_partner u_b ON u_b.id = ru_b.partner_id
+                    LEFT JOIN res_users ru_p ON ru_p.id = p.user_id
+                    LEFT JOIN res_partner u_p ON u_p.id = ru_p.partner_id
+                    LEFT JOIN delivery_carrier c ON c.id = p.carrier_id
+                    LEFT JOIN wmds_stock_status ws ON ws.id = p.wmds_status
+                """
+                count_sql = f"SELECT COUNT(*) {from_clause} WHERE {' AND '.join(where)}"
+                env.cr.execute(count_sql, params)
+                total_count = env.cr.fetchone()[0]
+
+                query_sql = f"""
+                    SELECT 
+                        p.id,
+                        p.name AS picking_name,
+                        pt.sequence_code AS stage,
+                        (p.date_done - interval '6 hour') AS date_done_local,
+                        s.id AS sale_id,
+                        s.name AS so_name,
+                        COALESCE(s.channel, 'Directo/Otro') AS channel,
+                        COALESCE(rp.name, '') AS partner_name,
+                        COALESCE(b.name, '') AS batch_name,
+                        COALESCE(u_op.name, u_b.name, u_p.name, '') AS operator_name,
+                        COALESCE(c.name->>'es_MX', c.name->>'en_US', '') AS carrier_name,
+                        COALESCE(p.carrier_tracking_ref, '') AS carrier_tracking_ref,
+                        COALESCE(ws.name, '') AS wmds_status_name
+                    {from_clause}
+                    WHERE {' AND '.join(where)}
+                    ORDER BY p.date_done DESC, p.id DESC
+                    LIMIT %s OFFSET %s
+                """
+                env.cr.execute(query_sql, params + [limit, offset])
+                results = []
+                for r in env.cr.dictfetchall():
+                    dt_str = fields.Datetime.to_string(r['date_done_local']) if r['date_done_local'] else ''
+                    stage_lbl = 'Recolección' if r['stage'] == 'PICK' else ('Empaque' if r['stage'] == 'PACK' else 'Despacho')
+                    results.append({
+                        'id': r['id'],
+                        'name': r['picking_name'],
+                        'stage': r['stage'],
+                        'stage_label': stage_lbl,
+                        'date_done': dt_str,
+                        'sale_id': r['sale_id'],
+                        'so_name': r['so_name'] or 'Sin SO',
+                        'channel': r['channel'],
+                        'partner_name': r['partner_name'],
+                        'batch_name': r['batch_name'],
+                        'operator_name': r['operator_name'],
+                        'carrier_name': r['carrier_name'],
+                        'carrier_tracking_ref': r['carrier_tracking_ref'],
+                        'wmds_status_name': r['wmds_status_name'],
+                    })
+
+                return {
+                    'success': True,
+                    'matiz_mode': matiz_mode,
+                    'count': len(results),
+                    'total_count': total_count,
+                    'page': page,
+                    'limit': limit,
+                    'results': results
+                }
+
+            else:
+                # matiz_mode == 'by_sale'
+                where = [
+                    "p.state = 'done'",
+                    "p.sale_id IS NOT NULL",
+                    "p.date_done IS NOT NULL",
+                    "(p.date_done - interval '6 hour')::date >= %s::date",
+                    "(p.date_done - interval '6 hour')::date <= %s::date"
+                ]
+                params = [date_from, date_to]
+
+                if channel_filter and channel_filter != 'all':
+                    where.append("s.channel ILIKE %s")
+                    params.append(f"%{channel_filter}%")
+
+                if query:
+                    where.append("(s.name ILIKE %s OR s.channel_order_id ILIKE %s OR rp.name ILIKE %s)")
+                    params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
+
+                base_where = " AND ".join(where)
+
+                count_sql = f"""
+                    SELECT COUNT(DISTINCT s.id)
+                    FROM stock_picking p
+                    JOIN sale_order s ON s.id = p.sale_id
+                    LEFT JOIN res_partner rp ON rp.id = s.partner_id
+                    WHERE {base_where}
+                """
+                env.cr.execute(count_sql, params)
+                total_count = env.cr.fetchone()[0]
+
+                page_sql = f"""
+                    SELECT 
+                        s.id AS sale_id,
+                        s.name AS so_name,
+                        COALESCE(s.channel, 'Directo/Otro') AS channel,
+                        s.date_order,
+                        COALESCE(rp.name, '') AS partner_name,
+                        COALESCE(c.name->>'es_MX', c.name->>'en_US', '') AS carrier_name,
+                        COALESCE(s.order_progress, '') AS order_progress,
+                        COALESCE(ws.value, '') AS wmds_status_value,
+                        COALESCE(ws.name, '') AS wmds_status_name,
+                        MAX(p.date_done) AS latest_done
+                    FROM stock_picking p
+                    JOIN sale_order s ON s.id = p.sale_id
+                    LEFT JOIN res_partner rp ON rp.id = s.partner_id
+                    LEFT JOIN delivery_carrier c ON c.id = s.carrier_id
+                    LEFT JOIN wmds_stock_status ws ON ws.id = s.wmds_status
+                    WHERE {base_where}
+                    GROUP BY s.id, s.name, s.channel, s.date_order, rp.name, c.name, s.order_progress, ws.value, ws.name
+                    ORDER BY latest_done DESC, s.id DESC
+                    LIMIT %s OFFSET %s
+                """
+                env.cr.execute(page_sql, params + [limit, offset])
+                so_rows = env.cr.dictfetchall()
+                so_ids = [r['sale_id'] for r in so_rows]
+
+                picks_map = {}
+                if so_ids:
+                    env.cr.execute("""
+                        SELECT 
+                            p.id,
+                            p.name,
+                            p.state,
+                            p.sale_id,
+                            pt.sequence_code,
+                            (p.date_done - interval '6 hour') AS date_done_local,
+                            COALESCE(b.name, '') AS batch_name,
+                            COALESCE(u_op.name, u_b.name, u_p.name, '') AS operator_name,
+                            COALESCE(c.name->>'es_MX', c.name->>'en_US', '') AS carrier_name,
+                            COALESCE(p.carrier_tracking_ref, '') AS carrier_tracking_ref
+                        FROM stock_picking p
+                        JOIN stock_picking_type pt ON pt.id = p.picking_type_id
+                        LEFT JOIN stock_picking_batch b ON b.id = p.batch_id
+                        LEFT JOIN res_users ru_op ON ru_op.id = p.operator
+                        LEFT JOIN res_partner u_op ON u_op.id = ru_op.partner_id
+                        LEFT JOIN res_users ru_b ON ru_b.id = b.user_id
+                        LEFT JOIN res_partner u_b ON u_b.id = ru_b.partner_id
+                        LEFT JOIN res_users ru_p ON ru_p.id = p.user_id
+                        LEFT JOIN res_partner u_p ON u_p.id = ru_p.partner_id
+                        LEFT JOIN delivery_carrier c ON c.id = p.carrier_id
+                        WHERE p.sale_id IN %s
+                          AND pt.sequence_code IN ('PICK', 'PACK', 'OUT')
+                        ORDER BY p.id ASC
+                    """, (tuple(so_ids),))
+                    for p_row in env.cr.dictfetchall():
+                        s_id = p_row['sale_id']
+                        if s_id not in picks_map:
+                            picks_map[s_id] = {}
+                        sc = p_row['sequence_code']
+                        p_row['date_done'] = fields.Datetime.to_string(p_row['date_done_local']) if p_row['date_done_local'] else ''
+                        picks_map[s_id][sc] = p_row
+
+                results = []
+                for so in so_rows:
+                    s_id = so['sale_id']
+                    pm = picks_map.get(s_id, {})
+                    pick_data = pm.get('PICK', {})
+                    pack_data = pm.get('PACK', {})
+                    out_data = pm.get('OUT', {})
+
+                    if out_data.get('state') == 'done':
+                        summary_step = 'out'
+                    elif pack_data.get('state') == 'done':
+                        summary_step = 'pack'
+                    elif pick_data.get('state') == 'done':
+                        summary_step = 'pick'
+                    else:
+                        summary_step = 'pending'
+
+                    results.append({
+                        'sale_id': s_id,
+                        'so_name': so['so_name'],
+                        'channel': so['channel'],
+                        'date_order': fields.Datetime.to_string(so['date_order']) if so['date_order'] else '',
+                        'partner_name': so['partner_name'],
+                        'carrier_name': so['carrier_name'] or out_data.get('carrier_name', ''),
+                        'order_progress': so['order_progress'],
+                        'wmds_status_value': so['wmds_status_value'],
+                        'wmds_status_name': so['wmds_status_name'],
+                        'summary_step': summary_step,
+                        'stages': {
+                            'pick': {
+                                'name': pick_data.get('name', ''),
+                                'state': pick_data.get('state', ''),
+                                'date_done': pick_data.get('date_done', ''),
+                                'batch_name': pick_data.get('batch_name', ''),
+                                'operator_name': pick_data.get('operator_name', '')
+                            },
+                            'pack': {
+                                'name': pack_data.get('name', ''),
+                                'state': pack_data.get('state', ''),
+                                'date_done': pack_data.get('date_done', ''),
+                                'operator_name': pack_data.get('operator_name', '')
+                            },
+                            'out': {
+                                'name': out_data.get('name', ''),
+                                'state': out_data.get('state', ''),
+                                'date_done': out_data.get('date_done', ''),
+                                'carrier_name': out_data.get('carrier_name', ''),
+                                'carrier_tracking_ref': out_data.get('carrier_tracking_ref', '')
+                            }
+                        }
+                    })
+
+                return {
+                    'success': True,
+                    'matiz_mode': matiz_mode,
+                    'count': len(results),
+                    'total_count': total_count,
+                    'page': page,
+                    'limit': limit,
+                    'results': results
+                }
+
+        except Exception as e:
+            _logger.error(f"Error querying executed operations: {e}", exc_info=True)
             return {'error': {'message': str(e)}}
 
     @http.route(

@@ -22,6 +22,7 @@
                         <group>
                             <group string="Información General">
                                 <field name="marketplace"/>
+                                <field name="sla_timezone"/>
                                 <field name="active"/>
                             </group>
                             <group string="Servidor MySQL">
@@ -58,6 +59,7 @@
                 <list string="MySqlDriver Conexiones">
                     <field name="name"/>
                     <field name="marketplace"/>
+                    <field name="sla_timezone"/>
                     <field name="host"/>
                     <field name="database"/>
                     <field name="table_name"/>
