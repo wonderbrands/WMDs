@@ -169,6 +169,7 @@
                             <span class="sub-title">Creado por: {{ created_by }}</span>
                         </div>
                         <div v-if="cycleCountState !== 'finalized' && cycleCountState !== 'cancelled'">
+                            <Button label="Descargar Excel" icon="fa fa-file-excel-o" severity="success" class="mr-2" @click="downloadExcel" :loading="store.loading" />
                             <Button label="Ver Logs" icon="fa fa-list" severity="secondary" class="mr-2" @click="showLogsReport" />
                             <Button label="Comparar Conteos" icon="fa fa-bar-chart" severity="help" class="mr-2" @click="showComparisonReport" />
                             <Button v-if="!hasActiveWave" label="Añadir Ola" icon="fa fa-plus" class="p-button-outlined mr-2" @click="showOperatorDialog('add')" />
@@ -176,6 +177,7 @@
                             <Button label="Cancelar Ciclo" icon="fa fa-ban" severity="danger" class="p-button-outlined" @click="cancelEntireCount" :loading="store.loading" />
                         </div>
                         <div v-else class="flex-row">
+                             <Button label="Descargar Excel" icon="fa fa-file-excel-o" severity="success" class="mr-2" @click="downloadExcel" :loading="store.loading" />
                              <Button label="Ver Logs" icon="fa fa-list" severity="secondary" class="mr-2" @click="showLogsReport" />
                              <span :class="['state-badge', cycleCountState]">
                                 {{ cycleCountState === 'finalized' ? 'FINALIZADO' : 'CANCELADO' }}
@@ -299,6 +301,7 @@
                                 <i class="fa fa-map-marker"></i>
                                 <InputText v-model="comparisonLocationQuery" placeholder="Filtrar Ubicación..." class="p-inputtext-sm" />
                             </span>
+                            <Button label="Descargar Excel" icon="fa fa-file-excel-o" severity="success" class="p-button-sm" @click="downloadExcel" :loading="store.loading" />
                         </div>
                     </div>
 
@@ -914,6 +917,55 @@ export default {
                 await this.showComparisonReport(); 
             } else {
                 this.$toast.add({ severity: 'error', summary: 'Error', detail: (res.error || 'Error desconocido'), life: 3000 });
+            }
+        },
+        async downloadExcel() {
+            if (!this.modalData || !this.modalData.id) {
+                this.$toast.add({ severity: 'warn', summary: 'Atención', detail: 'No hay un ciclo de conteo seleccionado.', life: 3000 });
+                return;
+            }
+            this.store.loading = true;
+            try {
+                const res = await this.store.callOdoo("download_cycle_count_excel", "", { count_id: this.modalData.id });
+                if (res.ok && res.xlsx_file) {
+                    const byteCharacters = atob(res.xlsx_file);
+                    const byteNumbers = new Array(byteCharacters.length);
+                    for (let i = 0; i < byteCharacters.length; i++) {
+                        byteNumbers[i] = byteCharacters.charCodeAt(i);
+                    }
+                    const byteArray = new Uint8Array(byteNumbers);
+                    const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                    const link = document.createElement('a');
+                    link.href = window.URL.createObjectURL(blob);
+                    link.download = res.filename || `Conteo_Ciclico_${this.modalData.name}.xlsx`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    this.$toast.add({
+                        severity: 'success',
+                        summary: 'Excel Descargado',
+                        detail: res.message || 'Reporte de conteo cíclico descargado correctamente.',
+                        life: 4000
+                    });
+                } else {
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Error al Generar Excel',
+                        detail: res.error || 'No se pudo generar el archivo.',
+                        life: 5000
+                    });
+                }
+            } catch (e) {
+                console.error("Error descargando excel:", e);
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'Error de Red',
+                    detail: 'Ocurrió un error al intentar descargar el reporte.',
+                    life: 5000
+                });
+            } finally {
+                this.store.loading = false;
             }
         },
         showOperatorDialog(mode, wave = null) {

@@ -3,6 +3,9 @@ from odoo.http import request
 import logging
 import re
 import pytz
+import io
+import base64
+import xlsxwriter
 
 _logger = logging.getLogger(__name__)
 
@@ -624,6 +627,295 @@ class CycleCount(http.Controller):
             }
         except Exception as e:
             _logger.error(f"Error en reporte de comparación: {e}")
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/download_cycle_count_excel', type='json', auth='user', methods=['POST'])
+    def download_cycle_count_excel(self, **kw):
+        try:
+            count_id = kw.get('count_id')
+            if not count_id:
+                return {'ok': False, 'error': 'ID de conteo requerido.'}
+
+            count = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).browse(count_id)
+            if not count.exists():
+                return {'ok': False, 'error': 'Conteo cíclico no encontrado.'}
+
+            waves = count.wave_ids.sorted(key=lambda w: w.id)
+            is_closed = count.state in ['finalized', 'cancelled']
+
+            # 1. Obtener datos de comparación y teórico
+            comp_res = self.get_cycle_count_comparison(count_id=count.id)
+            if not comp_res.get('ok'):
+                return {'ok': False, 'error': comp_res.get('error', 'Error obteniendo comparación')}
+
+            comparison_data = comp_res.get('data', [])
+
+            # 2. Si está cerrado/finalizado, obtener ajustes registrados en wmds.log
+            # Pattern: AJUSTE DE INVENTARIO - Producto: [SKU] Name | Ubicación: Loc | Cant. Anterior: X | Cant. Nueva: Y
+            adj_map = {} # (location_complete_name, sku) -> {'old_qty': float, 'new_qty': float, 'diff': float}
+            if is_closed:
+                adj_logs = request.env['wmds.log'].sudo().search([
+                    ('cycle_count', '=', count.id),
+                    ('log', 'ilike', 'AJUSTE DE INVENTARIO%')
+                ], order='id asc')
+                log_pattern = re.compile(
+                    r'AJUSTE DE INVENTARIO - Producto:\s*(?:\[([^\]]+)\])?\s*([^|]+)\s*\|\s*Ubicaci[oó]n:\s*([^|]+)\s*\|\s*Cant\.\s*Anterior:\s*([0-9.]+)\s*\|\s*Cant\.\s*Nueva:\s*([0-9.]+)'
+                )
+                for l in adj_logs:
+                    m = log_pattern.search(l.log or '')
+                    if m:
+                        sku_match, name_match, loc_match, old_q, new_q = m.groups()
+                        parsed_sku = (sku_match or '').strip()
+                        parsed_loc = (loc_match or '').strip()
+                        # Normalizar si la ubicación en el log tiene prefijo WH/Bloqueado/Ciclico
+                        norm_loc = re.sub(r'^WH/Bloqueado/Ciclico/', '', parsed_loc)
+                        o_q = float(old_q)
+                        n_q = float(new_q)
+                        diff_q = n_q - o_q
+                        key = (norm_loc, parsed_sku)
+                        adj_map[key] = {
+                            'old_qty': o_q,
+                            'new_qty': n_q,
+                            'diff': diff_q
+                        }
+
+            # 3. Construir Excel en memoria con xlsxwriter
+            output_stream = io.BytesIO()
+            wb = xlsxwriter.Workbook(output_stream, {'in_memory': True})
+
+            # Estilos
+            fmt_title = wb.add_format({
+                'bold': True, 'font_size': 14, 'font_color': '#1e293b',
+                'align': 'left', 'valign': 'vcenter'
+            })
+            fmt_subtitle = wb.add_format({
+                'font_size': 10, 'font_color': '#64748b', 'align': 'left'
+            })
+            fmt_header = wb.add_format({
+                'bold': True, 'bg_color': '#1e3a8a', 'font_color': '#ffffff',
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 10
+            })
+            fmt_wave_hdr = wb.add_format({
+                'bold': True, 'bg_color': '#0284c7', 'font_color': '#ffffff',
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 10
+            })
+            fmt_final_hdr = wb.add_format({
+                'bold': True, 'bg_color': '#15803d', 'font_color': '#ffffff',
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 10
+            })
+            fmt_cell = wb.add_format({
+                'border': 1, 'align': 'left', 'valign': 'vcenter', 'font_size': 9
+            })
+            fmt_cell_center = wb.add_format({
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 9
+            })
+            fmt_cell_num = wb.add_format({
+                'border': 1, 'align': 'right', 'valign': 'vcenter', 'font_size': 9,
+                'num_format': '#,##0.00'
+            })
+            fmt_cell_diff_pos = wb.add_format({
+                'border': 1, 'align': 'right', 'valign': 'vcenter', 'font_size': 9,
+                'font_color': '#15803d', 'bold': True, 'bg_color': '#dcfce7',
+                'num_format': '+#,##0.00'
+            })
+            fmt_cell_diff_neg = wb.add_format({
+                'border': 1, 'align': 'right', 'valign': 'vcenter', 'font_size': 9,
+                'font_color': '#b91c1c', 'bold': True, 'bg_color': '#fee2e2',
+                'num_format': '-#,##0.00'
+            })
+            fmt_cell_diff_zero = wb.add_format({
+                'border': 1, 'align': 'right', 'valign': 'vcenter', 'font_size': 9,
+                'font_color': '#64748b', 'num_format': '0.00'
+            })
+            fmt_discrepancy_yes = wb.add_format({
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 9,
+                'bg_color': '#fef3c7', 'font_color': '#b45309', 'bold': True
+            })
+            fmt_discrepancy_no = wb.add_format({
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 9,
+                'bg_color': '#f1f5f9', 'font_color': '#475569'
+            })
+
+            # -------------------------------------------------------------
+            # HOJA 1: Consolidación / Comparativa General
+            # -------------------------------------------------------------
+            ws_summary = wb.add_worksheet("Consolidación General")
+            ws_summary.set_row(0, 24)
+            ws_summary.set_row(1, 18)
+            ws_summary.write(0, 0, f"CONTEO CÍCLICO: {count.name} - CONSOLIDACIÓN GENERAL", fmt_title)
+            state_label = "FINALIZADO" if count.state == 'finalized' else ("CANCELADO" if count.state == 'cancelled' else "EN PROCESO")
+            ws_summary.write(1, 0, f"Estado: {state_label} | Ref: {count.notes or 'N/A'} | Fecha: {count.create_date.strftime('%Y-%m-%d %H:%M') if count.create_date else 'N/A'}", fmt_subtitle)
+
+            summary_headers = [
+                "Ubicación", "SKU", "Código de Barras", "Producto", "Stock Teórico (Odoo)"
+            ]
+            for idx, w in enumerate(waves):
+                op_name = w.operator_id.name.split()[0] if w.operator_id and w.operator_id.name else 'Op'
+                summary_headers.append(f"Ola {idx + 1}: {w.name} ({op_name})")
+
+            summary_headers.append("¿Discrepancia?")
+
+            if is_closed:
+                summary_headers.extend([
+                    "Cant. Final Buena",
+                    "Aumento / Decremento",
+                    "Impacto Inventario"
+                ])
+
+            ws_summary.set_row(3, 26)
+            for col_idx, h in enumerate(summary_headers):
+                if "Ola" in h:
+                    ws_summary.write(3, col_idx, h, fmt_wave_hdr)
+                elif "Cant. Final" in h or "Impacto" in h:
+                    ws_summary.write(3, col_idx, h, fmt_final_hdr)
+                else:
+                    ws_summary.write(3, col_idx, h, fmt_header)
+
+            row_num = 4
+            for item in sorted(comparison_data, key=lambda x: (x.get('location_name', ''), x.get('product_sku', ''))):
+                loc_name = item.get('location_name', '')
+                sku = item.get('product_sku', '')
+                barcode = item.get('barcode', '')
+                prod_name = item.get('product_name', '')
+                theo_qty = float(item.get('theoretical_qty') or 0.0)
+
+                ws_summary.write(row_num, 0, loc_name, fmt_cell)
+                ws_summary.write(row_num, 1, sku, fmt_cell_center)
+                ws_summary.write(row_num, 2, barcode, fmt_cell_center)
+                ws_summary.write(row_num, 3, prod_name, fmt_cell)
+                ws_summary.write(row_num, 4, theo_qty, fmt_cell_num)
+
+                col_ptr = 5
+                for w in waves:
+                    w_cnt = item.get('wave_counts', {}).get(str(w.id), '-')
+                    if w_cnt == '-' or w_cnt is None:
+                        ws_summary.write(row_num, col_ptr, "-", fmt_cell_center)
+                    else:
+                        ws_summary.write(row_num, col_ptr, float(w_cnt), fmt_cell_num)
+                    col_ptr += 1
+
+                has_diff = item.get('has_discrepancy', False)
+                ws_summary.write(row_num, col_ptr, "SÍ" if has_diff else "NO", fmt_discrepancy_yes if has_diff else fmt_discrepancy_no)
+                col_ptr += 1
+
+                if is_closed:
+                    # Determinar si hubo ajuste registrado en log
+                    # Buscar por loc_name base (ej. L-P41-F1-N1) y SKU
+                    loc_base = loc_name.split('/')[-1] if loc_name else ''
+                    adj_info = None
+                    for (a_loc, a_sku), info in adj_map.items():
+                        if a_sku == sku and (a_loc.endswith(loc_base) or loc_base in a_loc):
+                            adj_info = info
+                            break
+
+                    if adj_info:
+                        final_qty = adj_info['new_qty']
+                        diff_qty = adj_info['diff']
+                    else:
+                        # Si no hubo ajuste explícito en log, la cantidad buena fue el conteo acordado o el teórico
+                        # Revisar si hay conteo de ola válido
+                        valid_counts = [float(v) for v in item.get('wave_counts', {}).values() if v != '-' and v is not None]
+                        final_qty = valid_counts[-1] if valid_counts else theo_qty
+                        diff_qty = final_qty - theo_qty
+
+                    ws_summary.write(row_num, col_ptr, final_qty, fmt_cell_num)
+                    col_ptr += 1
+
+                    if diff_qty > 0:
+                        ws_summary.write(row_num, col_ptr, diff_qty, fmt_cell_diff_pos)
+                        ws_summary.write(row_num, col_ptr + 1, "AUMENTO (+)", fmt_cell_diff_pos)
+                    elif diff_qty < 0:
+                        ws_summary.write(row_num, col_ptr, diff_qty, fmt_cell_diff_neg)
+                        ws_summary.write(row_num, col_ptr + 1, "DECREMENTO (-)", fmt_cell_diff_neg)
+                    else:
+                        ws_summary.write(row_num, col_ptr, 0.0, fmt_cell_diff_zero)
+                        ws_summary.write(row_num, col_ptr + 1, "SIN CAMBIO", fmt_cell_center)
+
+                row_num += 1
+
+            ws_summary.set_column(0, 0, 32)
+            ws_summary.set_column(1, 1, 18)
+            ws_summary.set_column(2, 2, 16)
+            ws_summary.set_column(3, 3, 38)
+            ws_summary.set_column(4, 4, 16)
+            for c in range(5, col_ptr + 2):
+                ws_summary.set_column(c, c, 18)
+
+            # -------------------------------------------------------------
+            # HOJAS INDIVIDUALES POR OLA
+            # -------------------------------------------------------------
+            for wave_idx, wave in enumerate(waves):
+                sheet_title = f"Ola {wave_idx + 1}"
+                # xlsxwriter limita nombres de hoja a 31 caracteres
+                if len(sheet_title) > 31:
+                    sheet_title = sheet_title[:31]
+
+                ws_wave = wb.add_worksheet(sheet_title)
+                ws_wave.set_row(0, 24)
+                ws_wave.set_row(1, 18)
+                ws_wave.write(0, 0, f"OLA: {wave.name} ({count.name})", fmt_title)
+                op_name = wave.operator_id.name if wave.operator_id else "Sin Operador"
+                wave_state = "FINALIZADA" if wave.state == 'done' else ("CANCELADA" if wave.state == 'cancelled' else "EN CURSO")
+                ws_wave.write(1, 0, f"Operador: {op_name} | Estado: {wave_state} | Total Líneas: {len(wave.line_ids)}", fmt_subtitle)
+
+                wave_headers = [
+                    "Ubicación", "SKU", "Código de Barras", "Producto",
+                    "Cantidad Contada", "Fecha de Conteo", "Contado Por", "Notas / Estatus"
+                ]
+                ws_wave.set_row(3, 26)
+                for c_idx, h in enumerate(wave_headers):
+                    ws_wave.write(3, c_idx, h, fmt_wave_hdr)
+
+                w_row = 4
+                sorted_lines = wave.line_ids.sorted(key=lambda l: (
+                    l.stock_location_id.complete_name or '',
+                    l.product_id.default_code or ''
+                ))
+
+                for line in sorted_lines:
+                    loc_name = line.stock_location_id.complete_name if line.stock_location_id else 'N/A'
+                    sku = line.product_id.default_code if line.product_id else '---'
+                    barcode = line.product_id.barcode if line.product_id else '---'
+                    prod_name = line.product_id.name if line.product_id else (line.description or 'Ubicación Vacía')
+                    qty = line.qty or 0.0
+                    cnt_date = line.counted_at.strftime('%Y-%m-%d %H:%M') if line.counted_at else ''
+                    cnt_by = line.counted_by_id.name if line.counted_by_id else (op_name)
+                    notes = line.description or ('Marcada Vacía' if (not line.product_id and qty == 0) else 'Contado')
+
+                    ws_wave.write(w_row, 0, loc_name, fmt_cell)
+                    ws_wave.write(w_row, 1, sku, fmt_cell_center)
+                    ws_wave.write(w_row, 2, barcode, fmt_cell_center)
+                    ws_wave.write(w_row, 3, prod_name, fmt_cell)
+                    ws_wave.write(w_row, 4, qty, fmt_cell_num)
+                    ws_wave.write(w_row, 5, cnt_date, fmt_cell_center)
+                    ws_wave.write(w_row, 6, cnt_by, fmt_cell)
+                    ws_wave.write(w_row, 7, notes, fmt_cell_center)
+                    w_row += 1
+
+                ws_wave.set_column(0, 0, 32)
+                ws_wave.set_column(1, 1, 18)
+                ws_wave.set_column(2, 2, 16)
+                ws_wave.set_column(3, 3, 38)
+                ws_wave.set_column(4, 4, 16)
+                ws_wave.set_column(5, 5, 18)
+                ws_wave.set_column(6, 6, 22)
+                ws_wave.set_column(7, 7, 20)
+
+            wb.close()
+            output_stream.seek(0)
+            xlsx_data = output_stream.read()
+            xlsx_base64 = base64.b64encode(xlsx_data).decode('utf-8')
+
+            filename = f"Conteo_Ciclico_{count.name}_{state_label}.xlsx"
+
+            return {
+                'ok': True,
+                'xlsx_file': xlsx_base64,
+                'filename': filename,
+                'message': f"Reporte Excel generado exitosamente para {count.name}"
+            }
+        except Exception as e:
+            _logger.error(f"Error generando Excel de conteo cíclico: {e}", exc_info=True)
             return {'ok': False, 'error': str(e)}
 
     @http.route('/wmds/v2/engine/reopen_cycle_count_wave', type='json', auth='user', methods=['POST'])

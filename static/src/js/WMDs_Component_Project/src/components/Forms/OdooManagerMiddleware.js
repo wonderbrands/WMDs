@@ -481,6 +481,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             toggle_location_block: {url: '/wmds/v2/engine/toggle_location_block', method: 'POST'},
             mark_location_empty: {url: '/wmds/v2/engine/mark_location_empty', method: 'POST'},
             get_cycle_count_details_minimal: {url: '/wmds/v2/engine/get/cycle_count_details_minimal', method: 'POST'},
+            download_cycle_count_excel: {url: '/wmds/v2/engine/download_cycle_count_excel', method: 'POST'},
             get_user_role_permissions: {url: '/wmds/v2/engine/get/user_role_permissions', method: 'POST'},
             batch_type: {url: '/wmds/v2/engine/get/batch_types', method: 'POST'},
             validate_dfull_pick: {url: '/wmds/v2/engine/get/validate_dfull_pick', method: 'POST'},
