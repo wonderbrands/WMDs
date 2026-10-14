@@ -3,6 +3,9 @@ from odoo import http, fields
 from odoo.http import request
 from datetime import datetime, timedelta
 import logging
+import io
+import base64
+import xlsxwriter
 
 _logger = logging.getLogger(__name__)
 
@@ -86,6 +89,7 @@ class OrderChannelController(http.Controller):
             sale_model = env['sale.order']
 
             now_utc = fields.Datetime.now()
+            now_local = now_utc + timedelta(hours=UTC_LOCAL)
             in_1h_utc = now_utc + timedelta(hours=1)
             in_2h_utc = now_utc + timedelta(hours=2)
             in_6h_utc = now_utc + timedelta(hours=6)
@@ -264,17 +268,24 @@ class OrderChannelController(http.Controller):
                         if status_filter != 'no_sla':
                             continue
                     else:
-                        if status_filter == 'overdue' and not (effective < now_utc):
+                        is_local_ch = (_channel_utc_offset(env, so.channel) == 0)
+                        target_now = now_local if is_local_ch else now_utc
+                        in_1h = target_now + timedelta(hours=1)
+                        in_2h = target_now + timedelta(hours=2)
+                        in_6h = target_now + timedelta(hours=6)
+                        in_24h = target_now + timedelta(hours=24)
+
+                        if status_filter == 'overdue' and not (effective < target_now):
                             continue
-                        elif status_filter == 'critical_1h' and not (now_utc <= effective <= in_1h_utc):
+                        elif status_filter == 'critical_1h' and not (target_now <= effective <= in_1h):
                             continue
-                        elif status_filter == 'urgent_2h' and not (in_1h_utc < effective <= in_2h_utc):
+                        elif status_filter == 'urgent_2h' and not (in_1h < effective <= in_2h):
                             continue
-                        elif status_filter == 'warning_6h' and not (in_2h_utc < effective <= in_6h_utc):
+                        elif status_filter == 'warning_6h' and not (in_2h < effective <= in_6h):
                             continue
-                        elif status_filter == 'notice_24h' and not (in_6h_utc < effective <= in_24h_utc):
+                        elif status_filter == 'notice_24h' and not (in_6h < effective <= in_24h):
                             continue
-                        elif status_filter == 'normal' and not (effective > in_24h_utc):
+                        elif status_filter == 'normal' and not (effective > in_24h):
                             continue
                         elif status_filter == 'no_sla' and effective:
                             continue
@@ -337,14 +348,16 @@ class OrderChannelController(http.Controller):
                 # Cómputo exacto en tiempo real del SLA sobre la fecha efectiva
                 if effective:
                     sla_dt_str = fields.Datetime.to_string(effective)
-                    if effective < now_utc:
+                    target_now = now_local if sla_tz_mode == 'local' else now_utc
+                    in_1h = target_now + timedelta(hours=1)
+                    if effective < target_now:
                         sla_level = 'overdue'
                         sla_label = 'SLA Vencido'
-                    elif effective <= in_1h_utc:
+                    elif effective <= in_1h:
                         sla_level = 'critical_1h'
                         sla_label = 'Está a punto de llegar la recolecta (< 1h)'
                     else:
-                        diff_hours = (effective - now_utc).total_seconds() / 3600.0
+                        diff_hours = (effective - target_now).total_seconds() / 3600.0
                         if diff_hours <= 2.0:
                             sla_level = 'urgent_2h'
                             sla_label = 'Quedan 2 horas para la recolecta'
@@ -390,6 +403,53 @@ class OrderChannelController(http.Controller):
                 elif so and getattr(so, 'yuju_carrier_tracking_ref', ''):
                     tracking_ref = so.yuju_carrier_tracking_ref
 
+                # Fecha de creación en Odoo (create_date) y hora local CDMX
+                so_create_date_str = fields.Datetime.to_string(so.create_date) if so and so.create_date else ''
+                so_create_date_local = ''
+                if so and so.create_date:
+                    try:
+                        so_create_date_local = (so.create_date - timedelta(hours=6)).strftime('%d/%m/%Y %H:%M')
+                    except Exception:
+                        so_create_date_local = so_create_date_str
+
+                # Datos de Reasignación Manual de SLA
+                is_manual_override = False
+                override_reason = ''
+                override_note = ''
+                override_user = ''
+                override_date = ''
+                original_sla = ''
+
+                if pick and getattr(pick, 'sla_manual_override', False):
+                    is_manual_override = True
+                    override_reason = getattr(pick, 'sla_override_reason', '') or ''
+                    override_note = getattr(pick, 'sla_override_note', '') or ''
+                    if getattr(pick, 'sla_override_user_id', False):
+                        override_user = pick.sla_override_user_id.name
+                    if getattr(pick, 'sla_override_date', False):
+                        override_date = fields.Datetime.to_string(pick.sla_override_date)
+                    if getattr(pick, 'sla_original_date', False):
+                        original_sla = fields.Datetime.to_string(pick.sla_original_date)
+                elif so and getattr(so, 'sla_manual_override', False):
+                    is_manual_override = True
+                    override_reason = getattr(so, 'sla_override_reason', '') or ''
+                    override_note = getattr(so, 'sla_override_note', '') or ''
+                    if getattr(so, 'sla_override_user_id', False):
+                        override_user = so.sla_override_user_id.name
+                    if getattr(so, 'sla_override_date', False):
+                        override_date = fields.Datetime.to_string(so.sla_override_date)
+                    if getattr(so, 'sla_original_date', False):
+                        original_sla = fields.Datetime.to_string(so.sla_original_date)
+
+                REASONS_MAP = {
+                    'no_space': 'Falta de espacio en transporte',
+                    'carrier_cutoff': 'Corte de paquetería',
+                    'platform_rescheduled': 'Reprogramado por plataforma',
+                    'customer_request': 'Petición del cliente',
+                    'other': 'Otro motivo',
+                }
+                override_reason_label = REASONS_MAP.get(override_reason, override_reason)
+
                 results.append({
                     'id': so.id,
                     'pick_id': pick.id if pick else False,
@@ -411,6 +471,16 @@ class OrderChannelController(http.Controller):
                     'latest_wmds_log': latest_log,
                     'latest_wmds_log_user': latest_log_user,
                     'latest_wmds_log_date': latest_log_date,
+                    'create_date': so_create_date_str,
+                    'create_date_local': so_create_date_local,
+                    'date_order': fields.Datetime.to_string(so.date_order) if so and so.date_order else '',
+                    'sla_manual_override': is_manual_override,
+                    'sla_override_reason': override_reason,
+                    'sla_override_reason_label': override_reason_label,
+                    'sla_override_note': override_note,
+                    'sla_override_user': override_user,
+                    'sla_override_date': override_date,
+                    'sla_original_date': original_sla,
                 })
 
             # Fecha SLA (local) más antigua por canal: pedido más rezagado entre pendientes activos
@@ -583,6 +653,7 @@ class OrderChannelController(http.Controller):
             date_from = (kw.get('date_from') or '').strip()
             date_to = (kw.get('date_to') or '').strip()
             channel_filter = (kw.get('channel_filter') or 'all').strip()
+            fulfillment_filter = (kw.get('fulfillment_filter') or 'all').strip().lower()
 
             if not date_from:
                 date_from = fields.Date.context_today(env['stock.picking']).strftime('%Y-%m-%d')
@@ -600,6 +671,11 @@ class OrderChannelController(http.Controller):
             if channel_filter and channel_filter != 'all':
                 where.append("s.channel ILIKE %s")
                 params.append(f"%{channel_filter}%")
+
+            if fulfillment_filter in ('fbm', 'drop'):
+                where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'fbf'))")
+            elif fulfillment_filter in ('full', 'fbc', 'fbf'):
+                where.append("s.fulfillment IN ('fbc', 'fbf')")
 
             sql_metrics = f"""
                 SELECT 
@@ -648,6 +724,7 @@ class OrderChannelController(http.Controller):
             date_from = (kw.get('date_from') or '').strip()
             date_to = (kw.get('date_to') or '').strip()
             channel_filter = (kw.get('channel_filter') or 'all').strip()
+            fulfillment_filter = (kw.get('fulfillment_filter') or 'all').strip().lower()
             matiz_mode = (kw.get('matiz_mode') or 'by_sale').strip()
             stage_filter = (kw.get('stage_filter') or 'all').strip().upper()
             query = (kw.get('query') or '').strip()
@@ -678,6 +755,11 @@ class OrderChannelController(http.Controller):
                 if channel_filter and channel_filter != 'all':
                     where.append("s.channel ILIKE %s")
                     params.append(f"%{channel_filter}%")
+
+                if fulfillment_filter in ('fbm', 'drop'):
+                    where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'fbf'))")
+                elif fulfillment_filter in ('full', 'fbc', 'fbf'):
+                    where.append("s.fulfillment IN ('fbc', 'fbf')")
 
                 if query:
                     where.append("(p.name ILIKE %s OR s.name ILIKE %s OR p.carrier_tracking_ref ILIKE %s OR rp.name ILIKE %s)")
@@ -711,6 +793,7 @@ class OrderChannelController(http.Controller):
                         s.id AS sale_id,
                         s.name AS so_name,
                         COALESCE(s.channel, 'Directo/Otro') AS channel,
+                        COALESCE(s.fulfillment, '') AS fulfillment,
                         COALESCE(rp.name, '') AS partner_name,
                         COALESCE(b.name, '') AS batch_name,
                         COALESCE(u_op.name, u_b.name, u_p.name, '') AS operator_name,
@@ -736,6 +819,7 @@ class OrderChannelController(http.Controller):
                         'sale_id': r['sale_id'],
                         'so_name': r['so_name'] or 'Sin SO',
                         'channel': r['channel'],
+                        'fulfillment': r['fulfillment'],
                         'partner_name': r['partner_name'],
                         'batch_name': r['batch_name'],
                         'operator_name': r['operator_name'],
@@ -769,6 +853,11 @@ class OrderChannelController(http.Controller):
                     where.append("s.channel ILIKE %s")
                     params.append(f"%{channel_filter}%")
 
+                if fulfillment_filter in ('fbm', 'drop'):
+                    where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'fbf'))")
+                elif fulfillment_filter in ('full', 'fbc', 'fbf'):
+                    where.append("s.fulfillment IN ('fbc', 'fbf')")
+
                 if query:
                     where.append("(s.name ILIKE %s OR s.channel_order_id ILIKE %s OR rp.name ILIKE %s)")
                     params.extend([f"%{query}%", f"%{query}%", f"%{query}%"])
@@ -790,6 +879,7 @@ class OrderChannelController(http.Controller):
                         s.id AS sale_id,
                         s.name AS so_name,
                         COALESCE(s.channel, 'Directo/Otro') AS channel,
+                        COALESCE(s.fulfillment, '') AS fulfillment,
                         s.date_order,
                         COALESCE(rp.name, '') AS partner_name,
                         COALESCE(c.name->>'es_MX', c.name->>'en_US', '') AS carrier_name,
@@ -803,7 +893,7 @@ class OrderChannelController(http.Controller):
                     LEFT JOIN delivery_carrier c ON c.id = s.carrier_id
                     LEFT JOIN wmds_stock_status ws ON ws.id = s.wmds_status
                     WHERE {base_where}
-                    GROUP BY s.id, s.name, s.channel, s.date_order, rp.name, c.name, s.order_progress, ws.value, ws.name
+                    GROUP BY s.id, s.name, s.channel, s.fulfillment, s.date_order, rp.name, c.name, s.order_progress, ws.value, ws.name
                     ORDER BY latest_done DESC, s.id DESC
                     LIMIT %s OFFSET %s
                 """
@@ -868,6 +958,7 @@ class OrderChannelController(http.Controller):
                         'sale_id': s_id,
                         'so_name': so['so_name'],
                         'channel': so['channel'],
+                        'fulfillment': so.get('fulfillment') or '',
                         'date_order': fields.Datetime.to_string(so['date_order']) if so['date_order'] else '',
                         'partner_name': so['partner_name'],
                         'carrier_name': so['carrier_name'] or out_data.get('carrier_name', ''),
@@ -1115,3 +1206,271 @@ class OrderChannelController(http.Controller):
         except Exception as e:
             _logger.error(f"Error deleting marketplace schedule: {e}", exc_info=True)
             return {'error': {'message': str(e)}}
+
+    @http.route(
+        '/wmds/v2/engine/reassign_sla',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def reassign_sla(self, **kw):
+        """
+        Reasignación manual de SLA desde la interfaz WMDS.
+        """
+        try:
+            env = request.env
+            order_id = kw.get('order_id')
+            pick_id = kw.get('pick_id')
+            new_sla_str = (kw.get('new_sla_date') or '').strip()
+            reason = (kw.get('reason') or 'no_space').strip()
+            note = (kw.get('note') or '').strip()
+
+            if not new_sla_str:
+                return {'error': {'message': 'Debe especificar la nueva fecha y hora para el SLA.'}}
+
+            new_sla_dt = fields.Datetime.to_datetime(new_sla_str)
+            now_dt = fields.Datetime.now()
+            user_id = env.user.id
+            user_name = env.user.name
+
+            REASONS_MAP = {
+                'no_space': 'Falta de espacio en transporte / unidad',
+                'carrier_cutoff': 'Corte de paquetería / retraso de recolección',
+                'platform_rescheduled': 'Reprogramado por marketplace / plataforma',
+                'customer_request': 'Petición del cliente',
+                'other': 'Otro motivo',
+            }
+            reason_lbl = REASONS_MAP.get(reason, reason)
+
+            pick = env['stock.picking'].sudo().browse(int(pick_id)) if pick_id else None
+            so = env['sale.order'].sudo().browse(int(order_id)) if order_id else None
+            if not so and pick and getattr(pick, 'sale_id', False):
+                so = pick.sale_id
+
+            picks = [pick] if pick and pick.exists() else []
+            if so and not picks:
+                picks = list(env['stock.picking'].sudo().search([
+                    ('sale_id', '=', so.id),
+                    ('state', 'not in', ('done', 'cancel'))
+                ]))
+
+            msg = (
+                f"<b>SLA Reasignado Manualmente por {user_name}</b><br/>"
+                f"<b>Nueva Fecha SLA:</b> {new_sla_str}<br/>"
+                f"<b>Motivo:</b> {reason_lbl}<br/>"
+            )
+            if note:
+                msg += f"<b>Notas:</b> {note}<br/>"
+
+            for p in picks:
+                vals = {
+                    'sla_date': new_sla_dt,
+                    'priority_date': new_sla_dt,
+                    'sla_manual_override': True,
+                    'sla_override_reason': reason,
+                    'sla_override_note': note,
+                    'sla_override_date': now_dt,
+                    'sla_override_user_id': user_id,
+                }
+                if not getattr(p, 'sla_original_date', False) and p.sla_date:
+                    vals['sla_original_date'] = p.sla_date
+                p.write(vals)
+                try:
+                    p.message_post(body=msg)
+                except Exception:
+                    pass
+
+            if picks and hasattr(picks[0], '_compute_sla_priority'):
+                for p in picks:
+                    p._compute_sla_priority()
+
+            if so and so.exists():
+                so_vals = {
+                    'sla_manual_override': True,
+                    'sla_override_reason': reason,
+                    'sla_override_note': note,
+                    'sla_override_date': now_dt,
+                    'sla_override_user_id': user_id,
+                }
+                so.write(so_vals)
+                try:
+                    so.message_post(body=msg)
+                except Exception:
+                    pass
+
+            # Crear log WMDS
+            if 'wmds.log' in env:
+                try:
+                    for p in (picks or [None]):
+                        env['wmds.log'].sudo().create({
+                            'stock_picking': p.id if p else False,
+                            'sale_order': so.id if so else False,
+                            'user': user_id,
+                            'date': now_dt,
+                            'log': f"SLA Empujado/Reasignado a {new_sla_str}. Motivo: {reason_lbl}."
+                        })
+                except Exception:
+                    pass
+
+            return {'success': True, 'message': f"SLA actualizado exitosamente a {new_sla_str}"}
+        except Exception as e:
+            _logger.error(f"Error reassigning SLA: {e}", exc_info=True)
+            return {'error': {'message': str(e)}}
+
+    @http.route(
+        '/wmds/v2/engine/export_order_channel_excel',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def export_order_channel_excel(self, **kw):
+        """
+        Exporta a Excel los datos actuales de la pestaña SLA o de Ejecución de Almacén.
+        """
+        try:
+            env = request.env
+            tab = kw.get('tab') or 'sla'
+            date_from = (kw.get('date_from') or '').strip()
+            date_to = (kw.get('date_to') or '').strip()
+            channel_filter = (kw.get('channel_filter') or 'all').strip()
+            status_filter = (kw.get('status_filter') or 'all').strip()
+            fulfillment_filter = (kw.get('fulfillment_filter') or 'all').strip()
+            matiz_mode = (kw.get('matiz_mode') or 'by_sale').strip()
+            stage_filter = (kw.get('stage_filter') or 'all').strip().upper()
+            query = (kw.get('query') or '').strip()
+
+            output_stream = io.BytesIO()
+            wb = xlsxwriter.Workbook(output_stream, {'in_memory': True})
+
+            fmt_title = wb.add_format({'bold': True, 'font_size': 14, 'font_color': '#1e293b'})
+            fmt_subtitle = wb.add_format({'font_size': 10, 'font_color': '#64748b'})
+            fmt_header = wb.add_format({'bold': True, 'bg_color': '#1e3a8a', 'font_color': '#ffffff', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 10})
+            fmt_cell = wb.add_format({'border': 1, 'align': 'left', 'valign': 'vcenter', 'font_size': 9})
+            fmt_cell_center = wb.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 9})
+
+            if tab == 'sla':
+                ws = wb.add_worksheet('SLA Pedidos')
+                ws.write(0, 0, "REPORTE DE SLA DE PEDIDOS - WMDS", fmt_title)
+                ws.write(1, 0, f"Generado: {fields.Datetime.now().strftime('%d/%m/%Y %H:%M:%S')} (UTC) | Canal: {channel_filter} | Estatus: {status_filter}", fmt_subtitle)
+
+                headers = [
+                    "Orden de Venta", "Albarán", "Canal", "Fulfillment", "Paquetería", 
+                    "No. Guía", "Estado Albarán", "Ingreso a Odoo (CDMX)", "Fecha SLA Límite", 
+                    "Nivel SLA", "Aviso SLA", "SLA Reasignado", "Motivo Reasignación", "Último Log WMDS"
+                ]
+                for col_idx, h in enumerate(headers):
+                    ws.write(3, col_idx, h, fmt_header)
+
+                res_query = self.order_channel_query(
+                    page=1, limit=5000,
+                    date_from=date_from, date_to=date_to,
+                    channel_filter=channel_filter, status_filter=status_filter,
+                    query=query
+                )
+                rows = res_query.get('results', [])
+                for row_idx, r in enumerate(rows, start=4):
+                    ws.write(row_idx, 0, r.get('sale_order_name') or '', fmt_cell)
+                    ws.write(row_idx, 1, r.get('name') or '', fmt_cell)
+                    ws.write(row_idx, 2, r.get('channel') or '', fmt_cell_center)
+                    ws.write(row_idx, 3, (r.get('fulfillment') or 'FBM').upper(), fmt_cell_center)
+                    ws.write(row_idx, 4, r.get('carrier') or '', fmt_cell)
+                    ws.write(row_idx, 5, r.get('carrier_tracking_ref') or '', fmt_cell)
+                    ws.write(row_idx, 6, r.get('state') or '', fmt_cell_center)
+                    ws.write(row_idx, 7, r.get('create_date_local') or '', fmt_cell_center)
+                    ws.write(row_idx, 8, r.get('sla_date') or '', fmt_cell_center)
+                    ws.write(row_idx, 9, r.get('sla_priority_level') or '', fmt_cell_center)
+                    ws.write(row_idx, 10, r.get('sla_priority_label') or '', fmt_cell)
+                    ws.write(row_idx, 11, 'SÍ' if r.get('sla_manual_override') else 'NO', fmt_cell_center)
+                    ws.write(row_idx, 12, r.get('sla_override_reason_label') or '', fmt_cell)
+                    ws.write(row_idx, 13, r.get('latest_wmds_log') or '', fmt_cell)
+
+                col_widths = [18, 18, 16, 12, 18, 20, 14, 20, 20, 14, 28, 14, 25, 40]
+                for c_i, w in enumerate(col_widths):
+                    ws.set_column(c_i, c_i, w)
+
+                filename = f"WMDs_SLA_Pedidos_{fields.Date.today()}.xlsx"
+
+            else:
+                res_exec = self.executed_operations_query(
+                    page=1, limit=5000,
+                    date_from=date_from, date_to=date_to,
+                    channel_filter=channel_filter,
+                    fulfillment_filter=fulfillment_filter,
+                    matiz_mode=matiz_mode,
+                    stage_filter=stage_filter,
+                    query=query
+                )
+                rows = res_exec.get('results', [])
+
+                if matiz_mode == 'by_stage':
+                    ws = wb.add_worksheet('Operaciones Por Etapa')
+                    ws.write(0, 0, "OPERACIONES DE ALMACÉN (POR ETAPA)", fmt_title)
+                    ws.write(1, 0, f"Rango: {date_from} a {date_to} | Canal: {channel_filter} | Etapa: {stage_filter} | Fulfillment: {fulfillment_filter}", fmt_subtitle)
+                    headers = ["Albarán", "Etapa", "Fecha Hecho (CDMX)", "Orden Venta", "Canal", "Fulfillment", "Cliente", "Ola / Batch", "Operador", "Paquetería", "Guía"]
+                    for col_idx, h in enumerate(headers):
+                        ws.write(3, col_idx, h, fmt_header)
+                    for row_idx, r in enumerate(rows, start=4):
+                        ws.write(row_idx, 0, r.get('name') or '', fmt_cell)
+                        ws.write(row_idx, 1, r.get('stage_label') or r.get('stage') or '', fmt_cell_center)
+                        ws.write(row_idx, 2, r.get('date_done') or '', fmt_cell_center)
+                        ws.write(row_idx, 3, r.get('so_name') or '', fmt_cell)
+                        ws.write(row_idx, 4, r.get('channel') or '', fmt_cell_center)
+                        ws.write(row_idx, 5, (r.get('fulfillment') or 'FBM').upper(), fmt_cell_center)
+                        ws.write(row_idx, 6, r.get('partner_name') or '', fmt_cell)
+                        ws.write(row_idx, 7, r.get('batch_name') or '', fmt_cell)
+                        ws.write(row_idx, 8, r.get('operator_name') or '', fmt_cell)
+                        ws.write(row_idx, 9, r.get('carrier_name') or '', fmt_cell)
+                        ws.write(row_idx, 10, r.get('carrier_tracking_ref') or '', fmt_cell)
+                    col_widths = [18, 14, 20, 18, 16, 12, 24, 16, 20, 18, 20]
+                    for c_i, w in enumerate(col_widths):
+                        ws.set_column(c_i, c_i, w)
+                else:
+                    ws = wb.add_worksheet('Operaciones Por Venta')
+                    ws.write(0, 0, "OPERACIONES DE ALMACÉN (POR VENTA)", fmt_title)
+                    ws.write(1, 0, f"Rango: {date_from} a {date_to} | Canal: {channel_filter} | Fulfillment: {fulfillment_filter}", fmt_subtitle)
+                    headers = ["Orden de Venta", "Canal", "Fulfillment", "Fecha Venta", "Cliente", "Progreso", "Estado WMDS", "Paso Actual", "PICK Albarán", "PICK Hecho", "PACK Albarán", "PACK Hecho", "OUT Albarán", "OUT Hecho", "Paquetería", "Guía"]
+                    for col_idx, h in enumerate(headers):
+                        ws.write(3, col_idx, h, fmt_header)
+                    for row_idx, r in enumerate(rows, start=4):
+                        stg = r.get('stages', {})
+                        p_stg = stg.get('pick', {})
+                        pk_stg = stg.get('pack', {})
+                        o_stg = stg.get('out', {})
+                        ws.write(row_idx, 0, r.get('so_name') or '', fmt_cell)
+                        ws.write(row_idx, 1, r.get('channel') or '', fmt_cell_center)
+                        ws.write(row_idx, 2, (r.get('fulfillment') or 'FBM').upper(), fmt_cell_center)
+                        ws.write(row_idx, 3, r.get('date_order') or '', fmt_cell_center)
+                        ws.write(row_idx, 4, r.get('partner_name') or '', fmt_cell)
+                        ws.write(row_idx, 5, r.get('order_progress') or '', fmt_cell_center)
+                        ws.write(row_idx, 6, r.get('wmds_status_name') or '', fmt_cell_center)
+                        ws.write(row_idx, 7, (r.get('summary_step') or '').upper(), fmt_cell_center)
+                        ws.write(row_idx, 8, p_stg.get('name') or '', fmt_cell)
+                        ws.write(row_idx, 9, p_stg.get('date_done') or '', fmt_cell_center)
+                        ws.write(row_idx, 10, pk_stg.get('name') or '', fmt_cell)
+                        ws.write(row_idx, 11, pk_stg.get('date_done') or '', fmt_cell_center)
+                        ws.write(row_idx, 12, o_stg.get('name') or '', fmt_cell)
+                        ws.write(row_idx, 13, o_stg.get('date_done') or '', fmt_cell_center)
+                        ws.write(row_idx, 14, r.get('carrier_name') or '', fmt_cell)
+                        ws.write(row_idx, 15, o_stg.get('carrier_tracking_ref') or '', fmt_cell)
+                    col_widths = [18, 16, 12, 18, 24, 14, 18, 12, 16, 18, 16, 18, 16, 18, 18, 20]
+                    for c_i, w in enumerate(col_widths):
+                        ws.set_column(c_i, c_i, w)
+
+                filename = f"WMDs_Operaciones_Almacen_{fields.Date.today()}.xlsx"
+
+            wb.close()
+            output_stream.seek(0)
+            xlsx_base64 = base64.b64encode(output_stream.read()).decode('utf-8')
+
+            return {
+                'ok': True,
+                'xlsx_file': xlsx_base64,
+                'filename': filename,
+                'message': f"Reporte Excel generado exitosamente ({filename})"
+            }
+        except Exception as e:
+            _logger.error(f"Error generando reporte Excel WMDS: {e}", exc_info=True)
+            return {'error': {'message': str(e)}}
+

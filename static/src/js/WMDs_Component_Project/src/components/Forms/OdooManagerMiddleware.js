@@ -542,6 +542,8 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             save_mysql_config: {url: '/wmds/v2/engine/save/mysql_config', method: 'POST'},
             test_mysql_connection: {url: '/wmds/v2/engine/test/mysql_connection', method: 'POST'},
             sync_mysql_sla: {url: '/wmds/v2/engine/sync/mysql_sla', method: 'POST'},
+            export_order_channel_excel: {url: '/wmds/v2/engine/export_order_channel_excel', method: 'POST'},
+            reassign_sla: {url: '/wmds/v2/engine/reassign_sla', method: 'POST'},
         };
 
 

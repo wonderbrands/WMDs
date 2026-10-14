@@ -77,6 +77,7 @@
       </div>
 
       <!-- Sub-controls for Execution Tab (Matiz Switcher and Stage Chips) -->
+      <!-- Sub-controls for Execution Tab (Matiz Switcher, Stage Chips, Fulfillment Filter) -->
       <div v-if="currentMainTab === 'execution'" class="execution-toolbar-sub">
         <div class="matiz-switcher">
           <button 
@@ -106,9 +107,34 @@
             {{ stg.label }}
           </button>
         </div>
+
+        <!-- Fulfillment Filter (Drop vs Full) -->
+        <div class="fulfillment-switcher">
+          <button 
+            class="chip-button"
+            :class="{ active: fulfillmentFilter === 'all' }"
+            @click="setFulfillmentFilter('all')"
+          >
+            Todos
+          </button>
+          <button 
+            class="chip-button"
+            :class="{ active: fulfillmentFilter === 'drop' }"
+            @click="setFulfillmentFilter('drop')"
+          >
+            <i class="fa fa-home mr-1"></i> Drop (FBM)
+          </button>
+          <button 
+            class="chip-button"
+            :class="{ active: fulfillmentFilter === 'full' }"
+            @click="setFulfillmentFilter('full')"
+          >
+            <i class="fa fa-cubes mr-1"></i> Full (FBC/FBF)
+          </button>
+        </div>
       </div>
 
-      <!-- Channel Select, View Mode & Refresh -->
+      <!-- Channel Select, View Mode, Date Range & Actions -->
       <div class="channel-controls">
         <select v-model="activeChannel" @change="onChannelChange" class="custom-select">
           <option value="all">Todos los Canales {{ currentMainTab === 'sla' && globalOldestDate ? `(${globalOldestDate})` : '' }}</option>
@@ -117,20 +143,27 @@
           </option>
         </select>
 
-        <input
-          v-model="dateFrom"
-          type="date"
-          class="custom-select date-filter"
-          @change="onDateChange"
-          title="Fecha desde"
-        />
-        <input
-          v-model="dateTo"
-          type="date"
-          class="custom-select date-filter"
-          @change="onDateChange"
-          title="Fecha hasta"
-        />
+        <!-- Date Range Filter with Explicit Labels -->
+        <div class="date-filter-group">
+          <span class="date-filter-label">Desde:</span>
+          <input
+            v-model="dateFrom"
+            type="date"
+            class="custom-select date-filter"
+            @change="onDateChange"
+            title="Fecha desde"
+          />
+        </div>
+        <div class="date-filter-group">
+          <span class="date-filter-label">Hasta:</span>
+          <input
+            v-model="dateTo"
+            type="date"
+            class="custom-select date-filter"
+            @change="onDateChange"
+            title="Fecha hasta"
+          />
+        </div>
 
         <!-- View Mode Switcher -->
         <div class="view-mode-toggle">
@@ -151,6 +184,17 @@
             <i class="fa fa-list"></i>
           </button>
         </div>
+
+        <!-- Excel Export Button -->
+        <button 
+          class="btn-export-excel" 
+          @click="exportToExcel" 
+          :disabled="isExporting" 
+          title="Exportar datos actuales a Excel (.xlsx)"
+        >
+          <i class="fa fa-file-excel-o mr-1" :class="{'fa-spin': isExporting}"></i>
+          <span>Excel</span>
+        </button>
 
         <button class="btn-refresh" @click="fetchAll" title="Actualizar Datos">
           <i class="fa fa-refresh" :class="{'fa-spin': isRefreshing}"></i>
@@ -182,27 +226,43 @@
       </div>
     </div>
 
-    <!-- Execution Metrics Cards (Execution Tab) -->
+    <!-- Execution Metrics Cards (Execution Tab) - Interactivas y Deduplicadas -->
     <div v-if="currentMainTab === 'execution'" class="metrics-bar">
-      <div class="metric-card" title="Albaranes PICK completados (state = done) en el rango de fechas seleccionado (hora CDMX).">
+      <div 
+        class="metric-card metric-clickable" 
+        :class="{ active: matizMode === 'by_stage' && stageFilter === 'PICK' }"
+        @click="filterByStageMetric('PICK')"
+        title="Albaranes PICK completados en el rango. Clic para filtrar albaranes de recolección."
+      >
         <div class="metric-value text-primary">{{ executedMetrics.picked_count }}</div>
         <div class="metric-label"><i class="fa fa-cube mr-1"></i> Pickeados</div>
       </div>
-      <div class="metric-card" title="Albaranes PACK completados (state = done) en el rango de fechas seleccionado (hora CDMX).">
+      <div 
+        class="metric-card metric-clickable" 
+        :class="{ active: matizMode === 'by_stage' && stageFilter === 'PACK' }"
+        @click="filterByStageMetric('PACK')"
+        title="Albaranes PACK completados en el rango. Clic para filtrar albaranes de empaque."
+      >
         <div class="metric-value text-info">{{ executedMetrics.packed_count }}</div>
         <div class="metric-label"><i class="fa fa-archive mr-1"></i> Empacados</div>
       </div>
-      <div class="metric-card" title="Albaranes OUT completados (state = done) en el rango de fechas seleccionado (hora CDMX).">
-        <div class="metric-value metric-sent">{{ executedMetrics.dispatched_count }}</div>
-        <div class="metric-label"><i class="fa fa-truck mr-1"></i> Despachados</div>
+      <div 
+        class="metric-card metric-clickable" 
+        :class="{ active: matizMode === 'by_stage' && stageFilter === 'OUT' }"
+        @click="filterByStageMetric('OUT')"
+        title="Órdenes de venta con albarán OUT completado en el rango. Clic para filtrar albaranes de despacho."
+      >
+        <div class="metric-value metric-sent">{{ executedMetrics.orders_dispatched_count }}</div>
+        <div class="metric-label"><i class="fa fa-truck mr-1"></i> Órdenes Despachadas</div>
       </div>
-      <div class="metric-card" title="Total de órdenes de venta con albaranes completados en el rango.">
+      <div 
+        class="metric-card metric-clickable" 
+        :class="{ active: matizMode === 'by_sale' }"
+        @click="filterByStageMetric('ALL_SALES')"
+        title="Total de órdenes de venta procesadas en el rango. Clic para ver el listado de ventas."
+      >
         <div class="metric-value">{{ executedMetrics.total_orders_touched }}</div>
         <div class="metric-label"><i class="fa fa-check-square-o mr-1"></i> Órdenes Procesadas</div>
-      </div>
-      <div class="metric-card" title="Órdenes de venta con albarán OUT completado en el rango.">
-        <div class="metric-value metric-sent">{{ executedMetrics.orders_dispatched_count }}</div>
-        <div class="metric-label"><i class="fa fa-flag-checkered mr-1"></i> Órdenes Despachadas</div>
       </div>
     </div>
 
@@ -228,12 +288,31 @@
             class="order-data-card"
             :class="{'card-alert-critical': ord.sla_priority_level === 'critical_1h' || ord.sla_priority_level === 'overdue'}"
           >
-            <!-- Top Row: Order Name & Channel -->
+            <!-- Top Row: Order Name, Channel & Actions -->
             <div class="card-row-top">
               <span class="so-number">{{ ord.sale_order_name || ord.name }}</span>
-              <span class="channel-pill" :class="getChannelClass(ord.channel)">
-                {{ ord.channel || 'Directo' }}
-              </span>
+              <div class="top-badges">
+                <span v-if="ord.fulfillment" class="fulfillment-pill mr-1">
+                  {{ ord.fulfillment.toUpperCase() }}
+                </span>
+                <span class="channel-pill" :class="getChannelClass(ord.channel)">
+                  {{ ord.channel || 'Directo' }}
+                </span>
+                <button 
+                  class="btn-reassign-icon ml-1" 
+                  @click.stop="openReassignModal(ord)" 
+                  title="Reasignar / Empujar fecha límite SLA"
+                >
+                  <i class="fa fa-calendar-plus-o"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- Odoo Entry Date Row -->
+            <div v-if="ord.create_date_local" class="odoo-entry-box" title="Fecha y hora de entrada de la venta a Odoo">
+              <i class="fa fa-sign-in mr-1 text-primary"></i>
+              <span class="text-muted">Ingreso a Odoo: </span>
+              <strong>{{ ord.create_date_local }}</strong>
             </div>
 
             <!-- Middle Row: Latest Registered Picking & WMDS Log Hover -->
@@ -276,6 +355,16 @@
                 <span>SLA aún no definido</span>
               </div>
             </div>
+
+            <!-- Manual SLA Override Badge (si fue reasignado) -->
+            <div 
+              v-if="ord.sla_manual_override" 
+              class="manual-override-pill"
+              :title="'Reasignado por: ' + (ord.sla_override_user || 'Usuario') + '\nFecha: ' + (ord.sla_override_date || '') + '\nSLA original: ' + (ord.sla_original_date || 'N/A') + (ord.sla_override_note ? ('\nNota: ' + ord.sla_override_note) : '')"
+            >
+              <i class="fa fa-refresh mr-1 text-warning"></i>
+              <span>Reasignado: {{ ord.sla_override_reason_label || 'Manual' }}</span>
+            </div>
           </div>
         </div>
 
@@ -286,10 +375,12 @@
               <tr>
                 <th>Pedido</th>
                 <th>Canal</th>
+                <th>Ingreso Odoo</th>
                 <th>Último Traslado</th>
                 <th>Paquetería</th>
                 <th>Estado SLA</th>
                 <th>Límite SLA (México)</th>
+                <th>Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -303,6 +394,16 @@
                   <span class="channel-pill" :class="getChannelClass(ord.channel)">
                     {{ ord.channel || 'Directo' }}
                   </span>
+                  <span v-if="ord.fulfillment" class="fulfillment-subpill ml-1">
+                    {{ ord.fulfillment.toUpperCase() }}
+                  </span>
+                </td>
+                <td>
+                  <span v-if="ord.create_date_local" class="odoo-entry-text" title="Entrada a Odoo">
+                    <i class="fa fa-sign-in mr-1 text-muted"></i>
+                    {{ ord.create_date_local }}
+                  </span>
+                  <span v-else class="text-muted">-</span>
                 </td>
                 <td>
                   <span 
@@ -330,12 +431,30 @@
                     <span>{{ ord.sla_priority_label || 'Programado' }}</span>
                   </div>
                   <span v-else class="text-muted font-italic">Sin SLA</span>
+
+                  <div 
+                    v-if="ord.sla_manual_override" 
+                    class="manual-override-table-tag mt-1"
+                    :title="'Reasignado por ' + (ord.sla_override_user || 'Usuario') + (ord.sla_override_note ? (': ' + ord.sla_override_note) : '')"
+                  >
+                    <i class="fa fa-refresh mr-1 text-warning"></i>
+                    {{ ord.sla_override_reason_label || 'Reasignado' }}
+                  </div>
                 </td>
                 <td>
                   <span v-if="ord.sla_date" class="sla-timestamp-table">
                     {{ formatSlaTime(ord.sla_date, ord.sla_timezone) }}
                   </span>
                   <span v-else class="text-muted">-</span>
+                </td>
+                <td>
+                  <button 
+                    class="btn-action-reassign" 
+                    @click.stop="openReassignModal(ord)" 
+                    title="Reasignar / Empujar fecha límite SLA"
+                  >
+                    <i class="fa fa-calendar-plus-o mr-1"></i> Empujar
+                  </button>
                 </td>
               </tr>
             </tbody>
@@ -392,9 +511,14 @@
             >
               <div class="card-row-top">
                 <span class="so-number">{{ so.so_name }}</span>
-                <span class="channel-pill" :class="getChannelClass(so.channel)">
-                  {{ so.channel }}
-                </span>
+                <div>
+                  <span v-if="so.fulfillment" class="fulfillment-pill mr-1">
+                    {{ so.fulfillment.toUpperCase() }}
+                  </span>
+                  <span class="channel-pill" :class="getChannelClass(so.channel)">
+                    {{ so.channel }}
+                  </span>
+                </div>
               </div>
               <div class="card-row-sub">
                 <span class="text-muted"><i class="fa fa-user mr-1"></i>{{ so.partner_name || 'Cliente' }}</span>
@@ -446,6 +570,7 @@
                 <tr>
                   <th>Pedido</th>
                   <th>Canal</th>
+                  <th>Fulfillment</th>
                   <th>Cliente</th>
                   <th>Estado WMDS</th>
                   <th>Fase Pick</th>
@@ -457,6 +582,12 @@
                 <tr v-for="so in executedResults" :key="so.sale_id">
                   <td><strong>{{ so.so_name }}</strong></td>
                   <td><span class="channel-pill" :class="getChannelClass(so.channel)">{{ so.channel }}</span></td>
+                  <td>
+                    <span v-if="so.fulfillment" class="fulfillment-subpill">
+                      {{ so.fulfillment.toUpperCase() }}
+                    </span>
+                    <span v-else class="text-muted">-</span>
+                  </td>
                   <td>{{ so.partner_name }}</td>
                   <td>
                     <span class="wmds-badge" :class="'wmds-' + (so.wmds_status_value || 'default')">
@@ -500,6 +631,7 @@
                 <th>Albarán</th>
                 <th>Pedido</th>
                 <th>Canal</th>
+                <th>Fulfillment</th>
                 <th>Lote Batch / Operador</th>
                 <th>Paquetería & Guía</th>
                 <th>Estado WMDS</th>
@@ -516,6 +648,12 @@
                 <td><code>{{ item.name }}</code></td>
                 <td><strong>{{ item.so_name }}</strong></td>
                 <td><span class="channel-pill" :class="getChannelClass(item.channel)">{{ item.channel }}</span></td>
+                <td>
+                  <span v-if="item.fulfillment" class="fulfillment-subpill">
+                    {{ item.fulfillment.toUpperCase() }}
+                  </span>
+                  <span v-else class="text-muted">-</span>
+                </td>
                 <td>
                   <div>
                     <span v-if="item.batch_name" class="batch-badge mr-1"><i class="fa fa-tags mr-1"></i>{{ item.batch_name }}</span>
@@ -564,6 +702,71 @@
           </div>
         </div>
       </div>
+
+    <!-- Reassign SLA Modal -->
+    <div v-if="showReassignModal" class="modal-backdrop" @click.self="closeReassignModal">
+      <div class="modal-card reassign-modal-card">
+        <div class="modal-header">
+          <h3 class="modal-title">
+            <i class="fa fa-clock-o mr-2 text-warning"></i>Reasignar / Empujar SLA Manualmente
+          </h3>
+          <button class="btn-modal-close" @click="closeReassignModal"><i class="fa fa-times"></i></button>
+        </div>
+
+        <div class="modal-body" v-if="reassignTarget">
+          <div class="reassign-target-summary mb-3 p-3 bg-light rounded border">
+            <div><strong>Orden / Picking:</strong> {{ reassignTarget.sale_order_name || reassignTarget.sale_name || reassignTarget.name }} <span v-if="(reassignTarget.sale_order_name || reassignTarget.sale_name) && reassignTarget.name">({{ reassignTarget.name }})</span></div>
+            <div><strong>Canal / Marketplace:</strong> {{ reassignTarget.channel_label || reassignTarget.channel || 'N/A' }}</div>
+            <div><strong>SLA Actual:</strong> {{ reassignTarget.sla_display || formatSlaTime(reassignTarget.sla_date, reassignTarget.sla_timezone) || 'Sin SLA' }}</div>
+          </div>
+
+          <form @submit.prevent="saveReassignSla" class="reassign-form">
+            <div class="form-group mb-3">
+              <label class="form-label font-weight-bold">Nueva Fecha / Hora Límite SLA <span class="text-danger">*</span></label>
+              <input 
+                type="datetime-local" 
+                class="form-control" 
+                v-model="reassignForm.new_sla_date" 
+                required 
+              />
+              <small class="form-text text-muted">Hora local de entrega límite estimada para no penalizar SLA.</small>
+            </div>
+
+            <div class="form-group mb-3">
+              <label class="form-label font-weight-bold">Motivo del Empuje <span class="text-danger">*</span></label>
+              <select class="form-control" v-model="reassignForm.reason" required>
+                <option value="no_space">Falta de espacio en unidad de transporte / colecta</option>
+                <option value="carrier_delay">Demora / Incidencia de paquetería / transportista</option>
+                <option value="warehouse_delay">Operación de almacén reprogramada</option>
+                <option value="customer_request">Solicitud de cliente / comprador</option>
+                <option value="other">Otro motivo</option>
+              </select>
+            </div>
+
+            <div class="form-group mb-3">
+              <label class="form-label font-weight-bold">Nota / Justificación Adicional</label>
+              <textarea 
+                class="form-control" 
+                v-model="reassignForm.note" 
+                rows="3" 
+                placeholder="Detalle el motivo del aplazamiento..."
+              ></textarea>
+            </div>
+
+            <div class="modal-footer d-flex justify-content-end gap-2 pt-3 border-top">
+              <button type="button" class="btn btn-secondary mr-2" @click="closeReassignModal" :disabled="isReassigning">
+                Cancelar
+              </button>
+              <button type="submit" class="btn btn-primary" :disabled="isReassigning">
+                <i v-if="isReassigning" class="fa fa-spinner fa-spin mr-1"></i>
+                <i v-else class="fa fa-check mr-1"></i>
+                Confirmar Reasignación
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
 
     <!-- SLA Configuration Modal -->
     <div v-if="showSlaModal" class="modal-backdrop" @click.self="closeSlaModal">
@@ -702,11 +905,21 @@ export default {
       currentMainTab: "sla", // "sla" | "execution"
       matizMode: "by_sale", // "by_sale" | "by_stage"
       stageFilter: "all", // "all" | "PICK" | "PACK" | "OUT"
+      fulfillmentFilter: "all", // "all" | "fbm" | "full"
       activeStatus: "all",
       activeChannel: "all",
       viewMode: "grid", // "grid" o "list"
       dateFrom: "",
       dateTo: "",
+      isExporting: false,
+      showReassignModal: false,
+      reassignTarget: null,
+      isReassigning: false,
+      reassignForm: {
+        new_sla_date: "",
+        reason: "no_space",
+        note: ""
+      },
       metrics: {
         pedidos: 0,
         enviados: 0,
@@ -959,12 +1172,139 @@ export default {
         console.error("Error al obtener métricas SLA:", e);
       }
     },
+    setFulfillmentFilter(val) {
+      if (this.fulfillmentFilter === val) return;
+      this.fulfillmentFilter = val;
+      this.executedCurrentPage = 1;
+      this.fetchExecutionMetrics();
+      this.fetchExecutionData();
+    },
+    filterByStageMetric(metricKey) {
+      if (metricKey === 'ALL_SALES') {
+        this.matizMode = 'by_sale';
+        this.stageFilter = 'all';
+      } else {
+        this.matizMode = 'by_stage';
+        if (this.stageFilter === metricKey) {
+          this.stageFilter = 'all';
+        } else {
+          this.stageFilter = metricKey;
+        }
+      }
+      this.executedCurrentPage = 1;
+      this.fetchExecutionData();
+    },
+    async exportToExcel() {
+      this.isExporting = true;
+      try {
+        const params = {
+          tab: this.currentMainTab,
+          query: this.searchQuery,
+          channel_filter: this.activeChannel,
+          date_from: this.dateFrom,
+          date_to: this.dateTo
+        };
+        if (this.currentMainTab === 'sla') {
+          params.status_filter = this.activeStatus;
+        } else {
+          params.matiz_mode = this.matizMode;
+          params.stage_filter = this.stageFilter;
+          params.fulfillment_filter = this.fulfillmentFilter;
+        }
+
+        const res = await this.store.callOdooSilent("export_order_channel_excel", "", params);
+        if (res && (res.ok || res.success) && res.xlsx_file) {
+          const byteCharacters = atob(res.xlsx_file);
+          const byteNumbers = new Array(byteCharacters.length);
+          for (let i = 0; i < byteCharacters.length; i++) {
+            byteNumbers[i] = byteCharacters.charCodeAt(i);
+          }
+          const byteArray = new Uint8Array(byteNumbers);
+          const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.style.display = "none";
+          a.href = url;
+          a.download = res.filename || `export_${this.currentMainTab}.xlsx`;
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+          a.remove();
+        } else {
+          alert((res && (res.error?.message || res.error)) || "Error al exportar archivo Excel");
+        }
+      } catch (e) {
+        console.error("Error al exportar Excel:", e);
+        alert("Error al exportar archivo Excel");
+      } finally {
+        this.isExporting = false;
+      }
+    },
+    openReassignModal(item) {
+      this.reassignTarget = item;
+      let defaultDate = "";
+      if (item.sla_date) {
+        try {
+          defaultDate = String(item.sla_date).replace(" ", "T").slice(0, 16);
+        } catch(e) {}
+      }
+      if (!defaultDate) {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        d.setHours(15, 0, 0, 0);
+        defaultDate = d.toISOString().slice(0, 16);
+      }
+      this.reassignForm = {
+        new_sla_date: defaultDate,
+        reason: item.sla_override_reason || "no_space",
+        note: item.sla_override_note || ""
+      };
+      this.showReassignModal = true;
+    },
+    closeReassignModal() {
+      this.showReassignModal = false;
+      this.reassignTarget = null;
+    },
+    async saveReassignSla() {
+      if (!this.reassignTarget || !this.reassignForm.new_sla_date) return;
+      this.isReassigning = true;
+      try {
+        const res = await this.store.callOdooSilent("reassign_sla", "", {
+          picking_id: this.reassignTarget.id,
+          sale_id: this.reassignTarget.sale_id,
+          new_sla_date: this.reassignForm.new_sla_date.replace("T", " "),
+          reason: this.reassignForm.reason,
+          note: this.reassignForm.note
+        });
+        if (res && res.success) {
+          if (this.$toast) {
+            this.$toast.add({
+              severity: "success",
+              summary: "SLA Reasignado",
+              detail: res.message || "SLA reasignado exitosamente",
+              life: 4000
+            });
+          }
+          this.closeReassignModal();
+          this.fetchOrders();
+          this.fetchMetrics();
+        } else {
+          alert((res && (res.error?.message || res.error)) || "Error al reasignar SLA");
+        }
+      } catch (e) {
+        console.error("Error al reasignar SLA:", e);
+        alert("Error al comunicarse con el servidor");
+      } finally {
+        this.isReassigning = false;
+      }
+    },
     async fetchExecutionMetrics() {
       try {
         const res = await this.store.callOdooSilent("executed_operations_metrics", "", {
           date_from: this.dateFrom,
           date_to: this.dateTo,
-          channel_filter: this.activeChannel
+          channel_filter: this.activeChannel,
+          fulfillment_filter: this.fulfillmentFilter
         });
         if (res && res.success) {
           this.executedMetrics = {
@@ -990,6 +1330,7 @@ export default {
           date_to: this.dateTo,
           matiz_mode: this.matizMode,
           stage_filter: this.stageFilter,
+          fulfillment_filter: this.fulfillmentFilter,
           limit: this.executedPageSize,
           page: this.executedCurrentPage
         });
@@ -2182,5 +2523,185 @@ export default {
   align-items: center;
   padding-top: 6px;
   border-top: 1px solid #f1f5f9;
+}
+
+/* Date Filter Labels */
+.date-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.date-filter-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #475569;
+  white-space: nowrap;
+}
+
+/* Excel Export Button */
+.btn-export-excel {
+  background-color: #10b981;
+  color: #ffffff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.btn-export-excel:hover:not(:disabled) {
+  background-color: #059669;
+  transform: translateY(-1px);
+}
+.btn-export-excel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Fulfillment Switcher & Badges */
+.fulfillment-switcher {
+  display: flex;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #f8fafc;
+}
+.fulfillment-btn {
+  background: transparent;
+  border: none;
+  padding: 5px 10px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.fulfillment-btn.active {
+  background-color: #4f46e5;
+  color: #ffffff;
+}
+.fulfillment-pill {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background-color: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+.fulfillment-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background-color: #e2e8f0;
+  color: #334155;
+  text-transform: uppercase;
+}
+
+/* Metric Cards Clickable as Filters */
+.metric-clickable {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  user-select: none;
+}
+.metric-clickable:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+.metric-clickable.active {
+  border-color: #3b82f6 !important;
+  background-color: #eff6ff !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3) !important;
+}
+
+/* Odoo Entry Date */
+.odoo-entry-box {
+  font-size: 0.75rem;
+  color: #475569;
+  padding: 4px 8px;
+  background-color: #f8fafc;
+  border-radius: 4px;
+  border-left: 3px solid #3b82f6;
+  margin: 4px 0 6px 0;
+}
+.odoo-entry-date {
+  font-family: monospace;
+  font-size: 0.78rem;
+  color: #1e293b;
+}
+
+/* SLA Manual Override Badges */
+.manual-override-pill {
+  display: flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #b45309;
+  background-color: #fef3c7;
+  border: 1px dashed #f59e0b;
+  border-radius: 4px;
+  padding: 3px 6px;
+  margin-top: 4px;
+}
+.manual-override-table-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #b45309;
+  background-color: #fef3c7;
+  border: 1px solid #fde68a;
+  border-radius: 3px;
+  padding: 1px 4px;
+  margin-top: 2px;
+}
+
+/* Reassign Action Buttons */
+.btn-reassign-icon {
+  background: transparent;
+  border: 1px solid #cbd5e1;
+  color: #64748b;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-reassign-icon:hover {
+  background-color: #f59e0b;
+  color: #ffffff;
+  border-color: #f59e0b;
+}
+.btn-action-reassign {
+  background-color: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-action-reassign:hover {
+  background-color: #f59e0b;
+  color: #ffffff;
+}
+
+/* Reassign Modal Card */
+.reassign-modal-card {
+  max-width: 520px;
+  width: 100%;
+}
+.reassign-target-summary {
+  background-color: #f8fafc;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 </style>
