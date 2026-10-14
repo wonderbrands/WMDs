@@ -21,4 +21,9 @@ access_stock_location_block_wizard_user,stock.location.block.wizard.user,model_s
 access_wmds_queued_tasks_user,wmds.queued_tasks.user,model_wmds_queued_tasks,base.group_user,1,1,1,1
 access_wmds_mysql_config_developer,wmds.mysql.config.developer,model_wmds_mysql_config,group_wmds_developer,1,1,1,1
 access_wmds_mysql_config_manager,wmds.mysql.config.manager,model_wmds_mysql_config,group_wmds_manager,1,1,1,1
+access_scheduled_cycle_count_user,scheduled.cycle.count.user,model_scheduled_cycle_count,base.group_user,1,1,1,1
+access_cycle_count_selected_location_user,cycle.count.selected.location.user,model_cycle_count_selected_location,base.group_user,1,1,1,1
+access_cycle_count_wave_user,cycle.count.wave.user,model_cycle_count_wave,base.group_user,1,1,1,1
+access_cycle_count_line_user,cycle.count.line.user,model_cycle_count_line,base.group_user,1,1,1,1
+access_cycle_count_stock_snapshot_user,cycle.count.stock.snapshot.user,model_cycle_count_stock_snapshot,base.group_user,1,1,1,1
 

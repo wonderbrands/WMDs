@@ -31,6 +31,17 @@ def get_location_sort_key(loc):
         return (0, aisle.upper(), int(pos), int(front), int(level))
     return (1, name.upper(), 0, 0, 0)
 
+def _normalize_loc_key(loc_str):
+    if not loc_str:
+        return ''
+    m = re.search(r'([A-Z]{1,2}-P\d{2}-F\d-N\d)', loc_str, re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+    clean = re.sub(r'^WH/Bloqueado/Ciclico/', '', loc_str)
+    base = clean.split('/')[-1]
+    base = re.sub(r'_DUP.*$', '', base)
+    return base.strip()
+
 class CycleCount(http.Controller):
 
     @http.route('/wmds/v2/engine/get/cycle_counts', type='json', auth='user', methods=['POST'])
@@ -252,6 +263,22 @@ class CycleCount(http.Controller):
                     'location_id': lid,
                 }) for lid in location_ids]
             })
+
+            # Congelar la foto de stock teórico en el momento exacto de creación del ciclo
+            quants = request.env['stock.quant'].sudo().with_context(active_test=False).search([
+                ('location_id', 'child_of', location_ids),
+                ('quantity', '>', 0)
+            ])
+            snapshot_vals = []
+            for q in quants:
+                if q.product_id and q.location_id:
+                    snapshot_vals.append((0, 0, {
+                        'location_id': q.location_id.id,
+                        'product_id': q.product_id.id,
+                        'theoretical_qty': q.quantity,
+                    }))
+            if snapshot_vals:
+                count_obj.write({'snapshot_ids': snapshot_vals})
 
             blocked_parent = request.env.ref('wmds.location_blocked').sudo()
             block_reason_text = f"Conteo Cíclico: {count_obj.name}"
@@ -543,31 +570,51 @@ class CycleCount(http.Controller):
                     }
                 comparison_map[key]['wave_counts'][str(line.wave_id.id)] = line.qty
 
-            # Obtener stock teórico de las ubicaciones
-            quants = request.env['stock.quant'].sudo().with_context(active_test=False).search([
-                ('location_id', 'child_of', loc_ids),
-                ('quantity', '>', 0)
-            ])
-            
-            for q in quants:
-                lid = get_planned_loc_id(q.location_id.id)
-                key = (lid, q.product_id.id)
-                if key not in comparison_map:
-                    planned_loc = request.env['stock.location'].sudo().browse(lid)
-                    comparison_map[key] = {
-                        'location_id': lid,
-                        'location_name': planned_loc.complete_name,
-                        'is_blocked': loc_block_map.get(lid, False),
-                        'has_reservation': lid in res_info_map,
-                        'reservation_info': ", ".join(res_info_map.get(lid, [])),
-                        'product_id': q.product_id.id,
-                        'product_sku': q.product_id.default_code or 'N/A',
-                        'product_name': q.product_id.name,
-                        'barcode': q.product_id.barcode or 'N/A',
-                        'wave_counts': {str(w.id): '-' for w in waves},
-                        'theoretical_qty': 0,
-                    }
-                comparison_map[key]['theoretical_qty'] += q.quantity
+            # Obtener stock teórico de las ubicaciones: usar snapshot congelado si existe, o consultar stock.quant
+            if count.snapshot_ids:
+                for s in count.snapshot_ids:
+                    lid = get_planned_loc_id(s.location_id.id)
+                    key = (lid, s.product_id.id)
+                    if key not in comparison_map:
+                        planned_loc = request.env['stock.location'].sudo().browse(lid)
+                        comparison_map[key] = {
+                            'location_id': lid,
+                            'location_name': planned_loc.complete_name,
+                            'is_blocked': loc_block_map.get(lid, False),
+                            'has_reservation': lid in res_info_map,
+                            'reservation_info': ", ".join(res_info_map.get(lid, [])),
+                            'product_id': s.product_id.id,
+                            'product_sku': s.product_id.default_code or 'N/A',
+                            'product_name': s.product_id.name,
+                            'barcode': s.product_id.barcode or 'N/A',
+                            'wave_counts': {str(w.id): '-' for w in waves},
+                            'theoretical_qty': 0,
+                        }
+                    comparison_map[key]['theoretical_qty'] += s.theoretical_qty
+            else:
+                quants = request.env['stock.quant'].sudo().with_context(active_test=False).search([
+                    ('location_id', 'child_of', loc_ids),
+                    ('quantity', '>', 0)
+                ])
+                for q in quants:
+                    lid = get_planned_loc_id(q.location_id.id)
+                    key = (lid, q.product_id.id)
+                    if key not in comparison_map:
+                        planned_loc = request.env['stock.location'].sudo().browse(lid)
+                        comparison_map[key] = {
+                            'location_id': lid,
+                            'location_name': planned_loc.complete_name,
+                            'is_blocked': loc_block_map.get(lid, False),
+                            'has_reservation': lid in res_info_map,
+                            'reservation_info': ", ".join(res_info_map.get(lid, [])),
+                            'product_id': q.product_id.id,
+                            'product_sku': q.product_id.default_code or 'N/A',
+                            'product_name': q.product_id.name,
+                            'barcode': q.product_id.barcode or 'N/A',
+                            'wave_counts': {str(w.id): '-' for w in waves},
+                            'theoretical_qty': 0,
+                        }
+                    comparison_map[key]['theoretical_qty'] += q.quantity
 
             # Also ensure all locations appear at least once even if empty and not counted
             for loc_id in loc_ids:
@@ -652,7 +699,7 @@ class CycleCount(http.Controller):
 
             # 2. Si está cerrado/finalizado, obtener ajustes registrados en wmds.log
             # Pattern: AJUSTE DE INVENTARIO - Producto: [SKU] Name | Ubicación: Loc | Cant. Anterior: X | Cant. Nueva: Y
-            adj_map = {} # (location_complete_name, sku) -> {'old_qty': float, 'new_qty': float, 'diff': float}
+            adj_map = {} # (location_normalized, sku) -> {'old_qty': float, 'new_qty': float, 'diff': float}
             if is_closed:
                 adj_logs = request.env['wmds.log'].sudo().search([
                     ('cycle_count', '=', count.id),
@@ -666,14 +713,11 @@ class CycleCount(http.Controller):
                     if m:
                         sku_match, name_match, loc_match, old_q, new_q = m.groups()
                         parsed_sku = (sku_match or '').strip()
-                        parsed_loc = (loc_match or '').strip()
-                        # Normalizar si la ubicación en el log tiene prefijo WH/Bloqueado/Ciclico
-                        norm_loc = re.sub(r'^WH/Bloqueado/Ciclico/', '', parsed_loc)
+                        norm_loc = _normalize_loc_key(loc_match)
                         o_q = float(old_q)
                         n_q = float(new_q)
                         diff_q = n_q - o_q
-                        key = (norm_loc, parsed_sku)
-                        adj_map[key] = {
+                        adj_map[(norm_loc, parsed_sku)] = {
                             'old_qty': o_q,
                             'new_qty': n_q,
                             'diff': diff_q
@@ -778,6 +822,30 @@ class CycleCount(http.Controller):
                 barcode = item.get('barcode', '')
                 prod_name = item.get('product_name', '')
                 theo_qty = float(item.get('theoretical_qty') or 0.0)
+                final_qty = theo_qty
+                diff_qty = 0.0
+
+                if is_closed:
+                    loc_norm = _normalize_loc_key(loc_name)
+                    adj_info = adj_map.get((loc_norm, sku))
+
+                    if adj_info:
+                        # Si hubo ajuste explícito en el conteo, usar las fotos registradas en el log
+                        theo_qty = adj_info['old_qty']
+                        final_qty = adj_info['new_qty']
+                        diff_qty = adj_info['diff']
+                    else:
+                        # NO hubo ajuste para esta fila en este ciclo
+                        diff_qty = 0.0
+                        if count.snapshot_ids:
+                            # Conteo nuevo con foto de stock congelada
+                            final_qty = theo_qty
+                        else:
+                            # Fallback para conteos viejos sin snapshot_ids (ej. CC001358):
+                            # Al no haber ajuste, la cantidad que validó el analista fue la de cierre
+                            valid_counts = [float(v) for v in item.get('wave_counts', {}).values() if v != '-' and v is not None]
+                            final_qty = valid_counts[-1] if valid_counts else theo_qty
+                            theo_qty = final_qty
 
                 ws_summary.write(row_num, 0, loc_name, fmt_cell)
                 ws_summary.write(row_num, 1, sku, fmt_cell_center)
@@ -799,25 +867,6 @@ class CycleCount(http.Controller):
                 col_ptr += 1
 
                 if is_closed:
-                    # Determinar si hubo ajuste registrado en log
-                    # Buscar por loc_name base (ej. L-P41-F1-N1) y SKU
-                    loc_base = loc_name.split('/')[-1] if loc_name else ''
-                    adj_info = None
-                    for (a_loc, a_sku), info in adj_map.items():
-                        if a_sku == sku and (a_loc.endswith(loc_base) or loc_base in a_loc):
-                            adj_info = info
-                            break
-
-                    if adj_info:
-                        final_qty = adj_info['new_qty']
-                        diff_qty = adj_info['diff']
-                    else:
-                        # Si no hubo ajuste explícito en log, la cantidad buena fue el conteo acordado o el teórico
-                        # Revisar si hay conteo de ola válido
-                        valid_counts = [float(v) for v in item.get('wave_counts', {}).values() if v != '-' and v is not None]
-                        final_qty = valid_counts[-1] if valid_counts else theo_qty
-                        diff_qty = final_qty - theo_qty
-
                     ws_summary.write(row_num, col_ptr, final_qty, fmt_cell_num)
                     col_ptr += 1
 

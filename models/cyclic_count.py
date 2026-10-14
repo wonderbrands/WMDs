@@ -15,6 +15,7 @@ class ScheduledCycleCount(models.Model):
     ], default='created', string="Estado")
     selected_location_ids = fields.One2many("cycle.count.selected.location", "cycle_count_id", string="Ubicaciones Planificadas")
     wave_ids = fields.One2many("cycle.count.wave", "cycle_count_id", string="Olas de Conteo")
+    snapshot_ids = fields.One2many("cycle.count.stock.snapshot", "cycle_count_id", string="Foto de Stock Teórico Inicial")
     wmds_status = fields.Many2one('wmds.stock.status', string='WMDS Status', readonly=True)
     wmds_log = fields.One2many("wmds.log", "cycle_count", string="WMDS Log", readonly=True)
 
@@ -156,3 +157,13 @@ class CycleCountLine(models.Model):
             if line.wave_id and line.wave_id.cycle_count_id:
                 line.wave_id.cycle_count_id._eval_wmds_status()
         return res
+
+class CycleCountStockSnapshot(models.Model):
+    _name = "cycle.count.stock.snapshot"
+    _description = "Foto de Stock Teórico al Iniciar Conteo Cíclico"
+    _order = "id asc"
+
+    cycle_count_id = fields.Many2one("scheduled.cycle.count", ondelete="cascade", index=True, string="Conteo Cíclico")
+    location_id = fields.Many2one("stock.location", string="Ubicación", required=True, index=True)
+    product_id = fields.Many2one("product.product", string="Producto", required=True, index=True)
+    theoretical_qty = fields.Float(string="Stock Teórico Inicial", default=0.0)
