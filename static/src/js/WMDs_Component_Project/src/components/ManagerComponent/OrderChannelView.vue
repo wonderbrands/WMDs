@@ -144,26 +144,31 @@
         </select>
 
         <!-- Date Range Filter with Explicit Labels -->
-        <div class="date-filter-group">
+        <div class="date-filter-group" :class="{ 'filter-bypassed': currentMainTab === 'sla' && activeStatus === 'no_sla' }">
           <span class="date-filter-label">Desde:</span>
           <input
             v-model="dateFrom"
             type="date"
             class="custom-select date-filter"
+            :disabled="currentMainTab === 'sla' && activeStatus === 'no_sla'"
             @change="onDateChange"
-            title="Fecha desde"
+            :title="currentMainTab === 'sla' && activeStatus === 'no_sla' ? 'Filtro de fechas omitido para pedidos Sin SLA' : 'Fecha desde'"
           />
         </div>
-        <div class="date-filter-group">
+        <div class="date-filter-group" :class="{ 'filter-bypassed': currentMainTab === 'sla' && activeStatus === 'no_sla' }">
           <span class="date-filter-label">Hasta:</span>
           <input
             v-model="dateTo"
             type="date"
             class="custom-select date-filter"
+            :disabled="currentMainTab === 'sla' && activeStatus === 'no_sla'"
             @change="onDateChange"
-            title="Fecha hasta"
+            :title="currentMainTab === 'sla' && activeStatus === 'no_sla' ? 'Filtro de fechas omitido para pedidos Sin SLA' : 'Fecha hasta'"
           />
         </div>
+        <span v-if="currentMainTab === 'sla' && activeStatus === 'no_sla'" class="badge-bypassed-dates">
+          <i class="fa fa-info-circle mr-1"></i>Sin límite de fecha
+        </span>
 
         <!-- View Mode Switcher -->
         <div class="view-mode-toggle">
@@ -1117,12 +1122,14 @@ export default {
       this.store.loading = true;
       this.isRefreshing = true;
       try {
+        const dateFromParam = (this.currentMainTab === 'sla' && this.activeStatus === 'no_sla') ? '' : this.dateFrom;
+        const dateToParam = (this.currentMainTab === 'sla' && this.activeStatus === 'no_sla') ? '' : this.dateTo;
         const res = await this.store.callOdooSilent("order_channel_query", "", {
           query: this.searchQuery,
           status_filter: this.activeStatus,
           channel_filter: this.activeChannel,
-          date_from: this.dateFrom,
-          date_to: this.dateTo,
+          date_from: dateFromParam,
+          date_to: dateToParam,
           limit: this.pageSize,
           page: this.currentPage
         });
@@ -1197,12 +1204,14 @@ export default {
     async exportToExcel() {
       this.isExporting = true;
       try {
+        const dateFromParam = (this.currentMainTab === 'sla' && this.activeStatus === 'no_sla') ? '' : this.dateFrom;
+        const dateToParam = (this.currentMainTab === 'sla' && this.activeStatus === 'no_sla') ? '' : this.dateTo;
         const params = {
           tab: this.currentMainTab,
           query: this.searchQuery,
           channel_filter: this.activeChannel,
-          date_from: this.dateFrom,
-          date_to: this.dateTo
+          date_from: dateFromParam,
+          date_to: dateToParam
         };
         if (this.currentMainTab === 'sla') {
           params.status_filter = this.activeStatus;
@@ -2530,12 +2539,32 @@ export default {
   display: flex;
   align-items: center;
   gap: 4px;
+  transition: opacity 0.2s ease;
+}
+.date-filter-group.filter-bypassed {
+  opacity: 0.5;
+}
+.date-filter-group.filter-bypassed input {
+  background-color: #f1f5f9;
+  cursor: not-allowed;
 }
 .date-filter-label {
   font-size: 0.78rem;
   font-weight: 600;
   color: #475569;
   white-space: nowrap;
+}
+.badge-bypassed-dates {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #ea580c;
+  background-color: #ffedd5;
+  border: 1px solid #fed7aa;
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
 }
 
 /* Excel Export Button */

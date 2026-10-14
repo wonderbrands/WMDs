@@ -80,7 +80,10 @@ class OrderChannelController(http.Controller):
             page = int(kw.get('page') or 1)
             offset = int(kw.get('offset') or ((page - 1) * limit if page > 1 else 0))
 
-            env = request.env
+            try:
+                env = request.env
+            except Exception:
+                env = kw.get('env')
             client_tz = kw.get('tz')
             if client_tz:
                 env = env(context=dict(env.context, tz=client_tz))
@@ -156,9 +159,12 @@ class OrderChannelController(http.Controller):
 
             # Filtro de fecha sobre el SLA efectivo (último picking sla_date o yuju_due_date),
             # convertido a hora local con offset por canal (parametrizable por marketplace).
-            offset_expr = _channel_offset_sql(env)
-            offset_frag = f"({offset_expr} * interval '1 hour')"
-            if date_from or date_to:
+            # NOTA: Si el filtro es 'no_sla', ignorar filtros de fecha y consultar todas las órdenes sin SLA
+            if status_filter == 'no_sla':
+                so_where.append("lp.sla_date IS NULL AND (s.yuju_due_date IS NULL OR s.yuju_due_date = '')")
+            elif date_from or date_to:
+                offset_expr = _channel_offset_sql(env)
+                offset_frag = f"({offset_expr} * interval '1 hour')"
                 clauses = []
                 if date_from:
                     clauses.append(f"(COALESCE(lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
@@ -243,7 +249,7 @@ class OrderChannelController(http.Controller):
                         except Exception:
                             pass
 
-                if date_from or date_to:
+                if status_filter != 'no_sla' and (date_from or date_to):
                     if not effective:
                         continue
                     off = _channel_utc_offset(env, so.channel)
@@ -371,8 +377,8 @@ class OrderChannelController(http.Controller):
                             sla_level = 'normal'
                             sla_label = 'En tiempo'
                 else:
-                    sla_level = 'normal'
-                    sla_label = ''
+                    sla_level = 'no_sla'
+                    sla_label = 'Sin SLA Definido'
                     sla_dt_str = False
 
                 log_info = None
@@ -1363,9 +1369,10 @@ class OrderChannelController(http.Controller):
                 for col_idx, h in enumerate(headers):
                     ws.write(3, col_idx, h, fmt_header)
 
-                res_query = self.order_channel_query(
+                res_query = self.query_order_channel(
                     page=1, limit=5000,
-                    date_from=date_from, date_to=date_to,
+                    date_from='' if status_filter == 'no_sla' else date_from,
+                    date_to='' if status_filter == 'no_sla' else date_to,
                     channel_filter=channel_filter, status_filter=status_filter,
                     query=query
                 )
