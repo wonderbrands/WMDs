@@ -122,14 +122,14 @@
             :class="{ active: fulfillmentFilter === 'drop' }"
             @click="setFulfillmentFilter('drop')"
           >
-            <i class="fa fa-home mr-1"></i> Drop (FBM)
+            <i class="fa fa-home mr-1"></i> Drop
           </button>
           <button 
             class="chip-button"
             :class="{ active: fulfillmentFilter === 'full' }"
             @click="setFulfillmentFilter('full')"
           >
-            <i class="fa fa-cubes mr-1"></i> Full (FBC/FBF)
+            <i class="fa fa-cubes mr-1"></i> Full
           </button>
         </div>
       </div>

@@ -343,7 +343,8 @@ class OrderChannelController(http.Controller):
             for so, pick, effective in page_entries:
                 so_name = so.name or ''
                 channel = so.channel or ''
-                fulfillment = so.fulfillment if so else ''
+                raw_ful = (getattr(so, 'fulfillment', '') or '') if so else ''
+                fulfillment = 'FULL' if raw_ful in ('fbc', 'fbf', 'full') else 'DROP'
                 yuju_due_date = getattr(so, 'yuju_due_date', False) or False
 
                 # TZ de esta SO según su canal (parametrizable por marketplace)
@@ -825,7 +826,7 @@ class OrderChannelController(http.Controller):
                         'sale_id': r['sale_id'],
                         'so_name': r['so_name'] or 'Sin SO',
                         'channel': r['channel'],
-                        'fulfillment': r['fulfillment'],
+                        'fulfillment': 'FULL' if (r['fulfillment'] or '').lower() in ('fbc', 'fbf', 'full') else 'DROP',
                         'partner_name': r['partner_name'],
                         'batch_name': r['batch_name'],
                         'operator_name': r['operator_name'],
@@ -964,7 +965,7 @@ class OrderChannelController(http.Controller):
                         'sale_id': s_id,
                         'so_name': so['so_name'],
                         'channel': so['channel'],
-                        'fulfillment': so.get('fulfillment') or '',
+                        'fulfillment': 'FULL' if (so.get('fulfillment') or '').lower() in ('fbc', 'fbf', 'full') else 'DROP',
                         'date_order': fields.Datetime.to_string(so['date_order']) if so['date_order'] else '',
                         'partner_name': so['partner_name'],
                         'carrier_name': so['carrier_name'] or out_data.get('carrier_name', ''),
@@ -1381,7 +1382,7 @@ class OrderChannelController(http.Controller):
                     ws.write(row_idx, 0, r.get('sale_order_name') or '', fmt_cell)
                     ws.write(row_idx, 1, r.get('name') or '', fmt_cell)
                     ws.write(row_idx, 2, r.get('channel') or '', fmt_cell_center)
-                    ws.write(row_idx, 3, (r.get('fulfillment') or 'FBM').upper(), fmt_cell_center)
+                    ws.write(row_idx, 3, (r.get('fulfillment') or 'DROP').upper(), fmt_cell_center)
                     ws.write(row_idx, 4, r.get('carrier') or '', fmt_cell)
                     ws.write(row_idx, 5, r.get('carrier_tracking_ref') or '', fmt_cell)
                     ws.write(row_idx, 6, r.get('state') or '', fmt_cell_center)
@@ -1424,7 +1425,7 @@ class OrderChannelController(http.Controller):
                         ws.write(row_idx, 2, r.get('date_done') or '', fmt_cell_center)
                         ws.write(row_idx, 3, r.get('so_name') or '', fmt_cell)
                         ws.write(row_idx, 4, r.get('channel') or '', fmt_cell_center)
-                        ws.write(row_idx, 5, (r.get('fulfillment') or 'FBM').upper(), fmt_cell_center)
+                        ws.write(row_idx, 5, (r.get('fulfillment') or 'DROP').upper(), fmt_cell_center)
                         ws.write(row_idx, 6, r.get('partner_name') or '', fmt_cell)
                         ws.write(row_idx, 7, r.get('batch_name') or '', fmt_cell)
                         ws.write(row_idx, 8, r.get('operator_name') or '', fmt_cell)
@@ -1447,7 +1448,7 @@ class OrderChannelController(http.Controller):
                         o_stg = stg.get('out', {})
                         ws.write(row_idx, 0, r.get('so_name') or '', fmt_cell)
                         ws.write(row_idx, 1, r.get('channel') or '', fmt_cell_center)
-                        ws.write(row_idx, 2, (r.get('fulfillment') or 'FBM').upper(), fmt_cell_center)
+                        ws.write(row_idx, 2, (r.get('fulfillment') or 'DROP').upper(), fmt_cell_center)
                         ws.write(row_idx, 3, r.get('date_order') or '', fmt_cell_center)
                         ws.write(row_idx, 4, r.get('partner_name') or '', fmt_cell)
                         ws.write(row_idx, 5, r.get('order_progress') or '', fmt_cell_center)
