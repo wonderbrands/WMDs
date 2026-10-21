@@ -204,6 +204,9 @@ class WmdsQueuedTasks(models.Model):
         if not bin_storage:
             raise UserError(f"Bin {bin_name} no encontrado")
 
+        if bin_storage.state == 'blocked':
+            raise UserError(f"El BIN {bin_name} está bloqueado. No se pueden ingresar más productos.")
+
         if carrier_id:
             bin_storage.write({'carrier_id': int(carrier_id)})
 

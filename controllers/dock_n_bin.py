@@ -111,6 +111,14 @@ class DockNBin(http.Controller):
                 _logger.error("Faltan datos en move_to_bin")
                 return {'error': 'Missing data'}
 
+            bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
+            if not bin_storage:
+                _logger.error(f"Bin {bin_name} no encontrado")
+                return {'error': 'Bin not found'}
+
+            if bin_storage.state == 'blocked':
+                return {'error': f"El BIN {bin_name} está bloqueado. No se pueden ingresar más productos.", 'ok': False}
+
             # Determine count of items to move
             item_count = 0
             if orders:
@@ -142,10 +150,6 @@ class DockNBin(http.Controller):
                 }
 
             operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
-            bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
-            if not bin_storage:
-                _logger.error(f"Bin {bin_name} no encontrado")
-                return {'error': 'Bin not found'}
 
 
             # Guardar el carrier en el BIN
@@ -354,8 +358,9 @@ class DockNBin(http.Controller):
             if not bin_storage:
                 return {'error': f'El BIN {bin_name} no existe', 'valid': False}
 
-            if purpose == "in" and bin_storage.state == 'blocked':
-                return {'error': f'El BIN {bin_name} ya está ocupado', 'valid': False}
+            # Si no se pasa purpose explícito, por defecto asumimos 'in' a menos que sea vaciado
+            if bin_storage.state == 'blocked' and purpose != 'out' and purpose != 'inspect':
+                return {'error': f'El BIN {bin_name} ya está bloqueado', 'valid': False}
 
             incoming_origin = kw.get("origin")
             if not incoming_origin:
