@@ -264,6 +264,10 @@ export default {
     padding: 1.5rem;
     max-width: 1200px;
     margin: 0 auto;
+    height: 100%;
+    max-height: 100vh;
+    overflow-y: auto;
+    box-sizing: border-box;
 }
 
 .origin-badge {

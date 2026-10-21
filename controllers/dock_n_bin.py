@@ -959,22 +959,54 @@ class DockNBin(http.Controller):
 
     @http.route('/wmds/v2/engine/get/unassigned_ful_records', type='json', auth='user', methods=['POST'], csrf=True)
     def get_unassigned_ful_records(self, **kw):
-        """Retorna batches y pickings validados (state == done) que no tienen BIN asignado"""
+        """Retorna batches y pickings validados (state == done) que no tienen BIN asignado y cuyo DFUL aún no se ha despachado"""
         try:
             records = []
             
+            def check_dful_done(origins, pnames, pickings):
+                # 1. Por enlaces de movimientos (move_dest_ids)
+                dest_picks = pickings.move_ids.move_dest_ids.mapped('picking_id')
+                related_dfuls = dest_picks.filtered(lambda p: 'Despacho' in (p.picking_type_id.name or '') and 'Ful' in (p.picking_type_id.name or ''))
+                
+                # 2. Por origen o nombre de PFUL
+                if not related_dfuls:
+                    subdomain = []
+                    if origins:
+                        subdomain.append(('origin', 'in', origins))
+                    if pnames:
+                        subdomain.append(('origin', 'in', pnames))
+                    if subdomain:
+                        domain = [
+                            ('picking_type_id.name', 'ilike', 'Despacho'),
+                            ('picking_type_id.name', 'ilike', 'Ful')
+                        ]
+                        if len(subdomain) > 1:
+                            domain = ['|'] + domain + subdomain
+                        else:
+                            domain += subdomain
+                        related_dfuls = request.env['stock.picking'].sudo().search(domain)
+                
+                # Si algún DFUL asociado ya está en 'done', significa que ya se fue / ya se procesó
+                return any(d.state == 'done' for d in related_dfuls)
+
             # 1. Batches de fulfillment / mayoreo
             batches = request.env['stock.picking.batch'].sudo().search([
                 ('state', '=', 'done'),
                 ('picking_ids.picking_type_id.name', 'ilike', 'Pick'),
                 ('picking_ids.picking_type_id.name', 'ilike', 'Ful')
-            ], order='id desc', limit=50)
+            ], order='id desc', limit=100)
 
             for b in batches:
                 moves = b.picking_ids.mapped('move_ids').filtered(lambda m: m.state == 'done')
                 # Si tiene movimientos y ninguno está en bin, dock ni despachado
                 if moves and not any(m.on_bin or m.on_dock or m.dispatched for m in moves):
                     origins = list(filter(None, set(b.picking_ids.mapped('origin'))))
+                    pnames = b.picking_ids.mapped('name')
+                    
+                    # Si el DFUL ya se fue (state == done), no requiere BIN
+                    if check_dful_done(origins, pnames, b.picking_ids):
+                        continue
+
                     records.append({
                         "id": b.id,
                         "type": "batch",
@@ -992,11 +1024,16 @@ class DockNBin(http.Controller):
                 ('batch_id', '=', False),
                 ('picking_type_id.name', 'ilike', 'Pick'),
                 ('picking_type_id.name', 'ilike', 'Ful')
-            ], order='id desc', limit=50)
+            ], order='id desc', limit=100)
 
             for p in picks:
                 moves = p.move_ids.filtered(lambda m: m.state == 'done')
                 if moves and not any(m.on_bin or m.on_dock or m.dispatched for m in moves):
+                    origins = [p.origin] if p.origin else []
+                    pnames = [p.name]
+                    if check_dful_done(origins, pnames, p):
+                        continue
+
                     records.append({
                         "id": p.id,
                         "type": "picking",
