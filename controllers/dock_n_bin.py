@@ -178,11 +178,29 @@ class DockNBin(http.Controller):
                     pickings = batch.picking_ids
                     log_target = {"batch_pick": batch.id}
                     log_label = f"Lote {batch.name}"
+                    batch_origins = list(filter(None, set(pickings.mapped('origin'))))
+                    origin = batch_origins[0] if batch_origins else False
                 else:
                     picking = request.env['stock.picking'].sudo().browse(pick_id)
                     pickings = picking
                     log_target = {"pick": picking.id}
                     log_label = f"Traslado {picking.name}"
+                    origin = picking.origin
+
+                if origin:
+                    # Regla: Ningún otro BIN puede tener este mismo documento origen asignado
+                    other_bin = request.env['bin.storage'].sudo().search([
+                        ('origin_doc', '=', origin),
+                        ('id', '!=', bin_storage.id)
+                    ], limit=1)
+                    if other_bin:
+                        return {'error': f"El documento origen '{origin}' ya está asignado al BIN '{other_bin.name}'. No puede haber más de un BIN para el mismo origen."}
+
+                    # Regla: Este BIN solo puede admitir un documento origen
+                    if bin_storage.origin_doc and bin_storage.origin_doc != origin:
+                        return {'error': f"El BIN {bin_storage.name} ya está asignado al origen '{bin_storage.origin_doc}'. No se pueden ingresar productos del origen '{origin}'."}
+                    elif not bin_storage.origin_doc:
+                        bin_storage.write({'origin_doc': origin})
 
                 moves = pickings.mapped('move_ids').filtered(lambda m: m.state == 'done' and not m.dispatched)
                 
@@ -239,7 +257,12 @@ class DockNBin(http.Controller):
                 log_vals.update(log_target)
                 request.env["wmds.log"].sudo().create(log_vals)
 
-                return {"ok": True, "count": len(moves)}
+                return {
+                    "ok": True,
+                    "count": len(moves),
+                    "origin": origin or "",
+                    "bin": bin_storage.name
+                }
 
             if orders:
                 if has_moves:
@@ -333,6 +356,44 @@ class DockNBin(http.Controller):
 
             if purpose == "in" and bin_storage.state == 'blocked':
                 return {'error': f'El BIN {bin_name} ya está ocupado', 'valid': False}
+
+            incoming_origin = kw.get("origin")
+            if not incoming_origin:
+                pick_id = kw.get("pick_id")
+                batch_id = kw.get("batch_id")
+                if pick_id:
+                    p = request.env['stock.picking'].sudo().browse(int(pick_id))
+                    incoming_origin = p.origin if p.exists() else False
+                elif batch_id:
+                    b = request.env['stock.picking.batch'].sudo().browse(int(batch_id))
+                    if b.exists():
+                        b_origins = list(filter(None, set(b.picking_ids.mapped('origin'))))
+                        incoming_origin = b_origins[0] if b_origins else False
+
+            if purpose == "in" and incoming_origin:
+                # Regla: Ningún otro BIN puede tener este mismo documento origen asignado
+                other_bin = request.env['bin.storage'].sudo().search([
+                    ('origin_doc', '=', incoming_origin),
+                    ('id', '!=', bin_storage.id)
+                ], limit=1)
+                if other_bin:
+                    return {
+                        'error': f"El documento origen '{incoming_origin}' ya está asignado al BIN '{other_bin.name}'. No puede haber más de un BIN para el mismo origen.",
+                        'valid': False
+                    }
+
+                # Regla: Este BIN solo puede admitir un documento origen
+                if bin_storage.origin_doc and bin_storage.origin_doc != incoming_origin:
+                    return {
+                        'error': f"El BIN {bin_name} ya está asignado al origen '{bin_storage.origin_doc}'. No se pueden ingresar productos del origen '{incoming_origin}'.",
+                        'valid': False
+                    }
+
+            if purpose == "out" and bin_storage.state != 'blocked':
+                return {
+                    'error': f"El BIN {bin_name} no está bloqueado. Debe estar bloqueado para poder ser trasladado a DOCK.",
+                    'valid': False
+                }
             
             ei_tags = request.env["sale.order.ei"].sudo().search([
                 ('bin_id', '=', bin_storage.id),
@@ -380,6 +441,8 @@ class DockNBin(http.Controller):
             return {
                 "valid": True,
                 "bin": bin_storage.name,
+                "state": bin_storage.state,
+                "origin_doc": bin_storage.origin_doc or "",
                 "packages": packages,
                 "package_details": package_details,
                 "total_packages": len(packages),
@@ -421,12 +484,35 @@ class DockNBin(http.Controller):
 
             if has_stock or is_manager:
                 bin_storage.state = 'blocked'
-                return {'ok': True}
+                return {'ok': True, 'state': 'blocked'}
             else:
                 return {
                     'error': 'El BIN está vacío y no tienes permisos de Manager para bloquearlo.', 
                     'ok': False
                 }
+        except Exception as e:
+            return {'error': str(e), 'ok': False}
+
+    @http.route('/wmds/v2/engine/post/unblock_bin', type='json', auth='user', methods=['POST'], csrf=True)
+    def unblock_bin(self, **kw):
+        try:
+            bin_name = kw.get("bin")
+            if not bin_name:
+                return {'error': 'BIN name is required', 'ok': False}
+            
+            bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
+            if not bin_storage:
+                return {'error': 'Bin not found', 'ok': False}
+
+            is_manager = request.env.user.has_group('wmds.group_wmds_manager')
+            if not is_manager:
+                return {
+                    'error': 'Solo un usuario con rol de Manager puede desbloquear el BIN.', 
+                    'ok': False
+                }
+
+            bin_storage.state = 'available'
+            return {'ok': True, 'state': 'available'}
         except Exception as e:
             return {'error': str(e), 'ok': False}
 
@@ -481,6 +567,9 @@ class DockNBin(http.Controller):
 
             if not dock_storage or not bin_storage:
                 return {'error': 'Bin o Dock no existe', 'ok': False}
+
+            if bin_storage.state != 'blocked':
+                return {'error': f"El BIN {bin_storage.name} debe estar bloqueado para poder ser trasladado a DOCK.", 'ok': False}
 
             # Determine count of items to move
             item_count = 0
@@ -654,6 +743,7 @@ class DockNBin(http.Controller):
                 bin_storage.write({
                     'state': 'available',
                     'carrier_id': False,
+                    'origin_doc': False,
                 })
 
             return {"ok": True, "moved_packages": len(ei_tags) + len(moves)}
@@ -754,6 +844,8 @@ class DockNBin(http.Controller):
                     res.append({
                         "id": b.id,
                         "name": b.name,
+                        "state": b.state,
+                        "origin_doc": b.origin_doc or "",
                         "has_ecommerce": ei_count > 0,
                         "has_full": move_count > 0,
                         "total_items": ei_count + move_count,

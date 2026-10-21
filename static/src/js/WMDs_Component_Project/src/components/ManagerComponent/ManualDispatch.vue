@@ -101,7 +101,11 @@
                     <div v-if="activeBins.length === 0" class="empty-state">No hay Bins ocupados.</div>
                     <div v-for="bin in activeBins" :key="bin.id" class="item-row clickable" @click="selectBin(bin)">
                         <div class="item-info">
-                            <span class="item-name">{{ bin.name }}</span>
+                            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+                                <span class="item-name">{{ bin.name }}</span>
+                                <Tag :severity="bin.state === 'blocked' ? 'danger' : 'success'" :value="bin.state === 'blocked' ? 'Bloqueado' : 'Disponible'"></Tag>
+                                <Tag v-if="bin.origin_doc" severity="info" :value="'Origen: ' + bin.origin_doc"></Tag>
+                            </div>
                             <span class="item-detail">{{ bin.total_items }} paquetes | {{ bin.carrier_name }}</span>
                         </div>
                         <i class="fa fa-chevron-right"></i>
@@ -131,6 +135,35 @@
         <!-- DIALOG DETALLE BIN -->
         <Dialog v-model:visible="showBinDialog" :header="'Detalle de BIN: ' + (selectedBin?.name || '')" :style="{ width: '55vw' }" :breakpoints="{ '960px': '75vw', '640px': '95vw' }" modal>
             <div v-if="selectedBinContents" class="dialog-content">
+                <!-- BARRA DE GESTIÓN Y BLOQUEO DEL BIN -->
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; padding: 10px 14px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="font-weight: 600; font-size: 0.9rem; color: #475569;">Estado:</span>
+                        <Tag :severity="selectedBin?.state === 'blocked' ? 'danger' : 'success'" :value="selectedBin?.state === 'blocked' ? 'Bloqueado' : 'Disponible'"></Tag>
+                        <span v-if="selectedBin?.origin_doc" style="font-size: 0.85rem; color: #64748b;">
+                            | Documento Origen: <strong style="color: #1e293b;">{{ selectedBin.origin_doc }}</strong>
+                        </span>
+                    </div>
+                    <Button 
+                        v-if="selectedBin?.state === 'blocked'" 
+                        label="Desbloquear BIN" 
+                        icon="fa fa-unlock" 
+                        severity="secondary" 
+                        size="small" 
+                        @click="toggleBinBlock(false)" 
+                        :loading="blockingBin" 
+                    />
+                    <Button 
+                        v-else 
+                        label="Bloquear BIN" 
+                        icon="fa fa-lock" 
+                        severity="warn" 
+                        size="small" 
+                        @click="toggleBinBlock(true)" 
+                        :loading="blockingBin" 
+                    />
+                </div>
+
                 <DataTable 
                     v-model:selection="selectedBinPackages" 
                     :value="selectedBinContents.package_details" 
@@ -149,11 +182,14 @@
                 </DataTable>
                 <div class="dialog-actions">
                     <Select v-model="targetDockId" :options="availableDocks" optionLabel="name" optionValue="name" placeholder="Seleccionar DOCK destino" class="w-full" />
+                    <div v-if="selectedBin?.state !== 'blocked'" style="color: #dc2626; font-size: 0.8rem; margin: 4px 0;">
+                        * El BIN debe estar bloqueado por un Manager antes de poder ser trasladado a DOCK.
+                    </div>
                     <Button 
                         :label="selectedBinPackages.length > 0 ? 'Mover seleccionados (' + selectedBinPackages.length + ')' : 'Mover todo el BIN'" 
                         icon="fa fa-exchange" 
                         @click="moveToDock" 
-                        :disabled="!targetDockId" 
+                        :disabled="!targetDockId || selectedBin?.state !== 'blocked'" 
                         :loading="processing" 
                     />
                 </div>
@@ -240,6 +276,7 @@ export default {
             selectedDockContents: null,
             selectedDockPackages: [],
             showDockDialog: false,
+            blockingBin: false,
             // Búsqueda
             searchTerm: '',
             searching: false,
@@ -384,13 +421,53 @@ export default {
             this.selectedBinPackages = [];
             this.loading = true;
             try {
-                const res = await this.store.callOdoo("validate_bin", "", { bin: bin.name, purpose: 'out' });
+                const res = await this.store.callOdoo("validate_bin", "", { bin: bin.name, purpose: 'inspect' });
                 if (res && res.valid) {
                     this.selectedBinContents = res;
+                    if (res.state) this.selectedBin.state = res.state;
+                    if (res.origin_doc) this.selectedBin.origin_doc = res.origin_doc;
                     this.showBinDialog = true;
+                } else if (res && res.error) {
+                    this.store.toast.add({ severity: 'error', summary: 'Error al consultar BIN', detail: res.error, life: 4000 });
                 }
             } finally {
                 this.loading = false;
+            }
+        },
+        async toggleBinBlock(block) {
+            if (!this.selectedBin) return;
+            this.blockingBin = true;
+            try {
+                const action = block ? "block_bin" : "unblock_bin";
+                const res = await this.store.callOdoo(action, "", { bin: this.selectedBin.name });
+                if (res && res.ok) {
+                    const newState = block ? 'blocked' : 'available';
+                    this.selectedBin.state = newState;
+                    const b = this.activeBins.find(item => item.id === this.selectedBin.id);
+                    if (b) b.state = newState;
+                    this.store.toast.add({
+                        severity: 'success',
+                        summary: block ? 'BIN Bloqueado' : 'BIN Desbloqueado',
+                        detail: `El BIN ${this.selectedBin.name} ha sido ${block ? 'bloqueado' : 'desbloqueado'} exitosamente.`,
+                        life: 3000
+                    });
+                } else {
+                    this.store.toast.add({
+                        severity: 'error',
+                        summary: 'Error',
+                        detail: (res && res.error) || 'No se pudo cambiar el estado del BIN',
+                        life: 4000
+                    });
+                }
+            } catch (e) {
+                this.store.toast.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: e.message || 'Error al comunicarse con el servidor',
+                    life: 4000
+                });
+            } finally {
+                this.blockingBin = false;
             }
         },
         async selectDock(dock) {

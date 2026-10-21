@@ -606,9 +606,14 @@ export const useGeneralStore = defineStore('general_store', {
                     let parsedData = typeof qr === 'string' ? JSON.parse(qr) : qr;
                     const binName = parsedData.name;
                     
-                    let response = await this.callOdoo("validate_bin", "", {
-                        bin: binName
-                    });
+                    const validateParams = { bin: binName };
+                    if (extra.is_batch) {
+                        validateParams.batch_id = extra.pick_id;
+                    } else {
+                        validateParams.pick_id = extra.pick_id;
+                    }
+
+                    let response = await this.callOdoo("validate_bin", "", validateParams);
     
                     if (response.valid) {
                         // Validar que el BIN no tenga pedidos
@@ -629,26 +634,19 @@ export const useGeneralStore = defineStore('general_store', {
                             if (extra.is_batch) {
                                 moveParams.batch_id = extra.pick_id;
                             } else {
-                                // For single pickings, we might need a different param or handle it in move_to_bin
                                 moveParams.pick_id = extra.pick_id;
                             }
 
                             let moveResponse = await this.callOdoo("move_to_bin", "", moveParams);
             
                             if (moveResponse.ok) {
-                                if (confirm(`¿Deseas bloquear el bin ${binName} para que ya no reciba más productos?`)) {
-                                    await this.callOdoo("block_bin", "", { bin: binName });
-                                }
                                 this.mandatory_uncompleted.doneMandatory();
-                                const isManager = this.role && (this.role.role === 'WMDs Manager' || (this.role.permissions && this.role.permissions.includes('WMDs Manager')));
-                                if (!isManager) {
-                                    this.toast.add({ 
-                                        severity: 'success', 
-                                        summary: 'Movimiento a BIN Exitoso', 
-                                        detail: `El lote ha sido trasladado correctamente al BIN ${binName}.`, 
-                                        life: 3000 
-                                    });
-                                }
+                                this.toast.add({ 
+                                    severity: 'success', 
+                                    summary: 'Movimiento a BIN Exitoso', 
+                                    detail: `El lote ha sido trasladado correctamente al BIN ${binName}.`, 
+                                    life: 3000 
+                                });
                             } else {
                                 this.toast.add({ 
                                     severity: 'error', 
