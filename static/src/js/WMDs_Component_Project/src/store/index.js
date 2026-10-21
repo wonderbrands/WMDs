@@ -302,6 +302,11 @@ export const useGeneralStore = defineStore('general_store', {
             description: "Flujo manual de BIN -> DOCK -> Despacho para Managers",
             value: "manual_dispatch"
         },
+        unassigned_bins: {
+            title: "Pendientes de BIN",
+            description: "Lotes y traslados finalizados pendientes de asignación a BIN",
+            value: "unassigned_bins"
+        },
         location_blocking: {
             title: "Bloqueo de Ubicaciones",
             description: "Gestión de bloqueos y adyacencias por sobredimensionado",

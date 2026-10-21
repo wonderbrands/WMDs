@@ -956,3 +956,61 @@ class DockNBin(http.Controller):
             }
         except Exception as e:
             return {"error": str(e)}
+
+    @http.route('/wmds/v2/engine/get/unassigned_ful_records', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_unassigned_ful_records(self, **kw):
+        """Retorna batches y pickings validados (state == done) que no tienen BIN asignado"""
+        try:
+            records = []
+            
+            # 1. Batches de fulfillment / mayoreo
+            batches = request.env['stock.picking.batch'].sudo().search([
+                ('state', '=', 'done'),
+                ('picking_ids.picking_type_id.name', 'ilike', 'Pick'),
+                ('picking_ids.picking_type_id.name', 'ilike', 'Ful')
+            ], order='id desc', limit=50)
+
+            for b in batches:
+                moves = b.picking_ids.mapped('move_ids').filtered(lambda m: m.state == 'done')
+                # Si tiene movimientos y ninguno está en bin, dock ni despachado
+                if moves and not any(m.on_bin or m.on_dock or m.dispatched for m in moves):
+                    origins = list(filter(None, set(b.picking_ids.mapped('origin'))))
+                    records.append({
+                        "id": b.id,
+                        "type": "batch",
+                        "name": b.name,
+                        "origin": origins[0] if origins else "N/A",
+                        "total_items": int(sum(moves.mapped('quantity'))),
+                        "total_moves": len(moves),
+                        "picking_count": len(b.picking_ids),
+                        "date": b.write_date.strftime('%Y-%m-%d %H:%M:%S') if b.write_date else ""
+                    })
+
+            # 2. Pickings individuales sin batch
+            picks = request.env['stock.picking'].sudo().search([
+                ('state', '=', 'done'),
+                ('batch_id', '=', False),
+                ('picking_type_id.name', 'ilike', 'Pick'),
+                ('picking_type_id.name', 'ilike', 'Ful')
+            ], order='id desc', limit=50)
+
+            for p in picks:
+                moves = p.move_ids.filtered(lambda m: m.state == 'done')
+                if moves and not any(m.on_bin or m.on_dock or m.dispatched for m in moves):
+                    records.append({
+                        "id": p.id,
+                        "type": "picking",
+                        "name": p.name,
+                        "origin": p.origin or "N/A",
+                        "total_items": int(sum(moves.mapped('quantity'))),
+                        "total_moves": len(moves),
+                        "picking_count": 1,
+                        "date": p.date_done.strftime('%Y-%m-%d %H:%M:%S') if p.date_done else (p.write_date.strftime('%Y-%m-%d %H:%M:%S') if p.write_date else "")
+                    })
+
+            # Ordenar por fecha descendente
+            records.sort(key=lambda x: x.get('date', ''), reverse=True)
+            return {"ok": True, "records": records}
+        except Exception as e:
+            _logger.error(f"Error in get_unassigned_ful_records: {e}")
+            return {"ok": False, "error": str(e)}
