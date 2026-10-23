@@ -365,7 +365,7 @@
                   {{ ord.fulfillment.toUpperCase() }}
                 </span>
                 <span class="channel-pill" :class="getChannelClass(ord.channel)">
-                  {{ ord.channel || 'Directo' }}
+                  {{ ord.channel || 'Manuales' }}
                 </span>
                 <button 
                   class="btn-reassign-icon ml-1" 
@@ -470,7 +470,7 @@
                 </td>
                 <td>
                   <span class="channel-pill" :class="getChannelClass(ord.channel)">
-                    {{ ord.channel || 'Directo' }}
+                    {{ ord.channel || 'Manuales' }}
                   </span>
                   <span v-if="ord.is_acordar" class="badge-acordar-sub ml-1" title="Venta por acordar con cliente (sin guía)">
                     <i class="fa fa-handshake-o mr-1"></i>Por Acordar
@@ -597,7 +597,7 @@
                     {{ so.fulfillment.toUpperCase() }}
                   </span>
                   <span class="channel-pill" :class="getChannelClass(so.channel)">
-                    {{ so.channel }}
+                    {{ so.channel || 'Manuales' }}
                   </span>
                 </div>
               </div>
@@ -662,7 +662,7 @@
               <tbody>
                 <tr v-for="so in executedResults" :key="so.sale_id">
                   <td><strong>{{ so.so_name }}</strong></td>
-                  <td><span class="channel-pill" :class="getChannelClass(so.channel)">{{ so.channel }}</span></td>
+                  <td><span class="channel-pill" :class="getChannelClass(so.channel)">{{ so.channel || 'Manuales' }}</span></td>
                   <td>
                     <span v-if="so.fulfillment" class="fulfillment-subpill">
                       {{ so.fulfillment.toUpperCase() }}
@@ -728,7 +728,7 @@
                 </td>
                 <td><code>{{ item.name }}</code></td>
                 <td><strong>{{ item.so_name }}</strong></td>
-                <td><span class="channel-pill" :class="getChannelClass(item.channel)">{{ item.channel }}</span></td>
+                <td><span class="channel-pill" :class="getChannelClass(item.channel)">{{ item.channel || 'Manuales' }}</span></td>
                 <td>
                   <span v-if="item.fulfillment" class="fulfillment-subpill">
                     {{ item.fulfillment.toUpperCase() }}

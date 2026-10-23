@@ -102,6 +102,8 @@ class OrderChannelController(http.Controller):
             env.cr.execute("SELECT DISTINCT channel FROM sale_order WHERE channel IS NOT NULL AND channel != '' ORDER BY channel")
             raw_channels = [r[0] for r in env.cr.fetchall() if r[0]]
             available_channels = sorted(list(set(c.strip() for c in raw_channels if c and c.strip())))
+            if 'Manuales' not in available_channels:
+                available_channels.append('Manuales')
 
             # Dominio base sobre SALE ORDER (1 fila por SO):
             # La fecha relevante es la del SLA de la ORDEN DE VENTA (no del OUT).
@@ -134,7 +136,10 @@ class OrderChannelController(http.Controller):
 
             # 3. Channel Filter
             if channel_filter and channel_filter != 'all':
-                domain_so.append(('channel', 'ilike', channel_filter))
+                if channel_filter.lower() in ('manuales', 'manual', 'directo', 'directo/otro'):
+                    domain_so.append(('channel', '=', False))
+                else:
+                    domain_so.append(('channel', 'ilike', channel_filter))
 
             # 4. Determinar SO candidatas por fecha SLA (del último picking o yuju_due_date),
             #    filtrado en SQL para no truncar por "recientes" y coincidir con las métricas.
@@ -154,8 +159,11 @@ class OrderChannelController(http.Controller):
             ]
             sql_params = []
             if channel_filter and channel_filter != 'all':
-                so_where.append("s.channel ILIKE %s")
-                sql_params.append(f"%{channel_filter}%")
+                if channel_filter.lower() in ('manuales', 'manual', 'directo', 'directo/otro'):
+                    so_where.append("(s.channel IS NULL OR s.channel = '')")
+                else:
+                    so_where.append("s.channel ILIKE %s")
+                    sql_params.append(f"%{channel_filter}%")
 
             # Filtro Drop vs Full vs Por Acordar
             fulfillment_filter = (kw.get('fulfillment_filter') or 'all').strip().lower()
@@ -540,7 +548,7 @@ class OrderChannelController(http.Controller):
                       AND (s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)
                       AND p.state NOT IN ('done', 'cancel')
                       AND p.sla_date IS NOT NULL
-                    GROUP BY COALESCE(s.channel, 'Directo/Otro')
+                    GROUP BY COALESCE(NULLIF(s.channel, ''), 'Manuales')
                 """)
                 for ch, oldest in env.cr.fetchall():
                     if oldest:
@@ -594,8 +602,11 @@ class OrderChannelController(http.Controller):
             ]
             params = []
             if channel_filter and channel_filter != 'all':
-                where.append("s.channel ILIKE %s")
-                params.append(f"%{channel_filter}%")
+                if channel_filter.lower() in ('manuales', 'manual', 'directo', 'directo/otro'):
+                    where.append("(s.channel IS NULL OR s.channel = '')")
+                else:
+                    where.append("s.channel ILIKE %s")
+                    params.append(f"%{channel_filter}%")
 
             if fulfillment_filter in ('drop', 'fbm'):
                 where.append("(s.fulfillment != 'fbc' OR s.fulfillment IS NULL)")
@@ -731,8 +742,11 @@ class OrderChannelController(http.Controller):
             params = [date_from, date_to]
 
             if channel_filter and channel_filter != 'all':
-                where.append("s.channel ILIKE %s")
-                params.append(f"%{channel_filter}%")
+                if channel_filter.lower() in ('manuales', 'manual', 'directo', 'directo/otro'):
+                    where.append("(s.channel IS NULL OR s.channel = '')")
+                else:
+                    where.append("s.channel ILIKE %s")
+                    params.append(f"%{channel_filter}%")
 
             if fulfillment_filter in ('fbm', 'drop'):
                 where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'fbf'))")
@@ -815,8 +829,11 @@ class OrderChannelController(http.Controller):
                     where.append("pt.sequence_code IN ('PICK', 'PACK', 'OUT')")
 
                 if channel_filter and channel_filter != 'all':
-                    where.append("s.channel ILIKE %s")
-                    params.append(f"%{channel_filter}%")
+                    if channel_filter.lower() in ('manuales', 'manual', 'directo', 'directo/otro'):
+                        where.append("(s.channel IS NULL OR s.channel = '')")
+                    else:
+                        where.append("s.channel ILIKE %s")
+                        params.append(f"%{channel_filter}%")
 
                 if fulfillment_filter in ('fbm', 'drop'):
                     where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'fbf'))")
@@ -912,8 +929,11 @@ class OrderChannelController(http.Controller):
                 params = [date_from, date_to]
 
                 if channel_filter and channel_filter != 'all':
-                    where.append("s.channel ILIKE %s")
-                    params.append(f"%{channel_filter}%")
+                    if channel_filter.lower() in ('manuales', 'manual', 'directo', 'directo/otro'):
+                        where.append("(s.channel IS NULL OR s.channel = '')")
+                    else:
+                        where.append("s.channel ILIKE %s")
+                        params.append(f"%{channel_filter}%")
 
                 if fulfillment_filter in ('fbm', 'drop'):
                     where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'fbf'))")
@@ -1088,7 +1108,7 @@ class OrderChannelController(http.Controller):
             # Query general de conteo de pendientes activos agrupados por marketplace
             env.cr.execute('''
                 SELECT 
-                    COALESCE(s.channel, 'Directo/Otro') AS channel,
+                    COALESCE(NULLIF(s.channel, ''), 'Manuales') AS channel,
                     COUNT(DISTINCT s.id) AS pending_count
                 FROM sale_order s
                 JOIN stock_picking p ON p.sale_id = s.id
@@ -1099,7 +1119,7 @@ class OrderChannelController(http.Controller):
                   AND (s.order_progress NOT ILIKE '%cancel%' OR s.order_progress IS NULL)
                   AND (s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)
                   AND p.state NOT IN ('done', 'cancel')
-                GROUP BY COALESCE(s.channel, 'Directo/Otro')
+                GROUP BY COALESCE(NULLIF(s.channel, ''), 'Manuales')
                 ORDER BY pending_count DESC
             ''')
             marketplace_pending = {row[0]: row[1] for row in env.cr.fetchall()}
@@ -1109,8 +1129,11 @@ class OrderChannelController(http.Controller):
             filter_clause = ""
             params = []
             if channel_filter and channel_filter != 'all':
-                filter_clause = " AND s.channel = %s "
-                params.append(channel_filter)
+                if channel_filter.lower() in ('manuales', 'manual', 'directo/otro'):
+                    filter_clause = " AND (s.channel IS NULL OR s.channel = '') "
+                else:
+                    filter_clause = " AND s.channel = %s "
+                    params.append(channel_filter)
 
             sql_alerts = f'''
                 SELECT p.sla_date
@@ -1191,6 +1214,8 @@ class OrderChannelController(http.Controller):
             env.cr.execute("SELECT DISTINCT channel FROM sale_order WHERE channel IS NOT NULL AND channel != '' ORDER BY channel")
             raw_channels = [r[0] for r in env.cr.fetchall() if r[0]]
             available_channels = sorted(list(set(c.strip() for c in raw_channels if c and c.strip())))
+            if 'Manuales' not in available_channels:
+                available_channels.append('Manuales')
 
             return {
                 'success': True,
@@ -1440,7 +1465,10 @@ class OrderChannelController(http.Controller):
 
             sales = env['sale.order'].sudo().browse([int(i) for i in order_ids if str(i).isdigit()])
             if marketplace_filter and marketplace_filter != 'all':
-                sales = sales.filtered(lambda s: (s.channel or '').strip().lower() == marketplace_filter.lower())
+                if marketplace_filter.lower() in ('manuales', 'manual'):
+                    sales = sales.filtered(lambda s: not (s.channel or '').strip())
+                else:
+                    sales = sales.filtered(lambda s: (s.channel or '').strip().lower() == marketplace_filter.lower())
 
             if not sales:
                 return {'error': {'message': f"Ninguno de los pedidos seleccionados coincide con el marketplace '{marketplace_filter}'."}}
