@@ -40,6 +40,7 @@ import DispatchComponentFul  from "./components/OperatorComponent/DispatchCompon
 import BarcodeOperationComponent from "./components/OperatorComponent/BarcodeOperationComponent.vue"
 import CycleCountOperator from "./components/OperatorComponent/CycleCountOperator.vue"
 import CompactionComponent from "./components/OperatorComponent/CompactionComponent.vue"
+import BlockBinComponent from "./components/OperatorComponent/BlockBinComponent.vue"
 
 import { useGeneralStore } from "./store/index"
 
@@ -60,7 +61,8 @@ export default {
     DispatchComponentFul,
     BarcodeOperationComponent,
     CycleCountOperator,
-    CompactionComponent
+    CompactionComponent,
+    BlockBinComponent
   },
 
 

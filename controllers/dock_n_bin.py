@@ -462,13 +462,16 @@ class DockNBin(http.Controller):
     @http.route('/wmds/v2/engine/post/block_bin', type='json', auth='user', methods=['POST'], csrf=True)
     def block_bin(self, **kw):
         try:
-            bin_name = kw.get("bin")
+            bin_name = (kw.get("bin") or '').strip()
             if not bin_name:
-                return {'error': 'BIN name is required', 'ok': False}
+                return {'error': 'El nombre del BIN es requerido', 'ok': False}
             
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             if not bin_storage:
-                return {'error': 'Bin not found', 'ok': False}
+                return {'error': f'El BIN "{bin_name}" no fue encontrado en el sistema.', 'ok': False}
+
+            if bin_storage.state == 'blocked':
+                return {'error': f'El BIN {bin_storage.name} ya se encuentra bloqueado.', 'ok': False, 'already_blocked': True}
 
             # Check for stock
             ei_tags_count = request.env["sale.order.ei"].sudo().search_count([
@@ -483,19 +486,28 @@ class DockNBin(http.Controller):
 
             has_stock = (ei_tags_count + moves_count) > 0
 
-            # If it has stock, anyone can block it.
-            # If not, only manager can block it (to reserve it, for example)
-            is_manager = request.env.user.has_group('wmds.group_wmds_manager')
+            # Permisos: Manager, Operador de pickeo u Operador general
+            user = request.env.user
+            is_manager = user.has_group('wmds.group_wmds_manager')
+            is_picker = user.has_group('wmds.role_wmds_picker') or user.has_group('wmds.group_wmds_operator')
 
-            if has_stock or is_manager:
+            if has_stock or is_manager or is_picker:
                 bin_storage.state = 'blocked'
-                return {'ok': True, 'state': 'blocked'}
+                _logger.info(f"WMDS: BIN {bin_storage.name} bloqueado por {user.login}")
+                return {
+                    'ok': True,
+                    'state': 'blocked',
+                    'bin_name': bin_storage.name,
+                    'has_stock': has_stock,
+                    'packages_count': ei_tags_count + moves_count
+                }
             else:
                 return {
-                    'error': 'El BIN está vacío y no tienes permisos de Manager para bloquearlo.', 
+                    'error': 'No tienes permisos para bloquear este BIN.', 
                     'ok': False
                 }
         except Exception as e:
+            _logger.error(f"Error bloqueando BIN: {e}", exc_info=True)
             return {'error': str(e), 'ok': False}
 
     @http.route('/wmds/v2/engine/post/unblock_bin', type='json', auth='user', methods=['POST'], csrf=True)
