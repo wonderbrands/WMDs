@@ -544,28 +544,17 @@
 
         <!-- SLA Pagination Footer Bar -->
         <div v-if="orders.length > 0 || totalCount > 0" class="pagination-bar">
-          <div class="pagination-info">
-            Mostrando <strong>{{ paginationFrom }} - {{ paginationTo }}</strong> de <strong>{{ totalCount }}</strong> pedidos
-          </div>
-          <div class="pagination-controls">
-            <button 
-              class="btn-page" 
-              :disabled="currentPage <= 1 || isRefreshing" 
-              @click="goToPage(currentPage - 1)"
-              title="Página Anterior"
-            >
-              <i class="fa fa-chevron-left mr-1"></i> Anterior
-            </button>
-            <span class="page-current">Pág. {{ currentPage }} de {{ totalPages }}</span>
-            <button 
-              class="btn-page" 
-              :disabled="currentPage >= totalPages || isRefreshing" 
-              @click="goToPage(currentPage + 1)"
-              title="Página Siguiente"
-            >
-              Siguiente <i class="fa fa-chevron-right ml-1"></i>
-            </button>
-          </div>
+          <Paginator
+            :rows="pageSize"
+            :totalRecords="totalCount"
+            :first="(currentPage - 1) * pageSize"
+            :pageLinkSize="5"
+            :rowsPerPageOptions="[25, 50, 100]"
+            template="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown JumpToPageInput CurrentPageReport"
+            currentPageReportTemplate="Mostrando {first} - {last} de {totalRecords} pedidos"
+            @page="onPageChange"
+            class="wmds-prime-paginator"
+          />
         </div>
       </div>
 
@@ -759,28 +748,17 @@
 
         <!-- Execution Pagination Footer Bar -->
         <div v-if="executedResults.length > 0 || executedTotalCount > 0" class="pagination-bar">
-          <div class="pagination-info">
-            Mostrando <strong>{{ executedPaginationFrom }} - {{ executedPaginationTo }}</strong> de <strong>{{ executedTotalCount }}</strong> registros
-          </div>
-          <div class="pagination-controls">
-            <button 
-              class="btn-page" 
-              :disabled="executedCurrentPage <= 1 || isRefreshing" 
-              @click="goToExecutedPage(executedCurrentPage - 1)"
-              title="Página Anterior"
-            >
-              <i class="fa fa-chevron-left mr-1"></i> Anterior
-            </button>
-            <span class="page-current">Pág. {{ executedCurrentPage }} de {{ executedTotalPages }}</span>
-            <button 
-              class="btn-page" 
-              :disabled="executedCurrentPage >= executedTotalPages || isRefreshing" 
-              @click="goToExecutedPage(executedCurrentPage + 1)"
-              title="Página Siguiente"
-            >
-              Siguiente <i class="fa fa-chevron-right ml-1"></i>
-            </button>
-          </div>
+          <Paginator
+            :rows="executedPageSize"
+            :totalRecords="executedTotalCount"
+            :first="(executedCurrentPage - 1) * executedPageSize"
+            :pageLinkSize="5"
+            :rowsPerPageOptions="[25, 50, 100]"
+            template="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink RowsPerPageDropdown JumpToPageInput CurrentPageReport"
+            currentPageReportTemplate="Mostrando {first} - {last} de {totalRecords} registros"
+            @page="onExecutedPageChange"
+            class="wmds-prime-paginator"
+          />
         </div>
       </div>
 
@@ -989,9 +967,13 @@
 
 <script>
 import { useGeneralStore } from "../../store/index";
+import Paginator from "primevue/paginator";
 
 export default {
   name: "OrderChannelView",
+  components: {
+    Paginator
+  },
   data() {
     return {
       store: useGeneralStore(),
@@ -1226,6 +1208,30 @@ export default {
       if (pg < 1 || pg > this.totalPages || pg === this.currentPage) return;
       this.currentPage = pg;
       this.fetchOrders();
+    },
+    onPageChange(event) {
+      if (event.rows !== this.pageSize) {
+        this.pageSize = event.rows;
+        this.currentPage = 1;
+        this.fetchOrders();
+        return;
+      }
+      const newPage = event.page + 1;
+      if (newPage !== this.currentPage) {
+        this.goToPage(newPage);
+      }
+    },
+    onExecutedPageChange(event) {
+      if (event.rows !== this.executedPageSize) {
+        this.executedPageSize = event.rows;
+        this.executedCurrentPage = 1;
+        this.fetchExecutionData();
+        return;
+      }
+      const newPage = event.page + 1;
+      if (newPage !== this.executedCurrentPage) {
+        this.goToExecutedPage(newPage);
+      }
     },
     toggleSelectAll(e) {
       if (e.target.checked) {
@@ -2202,52 +2208,67 @@ export default {
 
 /* Pagination Styles */
 .pagination-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px;
+  display: block;
+  width: 100%;
+  padding: 4px 8px;
   background: #ffffff;
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   margin-top: 16px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.03);
 }
-.pagination-info {
-  font-size: 0.85rem;
-  color: #4b5563;
+.wmds-prime-paginator {
+  background: transparent !important;
+  border: none !important;
+  padding: 4px !important;
 }
-.pagination-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+:deep(.p-paginator) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-wrap: wrap !important;
+  gap: 8px !important;
 }
-.btn-page {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 14px;
-  background-color: #f9fafb;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: #374151;
-  cursor: pointer;
-  transition: all 0.15s ease;
+:deep(.p-paginator-current) {
+  font-size: 0.85rem !important;
+  color: #4b5563 !important;
+  margin-right: auto !important;
 }
-.btn-page:hover:not(:disabled) {
-  background-color: #f3f4f6;
-  border-color: #9ca3af;
-  color: #111827;
+:deep(.p-paginator-pages) {
+  display: inline-flex !important;
+  gap: 4px !important;
 }
-.btn-page:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background-color: #f3f4f6;
+:deep(.p-paginator-page) {
+  min-width: 32px !important;
+  height: 32px !important;
+  border-radius: 6px !important;
+  font-size: 0.85rem !important;
+  font-weight: 500 !important;
+  transition: all 0.15s ease !important;
 }
-.page-current {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: #1f2937;
+:deep(.p-paginator-page.p-highlight) {
+  background: #facc15 !important;
+  color: #000000 !important;
+  font-weight: 700 !important;
+}
+:deep(.p-paginator-first),
+:deep(.p-paginator-prev),
+:deep(.p-paginator-next),
+:deep(.p-paginator-last) {
+  min-width: 32px !important;
+  height: 32px !important;
+  border-radius: 6px !important;
+}
+:deep(.p-paginator-jtp-input input) {
+  width: 50px !important;
+  text-align: center !important;
+  padding: 4px 6px !important;
+  font-size: 0.85rem !important;
+  border-radius: 6px !important;
+}
+:deep(.p-paginator-rpp-select) {
+  height: 32px !important;
+  font-size: 0.85rem !important;
 }
 
 /* Modal CSS */
