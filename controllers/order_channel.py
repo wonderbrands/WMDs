@@ -157,19 +157,45 @@ class OrderChannelController(http.Controller):
                 so_where.append("s.channel ILIKE %s")
                 sql_params.append(f"%{channel_filter}%")
 
-            # Filtro de fecha sobre el SLA efectivo (último picking sla_date o yuju_due_date),
+            # Filtro Drop vs Full vs Por Acordar
+            fulfillment_filter = (kw.get('fulfillment_filter') or 'all').strip().lower()
+            if fulfillment_filter in ('drop', 'fbm'):
+                so_where.append("(s.fulfillment != 'fbc' OR s.fulfillment IS NULL)")
+            elif fulfillment_filter in ('full', 'fbc'):
+                so_where.append("s.fulfillment = 'fbc'")
+            elif fulfillment_filter == 'acordar':
+                so_where.append("""
+                    (s.fulfillment != 'fbc' OR s.fulfillment IS NULL)
+                    AND NOT EXISTS (
+                        SELECT 1 FROM stock_picking sp 
+                        WHERE sp.sale_id = s.id 
+                          AND sp.carrier_tracking_ref IS NOT NULL 
+                          AND sp.carrier_tracking_ref != ''
+                    )
+                    AND s.carrier_id IS NULL 
+                    AND (s.yuju_carrier IS NULL OR s.yuju_carrier = '')
+                """)
+
+            # Filtro de Ventas No Confirmadas vs Confirmadas
+            unconfirmed_filter = (kw.get('unconfirmed_filter') or 'all').strip().lower()
+            if unconfirmed_filter in ('unconfirmed', 'no_confirmadas'):
+                so_where.append("s.state IN ('draft', 'sent')")
+            elif unconfirmed_filter in ('confirmed', 'confirmadas'):
+                so_where.append("s.state NOT IN ('draft', 'sent')")
+
+            # Filtro de fecha sobre el SLA efectivo (sale_order sla_date, último picking o yuju_due_date),
             # convertido a hora local con offset por canal (parametrizable por marketplace).
             # NOTA: Si el filtro es 'no_sla', ignorar filtros de fecha y consultar todas las órdenes sin SLA
             if status_filter == 'no_sla':
-                so_where.append("lp.sla_date IS NULL AND (s.yuju_due_date IS NULL OR s.yuju_due_date = '')")
+                so_where.append("s.sla_date IS NULL AND lp.sla_date IS NULL AND (s.yuju_due_date IS NULL OR s.yuju_due_date = '')")
             elif date_from or date_to:
                 offset_expr = _channel_offset_sql(env)
                 offset_frag = f"({offset_expr} * interval '1 hour')"
                 clauses = []
                 if date_from:
-                    clauses.append(f"(COALESCE(lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
+                    clauses.append(f"(COALESCE(s.sla_date, lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
                 if date_to:
-                    clauses.append(f"(COALESCE(lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) <= %s")
+                    clauses.append(f"(COALESCE(s.sla_date, lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) <= %s")
                 so_where.append(f"({' AND '.join(clauses)})")
                 if date_from:
                     sql_params.append(date_from)
@@ -236,7 +262,7 @@ class OrderChannelController(http.Controller):
             valid_sos = []
             for so in sale_orders:
                 last_pick = last_picks_by_so.get(so.id, False)
-                effective = last_pick.sla_date if last_pick else False
+                effective = getattr(so, 'sla_date', False) or (last_pick.sla_date if last_pick else False)
                 if not effective:
                     yuju_due = getattr(so, 'yuju_due_date', False)
                     if yuju_due:
@@ -462,6 +488,10 @@ class OrderChannelController(http.Controller):
                     'pick_id': pick.id if pick else False,
                     'name': pick.name if pick else '',
                     'sale_order_name': so_name,
+                    'order_state': so.state,
+                    'is_unconfirmed': so.state in ('draft', 'sent'),
+                    'is_acordar': bool(fulfillment != 'fbc' and not tracking_ref and not carrier_name),
+                    'is_full': bool(fulfillment == 'fbc' or (so.warehouse_id and so.warehouse_id.code in ('MLSR', 'FBA', 'WLFL'))),
                     'partner_name': so.partner_id.display_name if so.partner_id else '',
                     'channel': channel,
                     'fulfillment': fulfillment,
@@ -551,6 +581,8 @@ class OrderChannelController(http.Controller):
             date_from = (kw.get('date_from') or '').strip()
             date_to = (kw.get('date_to') or '').strip()
             channel_filter = (kw.get('channel_filter') or 'all').strip()
+            fulfillment_filter = (kw.get('fulfillment_filter') or 'all').strip().lower()
+            unconfirmed_filter = (kw.get('unconfirmed_filter') or 'all').strip().lower()
 
             where = [
                 "s.state != 'cancel'",
@@ -564,13 +596,36 @@ class OrderChannelController(http.Controller):
             if channel_filter and channel_filter != 'all':
                 where.append("s.channel ILIKE %s")
                 params.append(f"%{channel_filter}%")
+
+            if fulfillment_filter in ('drop', 'fbm'):
+                where.append("(s.fulfillment != 'fbc' OR s.fulfillment IS NULL)")
+            elif fulfillment_filter in ('full', 'fbc'):
+                where.append("s.fulfillment = 'fbc'")
+            elif fulfillment_filter == 'acordar':
+                where.append("""
+                    (s.fulfillment != 'fbc' OR s.fulfillment IS NULL)
+                    AND NOT EXISTS (
+                        SELECT 1 FROM stock_picking sp 
+                        WHERE sp.sale_id = s.id 
+                          AND sp.carrier_tracking_ref IS NOT NULL 
+                          AND sp.carrier_tracking_ref != ''
+                    )
+                    AND s.carrier_id IS NULL 
+                    AND (s.yuju_carrier IS NULL OR s.yuju_carrier = '')
+                """)
+
+            if unconfirmed_filter in ('unconfirmed', 'no_confirmadas'):
+                where.append("s.state IN ('draft', 'sent')")
+            elif unconfirmed_filter in ('confirmed', 'confirmadas'):
+                where.append("s.state NOT IN ('draft', 'sent')")
+
             offset_expr = _channel_offset_sql(env)
             offset_frag = f"({offset_expr} * interval '1 hour')"
             if date_from:
-                where.append(f"(COALESCE(lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
+                where.append(f"(COALESCE(s.sla_date, lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
                 params.append(date_from)
             if date_to:
-                where.append(f"(COALESCE(lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) <= %s")
+                where.append(f"(COALESCE(s.sla_date, lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) <= %s")
                 params.append(f"{date_to} 23:59:59")
 
             from_clause = """
@@ -1293,14 +1348,31 @@ class OrderChannelController(http.Controller):
                     p._compute_sla_priority()
 
             if so and so.exists():
+                old_so_sla = so.sla_date
                 so_vals = {
+                    'sla_date': new_sla_dt,
+                    'priority_date': new_sla_dt,
                     'sla_manual_override': True,
                     'sla_override_reason': reason,
                     'sla_override_note': note,
                     'sla_override_date': now_dt,
                     'sla_override_user_id': user_id,
                 }
+                if not getattr(so, 'sla_original_date', False) and old_so_sla:
+                    so_vals['sla_original_date'] = old_so_sla
                 so.write(so_vals)
+
+                if 'sale.order.sla.history' in env:
+                    env['sale.order.sla.history'].sudo().create({
+                        'sale_id': so.id,
+                        'user_id': user_id,
+                        'date': now_dt,
+                        'old_sla_date': old_so_sla,
+                        'new_sla_date': new_sla_dt,
+                        'reason': reason,
+                        'note': note,
+                    })
+
                 try:
                     so.message_post(body=msg)
                 except Exception:
@@ -1323,6 +1395,139 @@ class OrderChannelController(http.Controller):
             return {'success': True, 'message': f"SLA actualizado exitosamente a {new_sla_str}"}
         except Exception as e:
             _logger.error(f"Error reassigning SLA: {e}", exc_info=True)
+            return {'error': {'message': str(e)}}
+
+    @http.route(
+        '/wmds/v2/engine/override/bulk_sla',
+        type='json',
+        auth='user',
+        methods=['POST'],
+        csrf=True
+    )
+    def bulk_reassign_sla(self, **kw):
+        """
+        Reasignación / Empuje masivo de SLA para múltiples órdenes y albaranes.
+        Parametrizable por marketplace opcional.
+        """
+        try:
+            env = request.env
+            order_ids = kw.get('order_ids') or []
+            new_sla_str = (kw.get('new_sla_date') or '').strip()
+            reason = (kw.get('reason') or 'no_space').strip()
+            note = (kw.get('note') or '').strip()
+            marketplace_filter = (kw.get('marketplace') or 'all').strip()
+
+            if not order_ids or not isinstance(order_ids, list):
+                return {'error': {'message': 'Debe seleccionar al menos un pedido para empujar SLA.'}}
+            if not new_sla_str:
+                return {'error': {'message': 'Debe especificar la nueva fecha y hora para el SLA.'}}
+
+            new_sla_dt = fields.Datetime.to_datetime(new_sla_str)
+            now_dt = fields.Datetime.now()
+            user_id = env.user.id
+            user_name = env.user.name
+
+            REASONS_MAP = {
+                'no_space': 'Falta de espacio en transporte / unidad',
+                'carrier_delay': 'Demora / Incidencia de paquetería / transportista',
+                'carrier_cutoff': 'Corte de paquetería / retraso de recolección',
+                'platform_rescheduled': 'Reprogramado por marketplace / plataforma',
+                'warehouse_delay': 'Operación de almacén reprogramada',
+                'customer_request': 'Petición del cliente',
+                'other': 'Otro motivo',
+            }
+            reason_lbl = REASONS_MAP.get(reason, reason)
+
+            sales = env['sale.order'].sudo().browse([int(i) for i in order_ids if str(i).isdigit()])
+            if marketplace_filter and marketplace_filter != 'all':
+                sales = sales.filtered(lambda s: (s.channel or '').strip().lower() == marketplace_filter.lower())
+
+            if not sales:
+                return {'error': {'message': f"Ninguno de los pedidos seleccionados coincide con el marketplace '{marketplace_filter}'."}}
+
+            msg = (
+                f"<b>SLA Reasignado / Empujado Masivamente por {user_name}</b><br/>"
+                f"<b>Nueva Fecha SLA:</b> {new_sla_str}<br/>"
+                f"<b>Motivo:</b> {reason_lbl}<br/>"
+            )
+            if note:
+                msg += f"<b>Notas:</b> {note}<br/>"
+
+            updated_count = 0
+            for so in sales:
+                old_so_sla = so.sla_date
+                so_vals = {
+                    'sla_date': new_sla_dt,
+                    'priority_date': new_sla_dt,
+                    'sla_manual_override': True,
+                    'sla_override_reason': reason,
+                    'sla_override_note': note,
+                    'sla_override_date': now_dt,
+                    'sla_override_user_id': user_id,
+                }
+                if not getattr(so, 'sla_original_date', False) and old_so_sla:
+                    so_vals['sla_original_date'] = old_so_sla
+                so.write(so_vals)
+
+                if 'sale.order.sla.history' in env:
+                    env['sale.order.sla.history'].sudo().create({
+                        'sale_id': so.id,
+                        'user_id': user_id,
+                        'date': now_dt,
+                        'old_sla_date': old_so_sla,
+                        'new_sla_date': new_sla_dt,
+                        'reason': reason,
+                        'note': note,
+                    })
+
+                try:
+                    so.message_post(body=msg)
+                except Exception:
+                    pass
+
+                # Actualizar albaranes abiertos
+                open_picks = so.picking_ids.filtered(lambda p: p.state not in ('done', 'cancel'))
+                for p in open_picks:
+                    p_vals = {
+                        'sla_date': new_sla_dt,
+                        'priority_date': new_sla_dt,
+                        'sla_manual_override': True,
+                        'sla_override_reason': reason,
+                        'sla_override_note': note,
+                        'sla_override_date': now_dt,
+                        'sla_override_user_id': user_id,
+                    }
+                    if not getattr(p, 'sla_original_date', False) and p.sla_date:
+                        p_vals['sla_original_date'] = p.sla_date
+                    p.write(p_vals)
+                    try:
+                        p.message_post(body=msg)
+                    except Exception:
+                        pass
+
+                if open_picks and hasattr(open_picks, '_compute_sla_priority'):
+                    open_picks._compute_sla_priority()
+
+                if 'wmds.log' in env:
+                    try:
+                        env['wmds.log'].sudo().create({
+                            'sale_order': so.id,
+                            'user': user_id,
+                            'date': now_dt,
+                            'log': f"SLA Empujado en bloque a {new_sla_str}. Motivo: {reason_lbl}."
+                        })
+                    except Exception:
+                        pass
+
+                updated_count += 1
+
+            return {
+                'success': True,
+                'message': f"SLA actualizado exitosamente para {updated_count} pedido(s).",
+                'updated_count': updated_count
+            }
+        except Exception as e:
+            _logger.error(f"Error in bulk_reassign_sla: {e}", exc_info=True)
             return {'error': {'message': str(e)}}
 
     @http.route(

@@ -108,7 +108,7 @@
           </button>
         </div>
 
-        <!-- Fulfillment Filter (Drop vs Full) -->
+        <!-- Fulfillment Filter (Drop vs Full vs Por Acordar) -->
         <div class="fulfillment-switcher">
           <button 
             class="chip-button"
@@ -130,6 +130,40 @@
             @click="setFulfillmentFilter('full')"
           >
             <i class="fa fa-cubes mr-1"></i> Full
+          </button>
+          <button 
+            class="chip-button"
+            :class="{ active: fulfillmentFilter === 'acordar' }"
+            @click="setFulfillmentFilter('acordar')"
+            title="Ventas DROP sin guía ni paquetería asignada (entrega a acordar con cliente)"
+          >
+            <i class="fa fa-handshake-o mr-1"></i> Por Acordar
+          </button>
+        </div>
+
+        <!-- Unconfirmed Filter (Ventas No Confirmadas) -->
+        <div class="unconfirmed-switcher">
+          <button 
+            class="chip-button"
+            :class="{ active: unconfirmedFilter === 'all' }"
+            @click="setUnconfirmedFilter('all')"
+          >
+            Todas las Ventas
+          </button>
+          <button 
+            class="chip-button chip-unconfirmed"
+            :class="{ active: unconfirmedFilter === 'unconfirmed' }"
+            @click="setUnconfirmedFilter('unconfirmed')"
+            title="Órdenes en borrador / cotización sin confirmar aún"
+          >
+            <i class="fa fa-file-text-o mr-1"></i> No Confirmadas
+          </button>
+          <button 
+            class="chip-button"
+            :class="{ active: unconfirmedFilter === 'confirmed' }"
+            @click="setUnconfirmedFilter('confirmed')"
+          >
+            <i class="fa fa-check-circle-o mr-1"></i> Confirmadas
           </button>
         </div>
       </div>
@@ -203,6 +237,22 @@
 
         <button class="btn-refresh" @click="fetchAll" title="Actualizar Datos">
           <i class="fa fa-refresh" :class="{'fa-spin': isRefreshing}"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Bulk SLA Action Bar (Sticky notification when items selected) -->
+    <div v-if="currentMainTab === 'sla' && selectedOrderIds.length > 0" class="bulk-action-bar">
+      <div class="bulk-info">
+        <i class="fa fa-check-square-o mr-2"></i>
+        <span><strong>{{ selectedOrderIds.length }}</strong> pedido(s) seleccionado(s)</span>
+      </div>
+      <div class="bulk-buttons">
+        <button class="btn btn-warning btn-sm font-weight-bold" @click="openBulkReassignModal">
+          <i class="fa fa-calendar-plus-o mr-1"></i> Empujar SLA Seleccionados
+        </button>
+        <button class="btn btn-outline-secondary btn-sm ml-2" @click="selectedOrderIds = []">
+          <i class="fa fa-times mr-1"></i> Deseleccionar
         </button>
       </div>
     </div>
@@ -295,9 +345,23 @@
           >
             <!-- Top Row: Order Name, Channel & Actions -->
             <div class="card-row-top">
-              <span class="so-number">{{ ord.sale_order_name || ord.name }}</span>
+              <div class="d-flex align-items-center">
+                <input 
+                  type="checkbox" 
+                  :value="ord.id" 
+                  v-model="selectedOrderIds" 
+                  class="mr-2 card-checkbox" 
+                  @click.stop
+                  title="Seleccionar pedido para empujar SLA"
+                />
+                <span class="so-number">{{ ord.sale_order_name || ord.name }}</span>
+                <span v-if="ord.is_unconfirmed" class="badge-unconfirmed-sub ml-1" title="Venta no confirmada en Odoo">Borrador</span>
+              </div>
               <div class="top-badges">
-                <span v-if="ord.fulfillment" class="fulfillment-pill mr-1">
+                <span v-if="ord.is_acordar" class="badge-acordar-sub mr-1" title="Venta por acordar con cliente (sin guía)">
+                  <i class="fa fa-handshake-o mr-1"></i>Por Acordar
+                </span>
+                <span v-else-if="ord.fulfillment" class="fulfillment-pill mr-1">
                   {{ ord.fulfillment.toUpperCase() }}
                 </span>
                 <span class="channel-pill" :class="getChannelClass(ord.channel)">
@@ -378,8 +442,11 @@
           <table class="orders-table">
             <thead>
               <tr>
+                <th style="width: 40px; text-align: center;">
+                  <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll" title="Seleccionar todos los pedidos"/>
+                </th>
                 <th>Pedido</th>
-                <th>Canal</th>
+                <th>Canal / Modalidad</th>
                 <th>Ingreso Odoo</th>
                 <th>Último Traslado</th>
                 <th>Paquetería</th>
@@ -392,14 +459,23 @@
               <tr 
                 v-for="ord in orders" 
                 :key="ord.id"
-                :class="{'row-alert-critical': ord.sla_priority_level === 'critical_1h' || ord.sla_priority_level === 'overdue'}"
+                :class="{'row-alert-critical': ord.sla_priority_level === 'critical_1h' || ord.sla_priority_level === 'overdue', 'row-selected': selectedOrderIds.includes(ord.id)}"
               >
-                <td><strong>{{ ord.sale_order_name || ord.name }}</strong></td>
+                <td style="text-align: center;" @click.stop>
+                  <input type="checkbox" :value="ord.id" v-model="selectedOrderIds"/>
+                </td>
+                <td>
+                  <strong>{{ ord.sale_order_name || ord.name }}</strong>
+                  <span v-if="ord.is_unconfirmed" class="badge-unconfirmed-sub ml-1" title="Venta no confirmada en Odoo">Borrador</span>
+                </td>
                 <td>
                   <span class="channel-pill" :class="getChannelClass(ord.channel)">
                     {{ ord.channel || 'Directo' }}
                   </span>
-                  <span v-if="ord.fulfillment" class="fulfillment-subpill ml-1">
+                  <span v-if="ord.is_acordar" class="badge-acordar-sub ml-1" title="Venta por acordar con cliente (sin guía)">
+                    <i class="fa fa-handshake-o mr-1"></i>Por Acordar
+                  </span>
+                  <span v-else-if="ord.fulfillment" class="fulfillment-subpill ml-1">
                     {{ ord.fulfillment.toUpperCase() }}
                   </span>
                 </td>
@@ -646,8 +722,8 @@
               <tr v-for="item in executedResults" :key="item.id">
                 <td><strong>{{ formatSlaDate(item.date_done) }}</strong></td>
                 <td>
-                  <span class="stage-badge" :class="'stage-' + item.stage.toLowerCase()">
-                    {{ item.stage_label }}
+                  <span class="stage-badge" :class="'stage-' + (item.stage ? item.stage.toLowerCase() : 'unknown')">
+                    {{ item.stage_label || item.stage || '-' }}
                   </span>
                 </td>
                 <td><code>{{ item.name }}</code></td>
@@ -708,24 +784,38 @@
         </div>
       </div>
 
-    <!-- Reassign SLA Modal -->
+    <!-- Reassign SLA Modal (Single & Bulk) -->
     <div v-if="showReassignModal" class="modal-backdrop" @click.self="closeReassignModal">
       <div class="modal-card reassign-modal-card">
         <div class="modal-header">
           <h3 class="modal-title">
-            <i class="fa fa-clock-o mr-2 text-warning"></i>Reasignar / Empujar SLA Manualmente
+            <i class="fa fa-clock-o mr-2 text-warning"></i>
+            {{ isBulkReassign ? 'Reasignar / Empujar SLA en Bloque' : 'Reasignar / Empujar SLA Manualmente' }}
           </h3>
           <button class="btn-modal-close" @click="closeReassignModal"><i class="fa fa-times"></i></button>
         </div>
 
-        <div class="modal-body" v-if="reassignTarget">
-          <div class="reassign-target-summary mb-3 p-3 bg-light rounded border">
+        <div class="modal-body" v-if="reassignTarget || isBulkReassign">
+          <div v-if="isBulkReassign" class="reassign-target-summary mb-3 p-3 bg-light rounded border">
+            <div><i class="fa fa-cubes text-primary mr-1"></i><strong>Empuje Masivo:</strong> {{ selectedOrderIds.length }} pedido(s) seleccionado(s)</div>
+            <small class="text-muted">Se reprogramará la fecha límite de SLA para las órdenes seleccionadas.</small>
+          </div>
+          <div v-else-if="reassignTarget" class="reassign-target-summary mb-3 p-3 bg-light rounded border">
             <div><strong>Orden / Picking:</strong> {{ reassignTarget.sale_order_name || reassignTarget.sale_name || reassignTarget.name }} <span v-if="(reassignTarget.sale_order_name || reassignTarget.sale_name) && reassignTarget.name">({{ reassignTarget.name }})</span></div>
             <div><strong>Canal / Marketplace:</strong> {{ reassignTarget.channel_label || reassignTarget.channel || 'N/A' }}</div>
             <div><strong>SLA Actual:</strong> {{ reassignTarget.sla_display || formatSlaTime(reassignTarget.sla_date, reassignTarget.sla_timezone) || 'Sin SLA' }}</div>
           </div>
 
           <form @submit.prevent="saveReassignSla" class="reassign-form">
+            <div v-if="isBulkReassign && bulkAvailableMarketplaces.length > 0" class="form-group mb-3">
+              <label class="form-label font-weight-bold">Parametrizar por Marketplace</label>
+              <select class="form-control" v-model="reassignForm.marketplace">
+                <option value="all">Todos los marketplaces de los pedidos seleccionados</option>
+                <option v-for="mp in bulkAvailableMarketplaces" :key="mp" :value="mp">{{ mp }}</option>
+              </select>
+              <small class="form-text text-muted">Aplica el cambio exclusivamente a los pedidos de este canal.</small>
+            </div>
+
             <div class="form-group mb-3">
               <label class="form-label font-weight-bold">Nueva Fecha / Hora Límite SLA <span class="text-danger">*</span></label>
               <input 
@@ -741,7 +831,8 @@
               <label class="form-label font-weight-bold">Motivo del Empuje <span class="text-danger">*</span></label>
               <select class="form-control" v-model="reassignForm.reason" required>
                 <option value="no_space">Falta de espacio en unidad de transporte / colecta</option>
-                <option value="carrier_delay">Demora / Incidencia de paquetería / transportista</option>
+                <option value="carrier_cutoff">Corte de paquetería / retraso de recolección</option>
+                <option value="platform_rescheduled">Reprogramado por marketplace / plataforma</option>
                 <option value="warehouse_delay">Operación de almacén reprogramada</option>
                 <option value="customer_request">Solicitud de cliente / comprador</option>
                 <option value="other">Otro motivo</option>
@@ -765,7 +856,7 @@
               <button type="submit" class="btn btn-primary" :disabled="isReassigning">
                 <i v-if="isReassigning" class="fa fa-spinner fa-spin mr-1"></i>
                 <i v-else class="fa fa-check mr-1"></i>
-                Confirmar Reasignación
+                {{ isBulkReassign ? 'Aplicar Empuje Masivo' : 'Confirmar Reasignación' }}
               </button>
             </div>
           </form>
@@ -910,7 +1001,10 @@ export default {
       currentMainTab: "sla", // "sla" | "execution"
       matizMode: "by_sale", // "by_sale" | "by_stage"
       stageFilter: "all", // "all" | "PICK" | "PACK" | "OUT"
-      fulfillmentFilter: "all", // "all" | "fbm" | "full"
+      fulfillmentFilter: "all", // "all" | "drop" | "full" | "acordar"
+      unconfirmedFilter: "all", // "all" | "unconfirmed" | "confirmed"
+      selectedOrderIds: [],
+      isBulkReassign: false,
       activeStatus: "all",
       activeChannel: "all",
       viewMode: "grid", // "grid" o "list"
@@ -923,7 +1017,8 @@ export default {
       reassignForm: {
         new_sla_date: "",
         reason: "no_space",
-        note: ""
+        note: "",
+        marketplace: "all"
       },
       metrics: {
         pedidos: 0,
@@ -978,6 +1073,20 @@ export default {
   computed: {
     totalPages() {
       return Math.max(1, Math.ceil(this.totalCount / this.pageSize));
+    },
+    isAllSelected() {
+      if (!this.orders || this.orders.length === 0) return false;
+      return this.orders.every(o => this.selectedOrderIds.includes(o.id));
+    },
+    bulkAvailableMarketplaces() {
+      if (!this.selectedOrderIds || this.selectedOrderIds.length === 0) return [];
+      const channels = new Set();
+      this.orders.forEach(o => {
+        if (this.selectedOrderIds.includes(o.id) && o.channel) {
+          channels.add(o.channel.trim());
+        }
+      });
+      return Array.from(channels).sort();
     },
     paginationFrom() {
       if (this.totalCount === 0 || this.orders.length === 0) return 0;
@@ -1118,6 +1227,37 @@ export default {
       this.currentPage = pg;
       this.fetchOrders();
     },
+    toggleSelectAll(e) {
+      if (e.target.checked) {
+        const ids = this.orders.map(o => o.id);
+        this.selectedOrderIds = Array.from(new Set([...this.selectedOrderIds, ...ids]));
+      } else {
+        const pageIds = new Set(this.orders.map(o => o.id));
+        this.selectedOrderIds = this.selectedOrderIds.filter(id => !pageIds.has(id));
+      }
+    },
+    setUnconfirmedFilter(val) {
+      if (this.unconfirmedFilter === val) return;
+      this.unconfirmedFilter = val;
+      this.currentPage = 1;
+      this.selectedOrderIds = [];
+      this.fetchAll();
+    },
+    openBulkReassignModal() {
+      if (!this.selectedOrderIds || this.selectedOrderIds.length === 0) return;
+      this.isBulkReassign = true;
+      this.reassignTarget = null;
+      const d = new Date();
+      d.setDate(d.getDate() + 1);
+      d.setHours(15, 0, 0, 0);
+      this.reassignForm = {
+        new_sla_date: d.toISOString().slice(0, 16),
+        reason: "no_space",
+        note: "",
+        marketplace: "all"
+      };
+      this.showReassignModal = true;
+    },
     async fetchOrders() {
       this.store.loading = true;
       this.isRefreshing = true;
@@ -1128,6 +1268,8 @@ export default {
           query: this.searchQuery,
           status_filter: this.activeStatus,
           channel_filter: this.activeChannel,
+          fulfillment_filter: this.fulfillmentFilter,
+          unconfirmed_filter: this.unconfirmedFilter,
           date_from: dateFromParam,
           date_to: dateToParam,
           limit: this.pageSize,
@@ -1164,7 +1306,9 @@ export default {
         const res = await this.store.callOdooSilent("order_sla_metrics", "", {
           date_from: this.dateFrom,
           date_to: this.dateTo,
-          channel_filter: this.activeChannel
+          channel_filter: this.activeChannel,
+          fulfillment_filter: this.fulfillmentFilter,
+          unconfirmed_filter: this.unconfirmedFilter
         });
         if (res && res.success) {
           this.metrics = {
@@ -1182,9 +1326,10 @@ export default {
     setFulfillmentFilter(val) {
       if (this.fulfillmentFilter === val) return;
       this.fulfillmentFilter = val;
+      this.currentPage = 1;
       this.executedCurrentPage = 1;
-      this.fetchExecutionMetrics();
-      this.fetchExecutionData();
+      this.selectedOrderIds = [];
+      this.fetchAll();
     },
     filterByStageMetric(metricKey) {
       if (metricKey === 'ALL_SALES') {
@@ -1250,6 +1395,7 @@ export default {
       }
     },
     openReassignModal(item) {
+      this.isBulkReassign = false;
       this.reassignTarget = item;
       let defaultDate = "";
       if (item.sla_date) {
@@ -1266,25 +1412,43 @@ export default {
       this.reassignForm = {
         new_sla_date: defaultDate,
         reason: item.sla_override_reason || "no_space",
-        note: item.sla_override_note || ""
+        note: item.sla_override_note || "",
+        marketplace: "all"
       };
       this.showReassignModal = true;
     },
     closeReassignModal() {
       this.showReassignModal = false;
       this.reassignTarget = null;
+      this.isBulkReassign = false;
     },
     async saveReassignSla() {
-      if (!this.reassignTarget || !this.reassignForm.new_sla_date) return;
+      if (!this.reassignForm.new_sla_date) {
+        alert("Por favor defina la nueva fecha SLA");
+        return;
+      }
       this.isReassigning = true;
       try {
-        const res = await this.store.callOdooSilent("reassign_sla", "", {
-          picking_id: this.reassignTarget.id,
-          sale_id: this.reassignTarget.sale_id,
-          new_sla_date: this.reassignForm.new_sla_date.replace("T", " "),
-          reason: this.reassignForm.reason,
-          note: this.reassignForm.note
-        });
+        let res = null;
+        if (this.isBulkReassign) {
+          res = await this.store.callOdooSilent("bulk_reassign_sla", "", {
+            order_ids: this.selectedOrderIds,
+            new_sla_date: this.reassignForm.new_sla_date.replace("T", " ") + ":00",
+            reason: this.reassignForm.reason,
+            note: this.reassignForm.note,
+            marketplace: this.reassignForm.marketplace
+          });
+        } else {
+          if (!this.reassignTarget) return;
+          res = await this.store.callOdooSilent("reassign_sla", "", {
+            order_id: this.reassignTarget.id,
+            pick_id: this.reassignTarget.pick_id,
+            new_sla_date: this.reassignForm.new_sla_date.replace("T", " ") + ":00",
+            reason: this.reassignForm.reason,
+            note: this.reassignForm.note
+          });
+        }
+
         if (res && res.success) {
           if (this.$toast) {
             this.$toast.add({
@@ -1295,8 +1459,8 @@ export default {
             });
           }
           this.closeReassignModal();
-          this.fetchOrders();
-          this.fetchMetrics();
+          this.selectedOrderIds = [];
+          this.fetchAll();
         } else {
           alert((res && (res.error?.message || res.error)) || "Error al reasignar SLA");
         }
@@ -2732,5 +2896,60 @@ export default {
   border-radius: 6px;
   font-size: 0.85rem;
   line-height: 1.5;
+}
+
+/* Bulk SLA Action Bar */
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background-color: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #92400e;
+  padding: 8px 16px;
+  border-radius: 8px;
+  margin: 10px 0 16px 0;
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.15);
+}
+.bulk-info {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.bulk-buttons {
+  display: flex;
+  align-items: center;
+}
+.badge-acordar-sub {
+  background-color: #f3e8ff;
+  border: 1px solid #d8b4fe;
+  color: #6b21a8;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.badge-unconfirmed-sub {
+  background-color: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #b45309;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.unconfirmed-switcher {
+  display: flex;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  overflow: hidden;
+  background-color: #f8fafc;
+  margin-left: 8px;
+}
+.row-selected {
+  background-color: #fffbeb !important;
+}
+.card-checkbox {
+  cursor: pointer;
+  transform: scale(1.15);
 }
 </style>
