@@ -11,6 +11,7 @@
   "dependencies": {
     "@primeuix/themes": "^2.0.2",
     "@primevue/themes": "^4.5.4",
+    "dexie": "^4.4.7",
     "pinia": "^3.0.4",
     "primevue": "^4.5.4",
     "qr-scanner": "^1.4.2",
