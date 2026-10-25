@@ -84,7 +84,8 @@ export default {
         can_close: { type: Boolean, default: false },
         onScan: Function,
         extra_data: Object,
-        disableFocus: { type: Boolean, default: false }
+        disableFocus: { type: Boolean, default: false },
+        queueMode: { type: Boolean, default: false }
     },
     mounted() {
         console.log("mounted");
@@ -105,9 +106,15 @@ export default {
     methods: {
         handleGlobalKeydown(e) {
             if (this.disableFocus) return;
-            console.log("handleGlobalKeydown", e.key);
-            if (this.reader === 'laser' && document.activeElement !== this.$refs.laserInput) {
-                this.focusLaserInput();
+            if (this.reader === 'laser') {
+                if (e.key === 'Enter' && this.laser_input && this.laser_input.trim()) {
+                    if (this.inputTimeout) clearTimeout(this.inputTimeout);
+                    this.processScanedData();
+                    return;
+                }
+                if (document.activeElement !== this.$refs.laserInput) {
+                    this.focusLaserInput();
+                }
             }
         },
         async initCamera() {
@@ -207,8 +214,7 @@ export default {
             }
         },
         handleInput() {
-            console.log("handleInput", this.laser_input);
-            if (this.scan_lockout) {
+            if (this.scan_lockout && !this.queueMode && this.reader !== 'laser') {
                 this.laser_input = "";
                 return;
             }
@@ -219,17 +225,16 @@ export default {
 
             this.inputTimeout = setTimeout(() => {
                 this.processScanedData();
-            }, 50); 
+            }, 30); 
         },
         processScanedData() {
-            console.log("processScanedData");
-            if (this.laser_input.trim() !== "") {
-                this.triggerScan(this.laser_input); 
+            const raw = this.laser_input.trim();
+            if (raw !== "") {
                 this.laser_input = "";
+                this.triggerScan(raw); 
             }
         },
         playBeep() {
-            console.log("playBeep");
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 const ctx = new AudioContext();
@@ -245,15 +250,28 @@ export default {
                 gainNode.connect(ctx.destination);
                 
                 oscillator.start();
-                oscillator.stop(ctx.currentTime + 0.1);
+                oscillator.stop(ctx.currentTime + 0.08);
             } catch (error) {
-                console.log("AudioContext not supported");
+                // AudioContext not supported or blocked
             }
         },
         triggerScan(code) {
             console.log("triggerScan", code);
-            this.scan_lockout = true;
             this.playBeep();
+
+            if (this.reader === 'camera') {
+                this.scan_lockout = true;
+                setTimeout(() => {
+                    this.scan_lockout = false;
+                }, 800);
+            } else if (!this.queueMode) {
+                this.scan_lockout = true;
+                setTimeout(() => {
+                    this.scan_lockout = false;
+                }, 200);
+            } else {
+                this.scan_lockout = false;
+            }
             
             if (this.context) {
                 this.store.executeActionByContext(this.context, code, this.extra_data);
@@ -261,11 +279,6 @@ export default {
             else if (this.onScan) {
                 this.onScan(code);
             }
-
-            setTimeout(() => {
-                console.log("scan_lockout lifted");
-                this.scan_lockout = false;
-            }, 3000);
         },
         handleTouchStart(e) {
             if (this.$el.scrollTop === 0) {
