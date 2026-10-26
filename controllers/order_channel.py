@@ -531,9 +531,33 @@ class OrderChannelController(http.Controller):
             # Fecha SLA (local) más antigua por canal: pedido más rezagado entre pendientes activos
             channel_oldest = {}
             try:
+                oldest_ful_clause = ""
+                if fulfillment_filter in ('drop', 'fbm'):
+                    oldest_ful_clause = " AND (s.fulfillment != 'fbc' OR s.fulfillment IS NULL) "
+                elif fulfillment_filter in ('full', 'fbc'):
+                    oldest_ful_clause = " AND s.fulfillment = 'fbc' "
+                elif fulfillment_filter == 'acordar':
+                    oldest_ful_clause = """
+                        AND (s.fulfillment != 'fbc' OR s.fulfillment IS NULL)
+                        AND NOT EXISTS (
+                            SELECT 1 FROM stock_picking sp 
+                            WHERE sp.sale_id = s.id 
+                              AND sp.carrier_tracking_ref IS NOT NULL 
+                              AND sp.carrier_tracking_ref != ''
+                        )
+                        AND s.carrier_id IS NULL 
+                        AND (s.yuju_carrier IS NULL OR s.yuju_carrier = '')
+                    """
+
+                oldest_unconf_clause = ""
+                if unconfirmed_filter in ('unconfirmed', 'no_confirmadas'):
+                    oldest_unconf_clause = " AND s.state IN ('draft', 'sent') "
+                elif unconfirmed_filter in ('confirmed', 'confirmadas'):
+                    oldest_unconf_clause = " AND s.state NOT IN ('draft', 'sent') "
+
                 off_expr = _channel_offset_sql(env)
                 env.cr.execute(f"""
-                    SELECT COALESCE(s.channel, 'Directo/Otro') AS channel,
+                    SELECT COALESCE(NULLIF(s.channel, ''), 'Manuales') AS channel,
                            MIN(p.sla_date + ({off_expr} * interval '1 hour')) AS oldest
                     FROM stock_picking p
                     JOIN stock_picking_type pt ON pt.id = p.picking_type_id
@@ -548,6 +572,8 @@ class OrderChannelController(http.Controller):
                       AND (s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)
                       AND p.state NOT IN ('done', 'cancel')
                       AND p.sla_date IS NOT NULL
+                      {oldest_ful_clause}
+                      {oldest_unconf_clause}
                     GROUP BY COALESCE(NULLIF(s.channel, ''), 'Manuales')
                 """)
                 for ch, oldest in env.cr.fetchall():
@@ -585,7 +611,10 @@ class OrderChannelController(http.Controller):
         cae en el rango (hora local). Enviado = la SO tiene un OUT cerrado (done).
         """
         try:
-            env = request.env
+            try:
+                env = request.env
+            except Exception:
+                env = kw.get('env')
             date_from = (kw.get('date_from') or '').strip()
             date_to = (kw.get('date_to') or '').strip()
             channel_filter = (kw.get('channel_filter') or 'all').strip()
@@ -722,7 +751,10 @@ class OrderChannelController(http.Controller):
         Métricas de operaciones ejecutadas (Pick, Pack, OUT hechos) dentro del rango de fechas local (CDMX UTC-6).
         """
         try:
-            env = request.env
+            try:
+                env = request.env
+            except Exception:
+                env = kw.get('env')
             date_from = (kw.get('date_from') or '').strip()
             date_to = (kw.get('date_to') or '').strip()
             channel_filter = (kw.get('channel_filter') or 'all').strip()
@@ -796,7 +828,10 @@ class OrderChannelController(http.Controller):
         - matiz_mode == 'by_stage': Albaranes individuales (PICK, PACK, OUT) completados en el día.
         """
         try:
-            env = request.env
+            try:
+                env = request.env
+            except Exception:
+                env = kw.get('env')
             date_from = (kw.get('date_from') or '').strip()
             date_to = (kw.get('date_to') or '').strip()
             channel_filter = (kw.get('channel_filter') or 'all').strip()
@@ -1096,17 +1131,46 @@ class OrderChannelController(http.Controller):
     def check_sla_expiring_alerts(self, **kw):
         """
         Return count of active pickings expiring in < 1h vs overdue, and pending orders by marketplace.
-        Supports optional channel_filter parameter.
+        Supports optional channel_filter, fulfillment_filter, and unconfirmed_filter parameters.
         """
         try:
-            env = request.env
+            try:
+                env = request.env
+            except Exception:
+                env = kw.get('env')
             channel_filter = (kw.get('channel_filter') or 'all').strip()
+            fulfillment_filter = (kw.get('fulfillment_filter') or 'all').strip().lower()
+            unconfirmed_filter = (kw.get('unconfirmed_filter') or 'all').strip().lower()
 
             now_utc = fields.Datetime.now()
             in_1h_utc = now_utc + timedelta(hours=1)
 
+            ful_where = ""
+            if fulfillment_filter in ('drop', 'fbm'):
+                ful_where = " AND (s.fulfillment != 'fbc' OR s.fulfillment IS NULL) "
+            elif fulfillment_filter in ('full', 'fbc'):
+                ful_where = " AND s.fulfillment = 'fbc' "
+            elif fulfillment_filter == 'acordar':
+                ful_where = """
+                    AND (s.fulfillment != 'fbc' OR s.fulfillment IS NULL)
+                    AND NOT EXISTS (
+                        SELECT 1 FROM stock_picking sp 
+                        WHERE sp.sale_id = s.id 
+                          AND sp.carrier_tracking_ref IS NOT NULL 
+                          AND sp.carrier_tracking_ref != ''
+                    )
+                    AND s.carrier_id IS NULL 
+                    AND (s.yuju_carrier IS NULL OR s.yuju_carrier = '')
+                """
+
+            unconf_where = ""
+            if unconfirmed_filter in ('unconfirmed', 'no_confirmadas'):
+                unconf_where = " AND s.state IN ('draft', 'sent') "
+            elif unconfirmed_filter in ('confirmed', 'confirmadas'):
+                unconf_where = " AND s.state NOT IN ('draft', 'sent') "
+
             # Query general de conteo de pendientes activos agrupados por marketplace
-            env.cr.execute('''
+            env.cr.execute(f'''
                 SELECT 
                     COALESCE(NULLIF(s.channel, ''), 'Manuales') AS channel,
                     COUNT(DISTINCT s.id) AS pending_count
@@ -1119,6 +1183,8 @@ class OrderChannelController(http.Controller):
                   AND (s.order_progress NOT ILIKE '%cancel%' OR s.order_progress IS NULL)
                   AND (s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)
                   AND p.state NOT IN ('done', 'cancel')
+                  {ful_where}
+                  {unconf_where}
                 GROUP BY COALESCE(NULLIF(s.channel, ''), 'Manuales')
                 ORDER BY pending_count DESC
             ''')
@@ -1154,6 +1220,8 @@ class OrderChannelController(http.Controller):
                   AND p.state NOT IN ('done', 'cancel')
                   AND p.sla_date IS NOT NULL
                   {filter_clause}
+                  {ful_where}
+                  {unconf_where}
             '''
             env.cr.execute(sql_alerts, params)
             rows = env.cr.fetchall()
@@ -1577,6 +1645,7 @@ class OrderChannelController(http.Controller):
             channel_filter = (kw.get('channel_filter') or 'all').strip()
             status_filter = (kw.get('status_filter') or 'all').strip()
             fulfillment_filter = (kw.get('fulfillment_filter') or 'all').strip()
+            unconfirmed_filter = (kw.get('unconfirmed_filter') or 'all').strip()
             matiz_mode = (kw.get('matiz_mode') or 'by_sale').strip()
             stage_filter = (kw.get('stage_filter') or 'all').strip().upper()
             query = (kw.get('query') or '').strip()
@@ -1593,7 +1662,7 @@ class OrderChannelController(http.Controller):
             if tab == 'sla':
                 ws = wb.add_worksheet('SLA Pedidos')
                 ws.write(0, 0, "REPORTE DE SLA DE PEDIDOS - WMDS", fmt_title)
-                ws.write(1, 0, f"Generado: {fields.Datetime.now().strftime('%d/%m/%Y %H:%M:%S')} (UTC) | Canal: {channel_filter} | Estatus: {status_filter}", fmt_subtitle)
+                ws.write(1, 0, f"Generado: {fields.Datetime.now().strftime('%d/%m/%Y %H:%M:%S')} (UTC) | Canal: {channel_filter} | Estatus: {status_filter} | Fulfillment: {fulfillment_filter.upper()}", fmt_subtitle)
 
                 headers = [
                     "Orden de Venta", "Albarán", "Canal", "Fulfillment", "Paquetería", 
@@ -1608,6 +1677,8 @@ class OrderChannelController(http.Controller):
                     date_from='' if status_filter == 'no_sla' else date_from,
                     date_to='' if status_filter == 'no_sla' else date_to,
                     channel_filter=channel_filter, status_filter=status_filter,
+                    fulfillment_filter=fulfillment_filter,
+                    unconfirmed_filter=unconfirmed_filter,
                     query=query
                 )
                 rows = res_query.get('results', [])

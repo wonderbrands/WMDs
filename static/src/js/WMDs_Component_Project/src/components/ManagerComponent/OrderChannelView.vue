@@ -63,17 +63,80 @@
         </button>
       </div>
 
-      <!-- Status Filter Chips (For SLA Tab) -->
-      <div v-if="currentMainTab === 'sla'" class="filter-chips">
-        <button 
-          v-for="st in statusOptions" 
-          :key="st.value"
-          class="chip-button"
-          :class="{ active: activeStatus === st.value }"
-          @click="setStatusFilter(st.value)"
-        >
-          {{ st.label }}
-        </button>
+      <!-- Sub-controls for SLA Tab (Status Chips, Fulfillment Filter, Unconfirmed Filter) -->
+      <div v-if="currentMainTab === 'sla'" class="sla-toolbar-sub">
+        <div class="filter-chips">
+          <button 
+            v-for="st in statusOptions" 
+            :key="st.value"
+            class="chip-button"
+            :class="{ active: activeStatus === st.value }"
+            @click="setStatusFilter(st.value)"
+          >
+            {{ st.label }}
+          </button>
+        </div>
+
+        <div class="sla-secondary-filters">
+          <!-- Fulfillment Filter (Drop vs Full vs Por Acordar) -->
+          <div class="fulfillment-switcher">
+            <button 
+              class="chip-button"
+              :class="{ active: fulfillmentFilter === 'all' }"
+              @click="setFulfillmentFilter('all')"
+            >
+              Todos
+            </button>
+            <button 
+              class="chip-button"
+              :class="{ active: fulfillmentFilter === 'drop' }"
+              @click="setFulfillmentFilter('drop')"
+            >
+              <i class="fa fa-home mr-1"></i> Drop
+            </button>
+            <button 
+              class="chip-button"
+              :class="{ active: fulfillmentFilter === 'full' }"
+              @click="setFulfillmentFilter('full')"
+            >
+              <i class="fa fa-cubes mr-1"></i> Full
+            </button>
+            <button 
+              class="chip-button"
+              :class="{ active: fulfillmentFilter === 'acordar' }"
+              @click="setFulfillmentFilter('acordar')"
+              title="Ventas DROP sin guía ni paquetería asignada (entrega a acordar con cliente)"
+            >
+              <i class="fa fa-handshake-o mr-1"></i> Por Acordar
+            </button>
+          </div>
+
+          <!-- Unconfirmed Filter (Ventas No Confirmadas) -->
+          <div class="unconfirmed-switcher">
+            <button 
+              class="chip-button"
+              :class="{ active: unconfirmedFilter === 'all' }"
+              @click="setUnconfirmedFilter('all')"
+            >
+              Todas las Ventas
+            </button>
+            <button 
+              class="chip-button chip-unconfirmed"
+              :class="{ active: unconfirmedFilter === 'unconfirmed' }"
+              @click="setUnconfirmedFilter('unconfirmed')"
+              title="Órdenes en borrador / cotización sin confirmar aún"
+            >
+              <i class="fa fa-file-text-o mr-1"></i> No Confirmadas
+            </button>
+            <button 
+              class="chip-button"
+              :class="{ active: unconfirmedFilter === 'confirmed' }"
+              @click="setUnconfirmedFilter('confirmed')"
+            >
+              <i class="fa fa-check-circle-o mr-1"></i> Confirmadas
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Sub-controls for Execution Tab (Matiz Switcher and Stage Chips) -->
@@ -1248,6 +1311,7 @@ export default {
       this.currentPage = 1;
       this.selectedOrderIds = [];
       this.fetchAll();
+      this.checkExpiringAlerts();
     },
     openBulkReassignModal() {
       if (!this.selectedOrderIds || this.selectedOrderIds.length === 0) return;
@@ -1336,6 +1400,7 @@ export default {
       this.executedCurrentPage = 1;
       this.selectedOrderIds = [];
       this.fetchAll();
+      this.checkExpiringAlerts();
     },
     filterByStageMetric(metricKey) {
       if (metricKey === 'ALL_SALES') {
@@ -1361,6 +1426,8 @@ export default {
           tab: this.currentMainTab,
           query: this.searchQuery,
           channel_filter: this.activeChannel,
+          fulfillment_filter: this.fulfillmentFilter,
+          unconfirmed_filter: this.unconfirmedFilter,
           date_from: dateFromParam,
           date_to: dateToParam
         };
@@ -1369,7 +1436,6 @@ export default {
         } else {
           params.matiz_mode = this.matizMode;
           params.stage_filter = this.stageFilter;
-          params.fulfillment_filter = this.fulfillmentFilter;
         }
 
         const res = await this.store.callOdooSilent("export_order_channel_excel", "", params);
@@ -1532,7 +1598,9 @@ export default {
     async checkExpiringAlerts() {
       try {
         const res = await this.store.callOdooSilent("sla_expiring_alerts", "", {
-          channel_filter: this.activeChannel
+          channel_filter: this.activeChannel,
+          fulfillment_filter: this.fulfillmentFilter,
+          unconfirmed_filter: this.unconfirmedFilter
         });
         if (res && res.success) {
           const prevCount = this.criticalCount;
@@ -2491,6 +2559,22 @@ export default {
   color: #1d4ed8;
 }
 
+.sla-toolbar-sub {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.sla-secondary-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
 .execution-toolbar-sub {
   display: flex;
   justify-content: space-between;
@@ -2500,6 +2584,7 @@ export default {
   border-radius: 8px;
   border: 1px solid #e2e8f0;
   margin-bottom: 16px;
+  width: 100%;
 }
 
 .matiz-switcher {
