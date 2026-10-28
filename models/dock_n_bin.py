@@ -30,6 +30,15 @@ class BinCartStorage(models.Model):
     
     # ---------------------------------------------------------
     carrier_id = fields.Many2one("carriers.list", string="Carrier")
+    origin_doc = fields.Char(string="Documento Origen (Candado)")
+
+    def action_block_bin(self):
+        for record in self:
+            record.state = 'blocked'
+
+    def action_unblock_bin(self):
+        for record in self:
+            record.state = 'available'
 
     @api.depends('name')
     def _compute_qr_code(self):

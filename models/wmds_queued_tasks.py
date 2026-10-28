@@ -204,6 +204,9 @@ class WmdsQueuedTasks(models.Model):
         if not bin_storage:
             raise UserError(f"Bin {bin_name} no encontrado")
 
+        if bin_storage.state == 'blocked':
+            raise UserError(f"El BIN {bin_name} está bloqueado. No se pueden ingresar más productos.")
+
         if carrier_id:
             bin_storage.write({'carrier_id': int(carrier_id)})
 
@@ -219,11 +222,29 @@ class WmdsQueuedTasks(models.Model):
                 pickings = batch.picking_ids
                 log_target = {"batch_pick": batch.id}
                 log_label = f"Lote {batch.name}"
+                batch_origins = list(filter(None, set(pickings.mapped('origin'))))
+                origin = batch_origins[0] if batch_origins else False
             else:
                 picking = self.env['stock.picking'].sudo().browse(pick_id)
                 pickings = picking
                 log_target = {"pick": picking.id}
                 log_label = f"Traslado {picking.name}"
+                origin = picking.origin
+
+            if origin:
+                # Regla: Ningún otro BIN puede tener este mismo documento origen asignado
+                other_bin = self.env['bin.storage'].sudo().search([
+                    ('origin_doc', '=', origin),
+                    ('id', '!=', bin_storage.id)
+                ], limit=1)
+                if other_bin:
+                    raise UserError(f"El documento origen '{origin}' ya está asignado al BIN '{other_bin.name}'. No puede haber más de un BIN para el mismo origen.")
+
+                # Regla: Este BIN solo puede admitir un documento origen
+                if bin_storage.origin_doc and bin_storage.origin_doc != origin:
+                    raise UserError(f"El BIN {bin_storage.name} ya está asignado al origen '{bin_storage.origin_doc}'. No se pueden ingresar productos del origen '{origin}'.")
+                elif not bin_storage.origin_doc:
+                    bin_storage.write({'origin_doc': origin})
 
             moves = pickings.mapped('move_ids').filtered(lambda m: m.state == 'done' and not m.dispatched)
             
@@ -360,6 +381,9 @@ class WmdsQueuedTasks(models.Model):
         if not dock_storage or not bin_storage:
             raise UserError("Bin o Dock no existe")
 
+        if bin_storage.state != 'blocked':
+            raise UserError(f"El BIN {bin_storage.name} debe estar bloqueado para poder ser trasladado a DOCK.")
+
         ei_domain = [('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]
         move_domain = [('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]
 
@@ -479,6 +503,7 @@ class WmdsQueuedTasks(models.Model):
             bin_storage.write({
                 'state': 'available',
                 'carrier_id': False,
+                'origin_doc': False,
             })
 
     def _update_progress(self, progress_msg):

@@ -111,6 +111,14 @@ class DockNBin(http.Controller):
                 _logger.error("Faltan datos en move_to_bin")
                 return {'error': 'Missing data'}
 
+            bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
+            if not bin_storage:
+                _logger.error(f"Bin {bin_name} no encontrado")
+                return {'error': 'Bin not found'}
+
+            if bin_storage.state == 'blocked':
+                return {'error': f"El BIN {bin_name} está bloqueado. No se pueden ingresar más productos.", 'ok': False}
+
             # Determine count of items to move
             item_count = 0
             if orders:
@@ -142,10 +150,6 @@ class DockNBin(http.Controller):
                 }
 
             operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
-            bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
-            if not bin_storage:
-                _logger.error(f"Bin {bin_name} no encontrado")
-                return {'error': 'Bin not found'}
 
 
             # Guardar el carrier en el BIN
@@ -178,11 +182,29 @@ class DockNBin(http.Controller):
                     pickings = batch.picking_ids
                     log_target = {"batch_pick": batch.id}
                     log_label = f"Lote {batch.name}"
+                    batch_origins = list(filter(None, set(pickings.mapped('origin'))))
+                    origin = batch_origins[0] if batch_origins else False
                 else:
                     picking = request.env['stock.picking'].sudo().browse(pick_id)
                     pickings = picking
                     log_target = {"pick": picking.id}
                     log_label = f"Traslado {picking.name}"
+                    origin = picking.origin
+
+                if origin:
+                    # Regla: Ningún otro BIN puede tener este mismo documento origen asignado
+                    other_bin = request.env['bin.storage'].sudo().search([
+                        ('origin_doc', '=', origin),
+                        ('id', '!=', bin_storage.id)
+                    ], limit=1)
+                    if other_bin:
+                        return {'error': f"El documento origen '{origin}' ya está asignado al BIN '{other_bin.name}'. No puede haber más de un BIN para el mismo origen."}
+
+                    # Regla: Este BIN solo puede admitir un documento origen
+                    if bin_storage.origin_doc and bin_storage.origin_doc != origin:
+                        return {'error': f"El BIN {bin_storage.name} ya está asignado al origen '{bin_storage.origin_doc}'. No se pueden ingresar productos del origen '{origin}'."}
+                    elif not bin_storage.origin_doc:
+                        bin_storage.write({'origin_doc': origin})
 
                 moves = pickings.mapped('move_ids').filtered(lambda m: m.state == 'done' and not m.dispatched)
                 
@@ -239,7 +261,12 @@ class DockNBin(http.Controller):
                 log_vals.update(log_target)
                 request.env["wmds.log"].sudo().create(log_vals)
 
-                return {"ok": True, "count": len(moves)}
+                return {
+                    "ok": True,
+                    "count": len(moves),
+                    "origin": origin or "",
+                    "bin": bin_storage.name
+                }
 
             if orders:
                 if has_moves:
@@ -331,8 +358,47 @@ class DockNBin(http.Controller):
             if not bin_storage:
                 return {'error': f'El BIN {bin_name} no existe', 'valid': False}
 
-            if purpose == "in" and bin_storage.state == 'blocked':
-                return {'error': f'El BIN {bin_name} ya está ocupado', 'valid': False}
+            # Si no se pasa purpose explícito, por defecto asumimos 'in' a menos que sea vaciado
+            if bin_storage.state == 'blocked' and purpose != 'out' and purpose != 'inspect':
+                return {'error': f'El BIN {bin_name} ya está bloqueado', 'valid': False}
+
+            incoming_origin = kw.get("origin")
+            if not incoming_origin:
+                pick_id = kw.get("pick_id")
+                batch_id = kw.get("batch_id")
+                if pick_id:
+                    p = request.env['stock.picking'].sudo().browse(int(pick_id))
+                    incoming_origin = p.origin if p.exists() else False
+                elif batch_id:
+                    b = request.env['stock.picking.batch'].sudo().browse(int(batch_id))
+                    if b.exists():
+                        b_origins = list(filter(None, set(b.picking_ids.mapped('origin'))))
+                        incoming_origin = b_origins[0] if b_origins else False
+
+            if purpose == "in" and incoming_origin:
+                # Regla: Ningún otro BIN puede tener este mismo documento origen asignado
+                other_bin = request.env['bin.storage'].sudo().search([
+                    ('origin_doc', '=', incoming_origin),
+                    ('id', '!=', bin_storage.id)
+                ], limit=1)
+                if other_bin:
+                    return {
+                        'error': f"El documento origen '{incoming_origin}' ya está asignado al BIN '{other_bin.name}'. No puede haber más de un BIN para el mismo origen.",
+                        'valid': False
+                    }
+
+                # Regla: Este BIN solo puede admitir un documento origen
+                if bin_storage.origin_doc and bin_storage.origin_doc != incoming_origin:
+                    return {
+                        'error': f"El BIN {bin_name} ya está asignado al origen '{bin_storage.origin_doc}'. No se pueden ingresar productos del origen '{incoming_origin}'.",
+                        'valid': False
+                    }
+
+            if purpose == "out" and bin_storage.state != 'blocked':
+                return {
+                    'error': f"El BIN {bin_name} no está bloqueado. Debe estar bloqueado para poder ser trasladado a DOCK.",
+                    'valid': False
+                }
             
             ei_tags = request.env["sale.order.ei"].sudo().search([
                 ('bin_id', '=', bin_storage.id),
@@ -380,6 +446,8 @@ class DockNBin(http.Controller):
             return {
                 "valid": True,
                 "bin": bin_storage.name,
+                "state": bin_storage.state,
+                "origin_doc": bin_storage.origin_doc or "",
                 "packages": packages,
                 "package_details": package_details,
                 "total_packages": len(packages),
@@ -394,13 +462,16 @@ class DockNBin(http.Controller):
     @http.route('/wmds/v2/engine/post/block_bin', type='json', auth='user', methods=['POST'], csrf=True)
     def block_bin(self, **kw):
         try:
-            bin_name = kw.get("bin")
+            bin_name = (kw.get("bin") or '').strip()
             if not bin_name:
-                return {'error': 'BIN name is required', 'ok': False}
+                return {'error': 'El nombre del BIN es requerido', 'ok': False}
             
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             if not bin_storage:
-                return {'error': 'Bin not found', 'ok': False}
+                return {'error': f'El BIN "{bin_name}" no fue encontrado en el sistema.', 'ok': False}
+
+            if bin_storage.state == 'blocked':
+                return {'error': f'El BIN {bin_storage.name} ya se encuentra bloqueado.', 'ok': False, 'already_blocked': True}
 
             # Check for stock
             ei_tags_count = request.env["sale.order.ei"].sudo().search_count([
@@ -415,18 +486,50 @@ class DockNBin(http.Controller):
 
             has_stock = (ei_tags_count + moves_count) > 0
 
-            # If it has stock, anyone can block it.
-            # If not, only manager can block it (to reserve it, for example)
-            is_manager = request.env.user.has_group('wmds.group_wmds_manager')
+            # Permisos: Manager, Operador de pickeo u Operador general
+            user = request.env.user
+            is_manager = user.has_group('wmds.group_wmds_manager')
+            is_picker = user.has_group('wmds.role_wmds_picker') or user.has_group('wmds.group_wmds_operator')
 
-            if has_stock or is_manager:
+            if has_stock or is_manager or is_picker:
                 bin_storage.state = 'blocked'
-                return {'ok': True}
+                _logger.info(f"WMDS: BIN {bin_storage.name} bloqueado por {user.login}")
+                return {
+                    'ok': True,
+                    'state': 'blocked',
+                    'bin_name': bin_storage.name,
+                    'has_stock': has_stock,
+                    'packages_count': ei_tags_count + moves_count
+                }
             else:
                 return {
-                    'error': 'El BIN está vacío y no tienes permisos de Manager para bloquearlo.', 
+                    'error': 'No tienes permisos para bloquear este BIN.', 
                     'ok': False
                 }
+        except Exception as e:
+            _logger.error(f"Error bloqueando BIN: {e}", exc_info=True)
+            return {'error': str(e), 'ok': False}
+
+    @http.route('/wmds/v2/engine/post/unblock_bin', type='json', auth='user', methods=['POST'], csrf=True)
+    def unblock_bin(self, **kw):
+        try:
+            bin_name = kw.get("bin")
+            if not bin_name:
+                return {'error': 'BIN name is required', 'ok': False}
+            
+            bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
+            if not bin_storage:
+                return {'error': 'Bin not found', 'ok': False}
+
+            is_manager = request.env.user.has_group('wmds.group_wmds_manager')
+            if not is_manager:
+                return {
+                    'error': 'Solo un usuario con rol de Manager puede desbloquear el BIN.', 
+                    'ok': False
+                }
+
+            bin_storage.state = 'available'
+            return {'ok': True, 'state': 'available'}
         except Exception as e:
             return {'error': str(e), 'ok': False}
 
@@ -481,6 +584,9 @@ class DockNBin(http.Controller):
 
             if not dock_storage or not bin_storage:
                 return {'error': 'Bin o Dock no existe', 'ok': False}
+
+            if bin_storage.state != 'blocked':
+                return {'error': f"El BIN {bin_storage.name} debe estar bloqueado para poder ser trasladado a DOCK.", 'ok': False}
 
             # Determine count of items to move
             item_count = 0
@@ -654,6 +760,7 @@ class DockNBin(http.Controller):
                 bin_storage.write({
                     'state': 'available',
                     'carrier_id': False,
+                    'origin_doc': False,
                 })
 
             return {"ok": True, "moved_packages": len(ei_tags) + len(moves)}
@@ -754,6 +861,8 @@ class DockNBin(http.Controller):
                     res.append({
                         "id": b.id,
                         "name": b.name,
+                        "state": b.state,
+                        "origin_doc": b.origin_doc or "",
                         "has_ecommerce": ei_count > 0,
                         "has_full": move_count > 0,
                         "total_items": ei_count + move_count,
@@ -859,3 +968,98 @@ class DockNBin(http.Controller):
             }
         except Exception as e:
             return {"error": str(e)}
+
+    @http.route('/wmds/v2/engine/get/unassigned_ful_records', type='json', auth='user', methods=['POST'], csrf=True)
+    def get_unassigned_ful_records(self, **kw):
+        """Retorna batches y pickings validados (state == done) que no tienen BIN asignado y cuyo DFUL aún no se ha despachado"""
+        try:
+            records = []
+            
+            def check_dful_done(origins, pnames, pickings):
+                # 1. Por enlaces de movimientos (move_dest_ids)
+                dest_picks = pickings.move_ids.move_dest_ids.mapped('picking_id')
+                related_dfuls = dest_picks.filtered(lambda p: 'Despacho' in (p.picking_type_id.name or '') and 'Ful' in (p.picking_type_id.name or ''))
+                
+                # 2. Por origen o nombre de PFUL
+                if not related_dfuls:
+                    subdomain = []
+                    if origins:
+                        subdomain.append(('origin', 'in', origins))
+                    if pnames:
+                        subdomain.append(('origin', 'in', pnames))
+                    if subdomain:
+                        domain = [
+                            ('picking_type_id.name', 'ilike', 'Despacho'),
+                            ('picking_type_id.name', 'ilike', 'Ful')
+                        ]
+                        if len(subdomain) > 1:
+                            domain = ['|'] + domain + subdomain
+                        else:
+                            domain += subdomain
+                        related_dfuls = request.env['stock.picking'].sudo().search(domain)
+                
+                # Si algún DFUL asociado ya está en 'done', significa que ya se fue / ya se procesó
+                return any(d.state == 'done' for d in related_dfuls)
+
+            # 1. Batches de fulfillment / mayoreo
+            batches = request.env['stock.picking.batch'].sudo().search([
+                ('state', '=', 'done'),
+                ('picking_ids.picking_type_id.name', 'ilike', 'Pick'),
+                ('picking_ids.picking_type_id.name', 'ilike', 'Ful')
+            ], order='id desc', limit=100)
+
+            for b in batches:
+                moves = b.picking_ids.mapped('move_ids').filtered(lambda m: m.state == 'done')
+                # Si tiene movimientos y ninguno está en bin, dock ni despachado
+                if moves and not any(m.on_bin or m.on_dock or m.dispatched for m in moves):
+                    origins = list(filter(None, set(b.picking_ids.mapped('origin'))))
+                    pnames = b.picking_ids.mapped('name')
+                    
+                    # Si el DFUL ya se fue (state == done), no requiere BIN
+                    if check_dful_done(origins, pnames, b.picking_ids):
+                        continue
+
+                    records.append({
+                        "id": b.id,
+                        "type": "batch",
+                        "name": b.name,
+                        "origin": origins[0] if origins else "N/A",
+                        "total_items": int(sum(moves.mapped('quantity'))),
+                        "total_moves": len(moves),
+                        "picking_count": len(b.picking_ids),
+                        "date": b.write_date.strftime('%Y-%m-%d %H:%M:%S') if b.write_date else ""
+                    })
+
+            # 2. Pickings individuales sin batch
+            picks = request.env['stock.picking'].sudo().search([
+                ('state', '=', 'done'),
+                ('batch_id', '=', False),
+                ('picking_type_id.name', 'ilike', 'Pick'),
+                ('picking_type_id.name', 'ilike', 'Ful')
+            ], order='id desc', limit=100)
+
+            for p in picks:
+                moves = p.move_ids.filtered(lambda m: m.state == 'done')
+                if moves and not any(m.on_bin or m.on_dock or m.dispatched for m in moves):
+                    origins = [p.origin] if p.origin else []
+                    pnames = [p.name]
+                    if check_dful_done(origins, pnames, p):
+                        continue
+
+                    records.append({
+                        "id": p.id,
+                        "type": "picking",
+                        "name": p.name,
+                        "origin": p.origin or "N/A",
+                        "total_items": int(sum(moves.mapped('quantity'))),
+                        "total_moves": len(moves),
+                        "picking_count": 1,
+                        "date": p.date_done.strftime('%Y-%m-%d %H:%M:%S') if p.date_done else (p.write_date.strftime('%Y-%m-%d %H:%M:%S') if p.write_date else "")
+                    })
+
+            # Ordenar por fecha descendente
+            records.sort(key=lambda x: x.get('date', ''), reverse=True)
+            return {"ok": True, "records": records}
+        except Exception as e:
+            _logger.error(f"Error in get_unassigned_ful_records: {e}")
+            return {"ok": False, "error": str(e)}

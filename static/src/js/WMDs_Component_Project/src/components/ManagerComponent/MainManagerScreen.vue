@@ -2,6 +2,7 @@
   <article class="main_manager_screen">
     <ListView v-if="['ingreso', 'ingresos', 'disponibilizar', 'traslado', 'pick', 'pack', 'devolucion', 'resurtido', 'batch_pick', 'cycle_count', 'operator_list'].includes(store.main_manager_screen.value)"/>
     <ManualDispatch v-else-if="store.main_manager_screen.value === 'manual_dispatch'" />
+    <UnassignedBins v-else-if="store.main_manager_screen.value === 'unassigned_bins'" />
     <LocationBlocking v-else-if="store.main_manager_screen.value === 'location_blocking'" />
     <LocationUnblocking v-else-if="store.main_manager_screen.value === 'location_unblocking'" />
     <ImportRackeoHelper v-else-if="store.main_manager_screen.value === 'rackeo_import'" />
@@ -17,6 +18,7 @@
     import { useGeneralStore } from "../../store/index"
     import ListView from './ListView.vue'
     import ManualDispatch from './ManualDispatch.vue'
+    import UnassignedBins from './UnassignedBins.vue'
     import LocationBlocking from './LocationBlocking.vue'
     import LocationUnblocking from './LocationUnblocking.vue'
     import ImportRackeoHelper from '../Forms/ImportRackeoHelper.vue'
@@ -39,6 +41,7 @@
       components: {
           ListView,
           ManualDispatch,
+          UnassignedBins,
           LocationBlocking,
           LocationUnblocking,
           ImportRackeoHelper,
