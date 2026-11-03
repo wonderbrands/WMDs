@@ -117,16 +117,14 @@ class WmdsMysqlConfig(models.Model):
                 cursor.execute(sql_default, (limit,))
                 rows = list(cursor.fetchall())
             
-            # 2. Insist on open pickings missing SLA
-            missing_sla_pickings = self.env['stock.picking'].sudo().search([
-                ('state', 'not in', ('done', 'cancel')),
+            # 2. Insist on active sale orders missing SLA
+            missing_sla_orders = self.env['sale.order'].sudo().search([
+                ('state', '!=', 'cancel'),
                 ('sla_date', '=', False),
-                ('sale_id', '!=', False)
-            ])
+            ], limit=5000)
             
             missing_refs = set()
-            for p in missing_sla_pickings:
-                so = p.sale_id
+            for so in missing_sla_orders:
                 if getattr(so, 'marketplace_ref', None): missing_refs.add(str(so.marketplace_ref).strip())
                 if getattr(so, 'channel_order_reference', None): missing_refs.add(str(so.channel_order_reference).strip())
                 if so.channel_order_id: missing_refs.add(str(so.channel_order_id).strip())
@@ -239,7 +237,6 @@ class WmdsMysqlConfig(models.Model):
 
             sale_orders = so_model.search(domain)
 
-            updated_pickings_count = 0
             updated_orders_count = 0
 
             for so in sale_orders:
@@ -253,32 +250,24 @@ class WmdsMysqlConfig(models.Model):
 
                 if target_dt:
                     dt_str = fields.Datetime.to_string(target_dt)
-                    pickings = self.env['stock.picking'].sudo().search([
-                        ('sale_id', '=', so.id),
-                        ('state', 'not in', ('done', 'cancel'))
-                    ])
+                    so.write({
+                        'sla_date': dt_str,
+                        'priority_date': dt_str,
+                    })
+                    updated_orders_count += 1
 
-                    if pickings:
-                        for pick in pickings:
-                            pick.write({
-                                'sla_date': dt_str,
-                                'priority_date': dt_str
-                            })
-                            updated_pickings_count += 1
-                        updated_orders_count += 1
-
-            # Trigger priority recalculation for active pickings if SLA module method exists
-            active_pickings = self.env['stock.picking'].sudo().search([
-                ('state', 'not in', ('done', 'cancel')),
+            # Trigger priority recalculation for active sale orders if SLA module method exists
+            active_orders = self.env['sale.order'].sudo().search([
+                ('state', '!=', 'cancel'),
                 ('sla_date', '!=', False)
             ])
-            if active_pickings and hasattr(active_pickings, '_compute_sla_priority'):
+            if active_orders and hasattr(active_orders, '_compute_sla_priority'):
                 try:
-                    active_pickings._compute_sla_priority()
+                    active_orders._compute_sla_priority()
                 except Exception as ex:
                     _logger.warning(f"Note on SLA compute priority: {ex}")
 
-            success_msg = f"Sincronización completada exitosamente. Se consultaron {len(rows)} órdenes de MySQL; se actualizaron {updated_orders_count} pedidos y {updated_pickings_count} transferencias."
+            success_msg = f"Sincronización completada exitosamente. Se consultaron {len(rows)} órdenes de MySQL; se actualizaron {updated_orders_count} pedidos de venta."
             _logger.info(f"WMDs MySQL Sync: {success_msg}")
             
             self.write({

@@ -191,19 +191,19 @@ class OrderChannelController(http.Controller):
             elif unconfirmed_filter in ('confirmed', 'confirmadas'):
                 so_where.append("s.state NOT IN ('draft', 'sent')")
 
-            # Filtro de fecha sobre el SLA efectivo (sale_order sla_date, último picking o yuju_due_date),
+            # Filtro de fecha sobre el SLA efectivo (sale_order sla_date o yuju_due_date),
             # convertido a hora local con offset por canal (parametrizable por marketplace).
             # NOTA: Si el filtro es 'no_sla', ignorar filtros de fecha y consultar todas las órdenes sin SLA
             if status_filter == 'no_sla':
-                so_where.append("s.sla_date IS NULL AND lp.sla_date IS NULL AND (s.yuju_due_date IS NULL OR s.yuju_due_date = '')")
+                so_where.append("s.sla_date IS NULL AND (s.yuju_due_date IS NULL OR s.yuju_due_date = '')")
             elif date_from or date_to:
                 offset_expr = _channel_offset_sql(env)
                 offset_frag = f"({offset_expr} * interval '1 hour')"
                 clauses = []
                 if date_from:
-                    clauses.append(f"(COALESCE(s.sla_date, lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
+                    clauses.append(f"(COALESCE(s.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
                 if date_to:
-                    clauses.append(f"(COALESCE(s.sla_date, lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) <= %s")
+                    clauses.append(f"(COALESCE(s.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) <= %s")
                 so_where.append(f"({' AND '.join(clauses)})")
                 if date_from:
                     sql_params.append(date_from)
@@ -227,15 +227,7 @@ class OrderChannelController(http.Controller):
                 so_where.append(f"({' OR '.join(txt_clauses)})")
                 sql_params.extend(txt_params)
 
-            # Inyectar el SLA date del último pick vía LATERAL para el filtro de fecha
-            sla_sel = "lp.sla_date" if date_from or date_to else "lp.sla_date"
-            base_from = f"""
-                FROM sale_order s
-                LEFT JOIN LATERAL (
-                    SELECT sla_date FROM stock_picking
-                    WHERE sale_id = s.id ORDER BY id DESC LIMIT 1
-                ) lp ON true
-            """
+            base_from = "FROM sale_order s"
 
             # Conteo total
             count_sql = f"SELECT COUNT(*) {base_from} WHERE {' AND '.join(so_where)}"
@@ -270,7 +262,7 @@ class OrderChannelController(http.Controller):
             valid_sos = []
             for so in sale_orders:
                 last_pick = last_picks_by_so.get(so.id, False)
-                effective = getattr(so, 'sla_date', False) or (last_pick.sla_date if last_pick else False)
+                effective = getattr(so, 'sla_date', False)
                 if not effective:
                     yuju_due = getattr(so, 'yuju_due_date', False)
                     if yuju_due:
@@ -407,7 +399,7 @@ class OrderChannelController(http.Controller):
                             sla_label = 'Quedan 6 horas para la recolecta'
                         elif diff_hours <= 24.0:
                             sla_level = 'notice_24h'
-                            sla_label = 'Queda 1 día para la recolecta'
+                            sla_label = 'Quedan unas horas para la recolecta'
                         else:
                             sla_level = 'normal'
                             sla_label = 'En tiempo'
@@ -558,20 +550,20 @@ class OrderChannelController(http.Controller):
                 off_expr = _channel_offset_sql(env)
                 env.cr.execute(f"""
                     SELECT COALESCE(NULLIF(s.channel, ''), 'Manuales') AS channel,
-                           MIN(p.sla_date + ({off_expr} * interval '1 hour')) AS oldest
-                    FROM stock_picking p
-                    JOIN stock_picking_type pt ON pt.id = p.picking_type_id
-                    JOIN sale_order s ON s.id = p.sale_id
-                    WHERE p.sale_id IS NOT NULL
-                      AND pt.code = 'outgoing'
-                      AND s.state != 'cancel'
+                           MIN(s.sla_date + ({off_expr} * interval '1 hour')) AS oldest
+                    FROM sale_order s
+                    WHERE s.state != 'cancel'
                       AND (s.order_progress != 'sent' OR s.order_progress IS NULL)
                       AND (s.order_progress NOT ILIKE '%%shipped%%' OR s.order_progress IS NULL)
                       AND (s.order_progress NOT ILIKE '%%refunded%%' OR s.order_progress IS NULL)
                       AND (s.order_progress NOT ILIKE '%%cancel%%' OR s.order_progress IS NULL)
                       AND (s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)
-                      AND p.state NOT IN ('done', 'cancel')
-                      AND p.sla_date IS NOT NULL
+                      AND s.sla_date IS NOT NULL
+                      AND NOT EXISTS (
+                          SELECT 1 FROM stock_picking o
+                          JOIN stock_picking_type ot ON ot.id = o.picking_type_id
+                          WHERE o.sale_id = s.id AND ot.code = 'outgoing' AND o.state = 'done'
+                      )
                       {oldest_ful_clause}
                       {oldest_unconf_clause}
                     GROUP BY COALESCE(NULLIF(s.channel, ''), 'Manuales')
@@ -662,19 +654,13 @@ class OrderChannelController(http.Controller):
             offset_expr = _channel_offset_sql(env)
             offset_frag = f"({offset_expr} * interval '1 hour')"
             if date_from:
-                where.append(f"(COALESCE(s.sla_date, lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
+                where.append(f"(COALESCE(s.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) >= %s")
                 params.append(date_from)
             if date_to:
-                where.append(f"(COALESCE(s.sla_date, lp.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) <= %s")
+                where.append(f"(COALESCE(s.sla_date, s.yuju_due_date::timestamp) + {offset_frag}) <= %s")
                 params.append(f"{date_to} 23:59:59")
 
-            from_clause = """
-                FROM sale_order s
-                LEFT JOIN LATERAL (
-                    SELECT sla_date FROM stock_picking
-                    WHERE sale_id = s.id ORDER BY id DESC LIMIT 1
-                ) lp ON true
-            """
+            from_clause = "FROM sale_order s"
             where_sql = " AND ".join(where)
 
             total_sql = f"SELECT COUNT(*) {from_clause} WHERE {where_sql}"
@@ -685,10 +671,6 @@ class OrderChannelController(http.Controller):
             sent_sql = f"""
                 SELECT COUNT(*)
                 FROM sale_order s2
-                LEFT JOIN LATERAL (
-                    SELECT sla_date FROM stock_picking
-                    WHERE sale_id = s2.id ORDER BY id DESC LIMIT 1
-                ) lp ON true
                 WHERE {where_sql.replace('s.', 's2.')}
                   AND EXISTS (
                       SELECT 1 FROM stock_picking o
@@ -705,7 +687,7 @@ class OrderChannelController(http.Controller):
                 SELECT COUNT(*)
                 FROM sale_order s3
                 LEFT JOIN LATERAL (
-                    SELECT id, sla_date FROM stock_picking
+                    SELECT id FROM stock_picking
                     WHERE sale_id = s3.id ORDER BY id DESC LIMIT 1
                 ) lp ON true
                 WHERE {where_sql.replace('s.', 's3.')}
@@ -1202,23 +1184,20 @@ class OrderChannelController(http.Controller):
                     params.append(channel_filter)
 
             sql_alerts = f'''
-                SELECT p.sla_date
+                SELECT s.sla_date
                 FROM sale_order s
-                JOIN LATERAL (
-                    SELECT state, sla_date
-                    FROM stock_picking
-                    WHERE sale_id = s.id
-                    ORDER BY id DESC
-                    LIMIT 1
-                ) p ON true
                 WHERE s.state != 'cancel'
                   AND (s.order_progress != 'sent' OR s.order_progress IS NULL)
                   AND (s.order_progress NOT ILIKE '%shipped%' OR s.order_progress IS NULL)
                   AND (s.order_progress NOT ILIKE '%refunded%' OR s.order_progress IS NULL)
                   AND (s.order_progress NOT ILIKE '%cancel%' OR s.order_progress IS NULL)
                   AND (s.yuju_shipping_status != 'sent' OR s.yuju_shipping_status IS NULL)
-                  AND p.state NOT IN ('done', 'cancel')
-                  AND p.sla_date IS NOT NULL
+                  AND s.sla_date IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM stock_picking o
+                      JOIN stock_picking_type ot ON ot.id = o.picking_type_id
+                      WHERE o.sale_id = s.id AND ot.code = 'outgoing' AND o.state = 'done'
+                  )
                   {filter_clause}
                   {ful_where}
                   {unconf_where}
@@ -1403,12 +1382,8 @@ class OrderChannelController(http.Controller):
             if not so and pick and getattr(pick, 'sale_id', False):
                 so = pick.sale_id
 
-            picks = [pick] if pick and pick.exists() else []
-            if so and not picks:
-                picks = list(env['stock.picking'].sudo().search([
-                    ('sale_id', '=', so.id),
-                    ('state', 'not in', ('done', 'cancel'))
-                ]))
+            if not so or not so.exists():
+                return {'error': {'message': 'No se encontró la orden de venta asociada para reasignar SLA.'}}
 
             msg = (
                 f"<b>SLA Reasignado Manualmente por {user_name}</b><br/>"
@@ -1418,70 +1393,49 @@ class OrderChannelController(http.Controller):
             if note:
                 msg += f"<b>Notas:</b> {note}<br/>"
 
-            for p in picks:
-                vals = {
-                    'sla_date': new_sla_dt,
-                    'priority_date': new_sla_dt,
-                    'sla_manual_override': True,
-                    'sla_override_reason': reason,
-                    'sla_override_note': note,
-                    'sla_override_date': now_dt,
-                    'sla_override_user_id': user_id,
-                }
-                if not getattr(p, 'sla_original_date', False) and p.sla_date:
-                    vals['sla_original_date'] = p.sla_date
-                p.write(vals)
-                try:
-                    p.message_post(body=msg)
-                except Exception:
-                    pass
+            old_so_sla = so.sla_date
+            so_vals = {
+                'sla_date': new_sla_dt,
+                'priority_date': new_sla_dt,
+                'sla_manual_override': True,
+                'sla_override_reason': reason,
+                'sla_override_note': note,
+                'sla_override_date': now_dt,
+                'sla_override_user_id': user_id,
+            }
+            if not getattr(so, 'sla_original_date', False) and old_so_sla:
+                so_vals['sla_original_date'] = old_so_sla
+            so.write(so_vals)
 
-            if picks and hasattr(picks[0], '_compute_sla_priority'):
-                for p in picks:
-                    p._compute_sla_priority()
+            if hasattr(so, '_compute_sla_priority'):
+                so._compute_sla_priority()
 
-            if so and so.exists():
-                old_so_sla = so.sla_date
-                so_vals = {
-                    'sla_date': new_sla_dt,
-                    'priority_date': new_sla_dt,
-                    'sla_manual_override': True,
-                    'sla_override_reason': reason,
-                    'sla_override_note': note,
-                    'sla_override_date': now_dt,
-                    'sla_override_user_id': user_id,
-                }
-                if not getattr(so, 'sla_original_date', False) and old_so_sla:
-                    so_vals['sla_original_date'] = old_so_sla
-                so.write(so_vals)
+            if 'sale.order.sla.history' in env:
+                env['sale.order.sla.history'].sudo().create({
+                    'sale_id': so.id,
+                    'user_id': user_id,
+                    'date': now_dt,
+                    'old_sla_date': old_so_sla,
+                    'new_sla_date': new_sla_dt,
+                    'reason': reason,
+                    'note': note,
+                })
 
-                if 'sale.order.sla.history' in env:
-                    env['sale.order.sla.history'].sudo().create({
-                        'sale_id': so.id,
-                        'user_id': user_id,
-                        'date': now_dt,
-                        'old_sla_date': old_so_sla,
-                        'new_sla_date': new_sla_dt,
-                        'reason': reason,
-                        'note': note,
-                    })
-
-                try:
-                    so.message_post(body=msg)
-                except Exception:
-                    pass
+            try:
+                so.message_post(body=msg)
+            except Exception:
+                pass
 
             # Crear log WMDS
             if 'wmds.log' in env:
                 try:
-                    for p in (picks or [None]):
-                        env['wmds.log'].sudo().create({
-                            'stock_picking': p.id if p else False,
-                            'sale_order': so.id if so else False,
-                            'user': user_id,
-                            'date': now_dt,
-                            'log': f"SLA Empujado/Reasignado a {new_sla_str}. Motivo: {reason_lbl}."
-                        })
+                    env['wmds.log'].sudo().create({
+                        'stock_picking': pick.id if pick else False,
+                        'sale_order': so.id,
+                        'user': user_id,
+                        'date': now_dt,
+                        'log': f"SLA Empujado/Reasignado a {new_sla_str}. Motivo: {reason_lbl}."
+                    })
                 except Exception:
                     pass
 
@@ -1581,28 +1535,8 @@ class OrderChannelController(http.Controller):
                 except Exception:
                     pass
 
-                # Actualizar albaranes abiertos
-                open_picks = so.picking_ids.filtered(lambda p: p.state not in ('done', 'cancel'))
-                for p in open_picks:
-                    p_vals = {
-                        'sla_date': new_sla_dt,
-                        'priority_date': new_sla_dt,
-                        'sla_manual_override': True,
-                        'sla_override_reason': reason,
-                        'sla_override_note': note,
-                        'sla_override_date': now_dt,
-                        'sla_override_user_id': user_id,
-                    }
-                    if not getattr(p, 'sla_original_date', False) and p.sla_date:
-                        p_vals['sla_original_date'] = p.sla_date
-                    p.write(p_vals)
-                    try:
-                        p.message_post(body=msg)
-                    except Exception:
-                        pass
-
-                if open_picks and hasattr(open_picks, '_compute_sla_priority'):
-                    open_picks._compute_sla_priority()
+                if hasattr(so, '_compute_sla_priority'):
+                    so._compute_sla_priority()
 
                 if 'wmds.log' in env:
                     try:

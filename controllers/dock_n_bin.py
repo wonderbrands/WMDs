@@ -418,29 +418,27 @@ class DockNBin(http.Controller):
 
             package_details = []
             for tag in ei_tags:
-                out_pick = request.env['stock.picking'].sudo().search([
-                    ('sale_id', '=', tag.so_id.id),
-                    ('state', 'not in', ('done', 'cancel'))
-                ], limit=1) if tag.so_id else False
+                tag_so = tag.so_id if tag.so_id else False
                 package_details.append({
                     "name": tag.display_name_custom,
-                    "so": tag.so_id.name if tag.so_id else "N/A",
+                    "so": tag_so.name if tag_so else "N/A",
                     "is_full": False,
-                    "sla_priority_level": out_pick.sla_priority_level if out_pick else 'normal',
-                    "sla_priority_label": out_pick.sla_priority_label if out_pick else '',
-                    "sla_date": out_pick.sla_date if out_pick else False,
+                    "sla_priority_level": getattr(tag_so, 'sla_priority_level', 'normal') if tag_so else 'normal',
+                    "sla_priority_label": getattr(tag_so, 'sla_priority_label', '') if tag_so else '',
+                    "sla_date": getattr(tag_so, 'sla_date', False) if tag_so else False,
                 })
             for m in moves:
                 pick = m.picking_id
+                pick_so = pick.sale_id if pick else False
                 package_details.append({
                     "name": f"{m.product_id.display_name} ({int(m.quantity)})",
-                    "so": pick.name or "N/A" if pick else "N/A",
+                    "so": (pick_so.name if pick_so else (pick.name or "N/A")) if pick else "N/A",
                     "is_full": True,
                     "move_id": m.id,
                     "qty": m.quantity,
-                    "sla_priority_level": pick.sla_priority_level if pick else 'normal',
-                    "sla_priority_label": pick.sla_priority_label if pick else '',
-                    "sla_date": pick.sla_date if pick else False,
+                    "sla_priority_level": getattr(pick_so, 'sla_priority_level', 'normal') if pick_so else 'normal',
+                    "sla_priority_label": getattr(pick_so, 'sla_priority_label', '') if pick_so else '',
+                    "sla_date": getattr(pick_so, 'sla_date', False) if pick_so else False,
                 })
 
             return {
@@ -935,29 +933,27 @@ class DockNBin(http.Controller):
 
             package_details = []
             for tag in ei_tags:
-                out_pick = request.env['stock.picking'].sudo().search([
-                    ('sale_id', '=', tag.so_id.id),
-                    ('state', 'not in', ('done', 'cancel'))
-                ], limit=1) if tag.so_id else False
+                tag_so = tag.so_id if tag.so_id else False
                 package_details.append({
                     "name": tag.display_name_custom,
-                    "so": tag.so_id.name if tag.so_id else "N/A",
+                    "so": tag_so.name if tag_so else "N/A",
                     "is_full": False,
-                    "sla_priority_level": out_pick.sla_priority_level if out_pick else 'normal',
-                    "sla_priority_label": out_pick.sla_priority_label if out_pick else '',
-                    "sla_date": out_pick.sla_date if out_pick else False,
+                    "sla_priority_level": getattr(tag_so, 'sla_priority_level', 'normal') if tag_so else 'normal',
+                    "sla_priority_label": getattr(tag_so, 'sla_priority_label', '') if tag_so else '',
+                    "sla_date": getattr(tag_so, 'sla_date', False) if tag_so else False,
                 })
             for m in moves:
                 pick = m.picking_id
+                pick_so = pick.sale_id if pick else False
                 package_details.append({
                     "name": f"{m.product_id.display_name} ({int(m.quantity)})",
-                    "so": pick.name or "N/A" if pick else "N/A",
+                    "so": (pick_so.name if pick_so else (pick.name or "N/A")) if pick else "N/A",
                     "is_full": True,
                     "move_id": m.id,
                     "qty": m.quantity,
-                    "sla_priority_level": pick.sla_priority_level if pick else 'normal',
-                    "sla_priority_label": pick.sla_priority_label if pick else '',
-                    "sla_date": pick.sla_date if pick else False,
+                    "sla_priority_level": getattr(pick_so, 'sla_priority_level', 'normal') if pick_so else 'normal',
+                    "sla_priority_label": getattr(pick_so, 'sla_priority_label', '') if pick_so else '',
+                    "sla_date": getattr(pick_so, 'sla_date', False) if pick_so else False,
                 })
 
             return {
