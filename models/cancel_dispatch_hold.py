@@ -6,6 +6,9 @@ Integración opcional con el módulo `wb_so_cancel_guarderia` (no es dependencia
 - El despachador decide por EI si el paquete se embarcó o se retiró.
 - Al cerrar el despacho se llama `sale.order._wb_resolve_dispatch_hold(shipped)`.
 Si `wb_so_cancel_guarderia` no está instalado, nada de esto se activa.
+
+Se engancha al núcleo solo a través de los puntos de extensión de
+`wmds_extension_points.py`; los controladores del núcleo no saben de cancelaciones.
 """
 import logging
 from collections import defaultdict
@@ -60,6 +63,45 @@ class SaleOrderEICancelHold(models.Model):
                                 so=so.name, err=e))
         return handled, errors
 
+    # ------------------------------------------------ puntos de extensión del núcleo
+    def _wmds_dispatch_prefilter(self, operator=None):
+        tags, error = super()._wmds_dispatch_prefilter(operator=operator)
+        if error:
+            return tags, error
+        # EI de órdenes canceladas ya resueltas en un intento anterior: nada que hacer.
+        tags -= tags.filtered(lambda t: t.dispatched and t.so_id.state == 'cancel')
+        held = tags.filtered(lambda t: t.so_id and t.so_id._wmds_is_cancel_held())
+        undecided = held.filtered(lambda t: t.wmds_cancel_decision != 'shipped')
+        if undecided:
+            return tags, ("Indica si estas guías de pedidos cancelados se embarcaron o se retiraron: "
+                          + ", ".join(undecided.mapped('display_name_custom')))
+        return tags, False
+
+    def _wmds_dispatch_handle(self, operator=None):
+        """Órdenes canceladas en pleno despacho (OUT retenido): se valida el OUT solo por
+        las EI embarcadas y lo demás va a Guardería."""
+        res = super()._wmds_dispatch_handle(operator=operator)
+        held = (self - res['consumed']).filtered(lambda t: t.so_id and t.so_id._wmds_is_cancel_held())
+        if not held:
+            return res
+        handled, errors = held._wmds_process_cancel_holds(operator=operator)
+        return dict(
+            res,
+            consumed=res['consumed'] | held,
+            handled=res['handled'] | handled,
+            errors=res['errors'] + errors,
+            log=res['log'] + [f"Despacho de orden cancelada resuelto: {n}"
+                              for n in handled.mapped('display_name_custom')],
+        )
+
+    def _wmds_scan_extra_values(self):
+        res = super()._wmds_scan_extra_values()
+        res.update({
+            "cancel_hold": self.so_id._wmds_is_cancel_held() if self.so_id else False,
+            "cancel_decision": self.wmds_cancel_decision or False,
+        })
+        return res
+
 
 class SaleOrderCancelHold(models.Model):
     _inherit = "sale.order"
@@ -78,6 +120,9 @@ class SaleOrderCancelHold(models.Model):
             ('ei_name', 'in', names),
             ('session_id.state', '=', 'active'),
         ]))
+
+    def _wmds_dispatch_allows_cancelled(self):
+        return super()._wmds_dispatch_allows_cancelled() or self._wmds_is_cancel_held()
 
     def _wmds_is_cancel_held(self):
         self.ensure_one()
@@ -171,3 +216,53 @@ class WmdsDispatchSessionCancelHold(models.Model):
         if names:
             self.env['sale.order'].sudo().search([('name', 'in', names)]) \
                 ._wmds_release_cancel_hold(operator=self.operator_id[:1])
+
+    # ------------------------------------------------ puntos de extensión del núcleo
+    def _wmds_after_line_removed(self, ei_name, so_name, cancelled_removal=False, operator=None):
+        res = super()._wmds_after_line_removed(
+            ei_name, so_name, cancelled_removal=cancelled_removal, operator=operator)
+        if not cancelled_removal:
+            return res
+        tag = self.env["sale.order.ei"].sudo().search([('display_name_custom', '=', ei_name)], limit=1)
+        if tag:
+            tag.write({'wmds_cancel_decision': 'removed', 'wmds_cancel_product_id': False})
+        # Si ya no queda ninguna EI de esa orden retenida en despacho, se resuelve:
+        # lo retirado (y no entregado) va a Guardería.
+        so = self.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1) if so_name else False
+        if so and so._wmds_is_cancel_held():
+            remaining = self.env["wmds.dispatch.session.line"].sudo().search_count([
+                ('so_name', '=', so_name),
+                ('session_id.state', '=', 'active'),
+            ])
+            if not remaining:
+                so._wmds_release_cancel_hold(operator=operator)
+        return res
+
+    def _wmds_on_session_released(self, lines):
+        # Las órdenes canceladas que esperaban este despacho ya no se embarcarán.
+        res = super()._wmds_on_session_released(lines)
+        self._wmds_release_cancel_holds(lines)
+        return res
+
+
+class WmdsDispatchSessionLineCancelHold(models.Model):
+    _inherit = 'wmds.dispatch.session.line'
+
+    def _wmds_extra_values(self):
+        res = super()._wmds_extra_values()
+        names = [n for n in self.mapped('ei_name') if n]
+        tags = self.env["sale.order.ei"].sudo().search([('display_name_custom', 'in', names)]) if names else []
+        tag_by_name = {}
+        for tag in tags:
+            tag_by_name.setdefault(tag.display_name_custom, tag)
+        held_by_so = {}
+        for line in self:
+            so_name = line.so_name
+            if so_name not in held_by_so:
+                so = self.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1) if so_name else False
+                held_by_so[so_name] = bool(so) and so._wmds_is_cancel_held()
+            tag = tag_by_name.get(line.ei_name)
+            res[line.id] = dict(res.get(line.id, {}),
+                                cancel_hold=held_by_so[so_name],
+                                cancel_decision=tag.wmds_cancel_decision if tag else False)
+        return res

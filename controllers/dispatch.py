@@ -123,23 +123,14 @@ class Dispatch(http.Controller):
                 ('display_name_custom', 'in', packs_ids)
             ])
 
-            # EI de órdenes canceladas ya resueltas en un intento anterior: nada que hacer.
-            ei_tags -= ei_tags.filtered(lambda t: t.dispatched and t.so_id.state == 'cancel')
-
-            # Órdenes canceladas en pleno despacho (OUT retenido): se valida el OUT solo por
-            # las EI embarcadas y lo demás va a Guardería (módulo wb_so_cancel_guarderia).
-            held_sos = ei_tags.mapped('so_id').filtered(lambda s: s._wmds_is_cancel_held())
-            held_tags = ei_tags.filtered(lambda t: t.so_id in held_sos)
-            undecided = held_tags.filtered(lambda t: t.wmds_cancel_decision != 'shipped')
-            if undecided:
-                return {
-                    "status": "error",
-                    "message": "Indica si estas guías de pedidos cancelados se embarcaron o se retiraron: "
-                               + ", ".join(undecided.mapped('display_name_custom')),
-                }
+            # Punto de extensión: los complementos pueden descartar EI o detener el despacho.
+            ei_tags, prefilter_error = ei_tags._wmds_dispatch_prefilter(operator=operator)
+            if prefilter_error:
+                return {"status": "error", "message": prefilter_error}
 
             # Pre-check for cancelled orders
-            cancelled_sos = ei_tags.mapped('so_id').filtered(lambda s: s.state == 'cancel') - held_sos
+            cancelled_sos = ei_tags.mapped('so_id').filtered(
+                lambda s: s.state == 'cancel' and not s._wmds_dispatch_allows_cancelled())
             if cancelled_sos:
                 so_names = ", ".join(cancelled_sos.mapped('name'))
                 return {
@@ -147,13 +138,13 @@ class Dispatch(http.Controller):
                     "message": f"No se puede despachar: Los pedidos {so_names} están cancelados."
                 }
             
-            if held_tags:
-                handled, hold_errors = held_tags._wmds_process_cancel_holds(operator=operator)
-                if hold_errors:
-                    return {"status": "error", "message": " ".join(hold_errors)}
-                if 'dispatch_status' in request.env['sale.order.ei']._fields:
-                    handled.write({'dispatch_status': 'success'})
-                ei_tags -= held_tags
+            # Punto de extensión: EI que un complemento resuelve fuera del flujo normal.
+            special = ei_tags._wmds_dispatch_handle(operator=operator)
+            if special['errors']:
+                return {"status": "error", "message": " ".join(special['errors'])}
+            if special['handled'] and 'dispatch_status' in request.env['sale.order.ei']._fields:
+                special['handled'].write({'dispatch_status': 'success'})
+            ei_tags -= special['consumed']
 
             vals = {
                 'dispatched': True,

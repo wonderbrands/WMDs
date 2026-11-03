@@ -282,11 +282,28 @@ Hereda los endpoints del controlador padre (`stock_barcode`). No añade rutas nu
 | `portal_wmds.py` | `WMDS_Portal` | Página principal de WMDS |
 | `user_access.py` | `UserAccess` | Autenticación y permisos |
 
+## Puntos de extensión para complementos
+
+Definidos en `models/wmds_extension_points.py`. El núcleo los llama con su valor neutro; los complementos
+(`wmds_<funcionalidad>`) los sobrescriben con `_inherit`, siempre combinando con `super()`. Sin complementos, WMDs
+se comporta igual que sin ellos.
+
+| Método | Modelo | Se llama desde | Devuelve (valor neutro) |
+|---|---|---|---|
+| `_wmds_dispatch_prefilter(operator)` | `sale.order.ei` | `dispatch_packet`, antes de validar | `(EI, False)`; un mensaje de error detiene el despacho |
+| `_wmds_dispatch_allows_cancelled()` | `sale.order` | `dispatch_packet`, validación de SO canceladas | `False`; `True` deja pasar una SO cancelada que resuelve un complemento |
+| `_wmds_dispatch_handle(operator)` | `sale.order.ei` | `dispatch_packet` y `_execute_dispatch_package` | `{'consumed', 'handled', 'errors', 'log'}` vacíos |
+| `_wmds_scan_extra_values()` | `sale.order.ei` | `validate_attachment_guide` | `{}` que se agrega a la respuesta |
+| `_wmds_extra_values()` | `wmds.dispatch.session.line` | `get_dispatch_session` | `{line.id: {}}` que se agrega a cada línea |
+| `_wmds_after_line_removed(ei_name, so_name, cancelled_removal, operator)` | `wmds.dispatch.session` | `remove_dispatch_session_line`, después de borrar la línea | `None` |
+| `_wmds_on_session_released(lines)` | `wmds.dispatch.session` | `clear_dispatch_session` (antes de borrar) y `cancel_dispatch_session` (después de cancelar) | `None` |
+
 ## Cancelación durante el despacho (integración con `wb_so_cancel_guarderia`)
 
-`models/cancel_dispatch_hold.py`: campos `sale.order.ei.wmds_cancel_decision` (*Embarcada*/*Retirada*) y
-`wmds_cancel_product_id`; responde al gancho `sale.order._wb_is_in_dispatch()` (EI en sesión de despacho activa o ya
-entregada). `get_dispatch_session` y `validate_attachment_guide` devuelven `cancel_hold` y `cancel_decision`;
-`clear_dispatch_session` y `cancel_dispatch_session` resuelven las SO retenidas como "nada embarcado". La tarea en cola
-(`_execute_dispatch_package`) resuelve las retenidas antes de procesar los paquetes. Sin `wb_so_cancel_guarderia`
-instalado nada de esto se activa.
+Vive en `models/cancel_dispatch_hold.py` y `controllers/cancel_dispatch.py` (ruta `mark_cancelled_shipped`), y se
+engancha al núcleo solo con los puntos de extensión anteriores; se moverá al complemento `wmds_cancel`.
+Campos `sale.order.ei.wmds_cancel_decision` (*Embarcada*/*Retirada*) y `wmds_cancel_product_id`; responde al gancho
+`sale.order._wb_is_in_dispatch()` (EI en sesión de despacho activa o ya entregada). Agrega `cancel_hold` y
+`cancel_decision` a `get_dispatch_session` y `validate_attachment_guide`; al limpiar o cancelar la sesión resuelve las SO
+retenidas como "nada embarcado"; en el despacho (síncrono y en cola) resuelve las retenidas antes de procesar los
+paquetes. Sin `wb_so_cancel_guarderia` instalado nada de esto se activa.

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
 
+import odoo.addons.wmds.controllers.cancel_dispatch as cancel_ctrl
 import odoo.addons.wmds.controllers.dispatch as dispatch_ctrl
 import odoo.addons.wmds.controllers.dispatch_session_controller as session_ctrl
 
@@ -39,7 +40,9 @@ class TestCancelDispatchHold(TransactionCase):
         mock_request.env = self.env
         self.enterContext(patch.object(dispatch_ctrl, 'request', mock_request))
         self.enterContext(patch.object(session_ctrl, 'request', mock_request))
+        self.enterContext(patch.object(cancel_ctrl, 'request', mock_request))
         self.session_api = session_ctrl.DispatchSessionController()
+        self.cancel_api = cancel_ctrl.CancelDispatchController()
         self.dispatch_api = dispatch_ctrl.DispatchController() \
             if hasattr(dispatch_ctrl, 'DispatchController') else self._find_controller(dispatch_ctrl)
 
@@ -89,7 +92,7 @@ class TestCancelDispatchHold(TransactionCase):
             ('origin', '=', 'Cancelacion %s' % so.name), ('state', '!=', 'cancel')])
 
     def _ship(self, tag, product=None):
-        return self.session_api.mark_cancelled_shipped(
+        return self.cancel_api.mark_cancelled_shipped(
             operator_login=self.operator.login, ei_name=tag.display_name_custom,
             product_id=product.id if product else None)
 

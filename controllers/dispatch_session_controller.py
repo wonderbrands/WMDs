@@ -7,77 +7,6 @@ _logger = logging.getLogger(__name__)
 
 class DispatchSessionController(http.Controller):
 
-    @staticmethod
-    def _so_cancel_held(so_name, cache=None):
-        """True si la SO está cancelada con su OUT retenido por despacho
-        (requiere el módulo wb_so_cancel_guarderia)."""
-        if cache is not None and so_name in cache:
-            return cache[so_name]
-        so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1) if so_name else False
-        held = bool(so) and so._wmds_is_cancel_held()
-        if cache is not None:
-            cache[so_name] = held
-        return held
-
-    # ─────────────────────────────────────────────
-    # MARK a cancelled EI as already shipped (in the carrier's container)
-    # ─────────────────────────────────────────────
-    @http.route('/wmds/v2/engine/post/mark_cancelled_shipped', type='json', auth='user', methods=['POST'], csrf=True)
-    def mark_cancelled_shipped(self, **kw):
-        """
-        El despachador indica que la EI de una orden cancelada YA está dentro del
-        contenedor/carrier y no se puede sacar. Si la orden tiene varios productos,
-        debe indicarse cuál (product_id); si falta, se devuelve la lista de opciones.
-        """
-        try:
-            operator_login = kw.get("operator_login")
-            ei_name = kw.get("ei_name")
-            product_id = kw.get("product_id")
-            if not operator_login or not ei_name:
-                return {"ok": False, "message": "Datos incompletos"}
-
-            tag = request.env["sale.order.ei"].sudo().search([('display_name_custom', '=', ei_name)], limit=1)
-            if not tag or not tag.so_id:
-                return {"ok": False, "message": f"La guía {ei_name} no existe."}
-            so = tag.so_id
-            if not so._wmds_is_cancel_held():
-                return {"ok": False, "message": f"La orden {so.name} no admite marcar paquetes como embarcados: "
-                                              f"se canceló antes de entrar al despacho. Retírala físicamente."}
-
-            products = so._wmds_cancel_hold_products()
-            # Si ya tenía producto asignado, liberar esa pieza para recalcular
-            if tag.wmds_cancel_decision == 'shipped' and tag.wmds_cancel_product_id:
-                for p in products:
-                    if p['id'] == tag.wmds_cancel_product_id.id:
-                        p['remaining'] += 1
-            available = [p for p in products if p['remaining'] >= 1]
-
-            if len({p['id'] for p in products}) > 1:
-                if not product_id:
-                    return {"ok": True, "need_product": True, "products": available}
-                if int(product_id) not in [p['id'] for p in available]:
-                    return {"ok": False, "message": "El producto seleccionado no tiene piezas pendientes en esta orden.",
-                            "need_product": True, "products": available}
-                product = int(product_id)
-            else:
-                if not available:
-                    return {"ok": False, "message": "Ya se marcaron como embarcadas todas las piezas de esta orden."}
-                product = available[0]['id']
-
-            tag.write({'wmds_cancel_decision': 'shipped', 'wmds_cancel_product_id': product})
-            operator = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
-            request.env["wmds.log"].sudo().create({
-                "sale": so.id,
-                "user": operator.id if operator else request.env.user.id,
-                "log": f"Operador {operator.name if operator else operator_login} confirmó que el paquete "
-                       f"{ei_name} de la orden cancelada ya está embarcado en el carrier.",
-            })
-            return {"ok": True, "need_product": False}
-
-        except Exception as e:
-            _logger.error(f"Error en mark_cancelled_shipped: {e}")
-            return {"ok": False, "message": str(e)}
-
     # ─────────────────────────────────────────────
     # VALIDATE EI CARRIER — shared by BIN and DISPATCH
     # ─────────────────────────────────────────────
@@ -144,7 +73,8 @@ class DispatchSessionController(http.Controller):
                 return {"active": False}
 
             lines = []
-            hold_by_so = {}
+            # Punto de extensión: datos extra de los complementos por línea.
+            extra_by_line = session.line_ids._wmds_extra_values()
             for line in session.line_ids:
                 # Find the current state of the SO linked to this line
                 so_state = 'draft'
@@ -167,8 +97,7 @@ class DispatchSessionController(http.Controller):
                     "total_ei": line.total_ei,
                     "sequence_number": line.sequence_number,
                     "dispatched_count": line.dispatched_count,
-                    "cancel_hold": self._so_cancel_held(line.so_name, hold_by_so),
-                    "cancel_decision": ei_tag.wmds_cancel_decision if ei_tag else False,
+                    **extra_by_line.get(line.id, {}),
                 })
 
             return {
@@ -338,22 +267,11 @@ class DispatchSessionController(http.Controller):
                             ),
                         })
 
-                if cancelled_removal:
-                    tag = request.env["sale.order.ei"].sudo().search([('display_name_custom', '=', ei_name)], limit=1)
-                    if tag:
-                        tag.write({'wmds_cancel_decision': 'removed', 'wmds_cancel_product_id': False})
                 line.unlink()
 
-                # Si ya no queda ninguna EI de esa orden retenida en despacho, se resuelve:
-                # lo retirado (y no entregado) va a Guardería.
-                if cancelled_removal and so_name and self._so_cancel_held(so_name):
-                    remaining = request.env["wmds.dispatch.session.line"].sudo().search_count([
-                        ('so_name', '=', so_name),
-                        ('session_id.state', '=', 'active'),
-                    ])
-                    if not remaining:
-                        request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1) \
-                            ._wmds_release_cancel_hold(operator=operator)
+                # Punto de extensión: los complementos reaccionan a la línea quitada.
+                session._wmds_after_line_removed(
+                    ei_name, so_name, cancelled_removal=cancelled_removal, operator=operator)
                 return {"ok": True}
 
             return {"ok": False, "error": "Línea no encontrada"}
@@ -383,7 +301,8 @@ class DispatchSessionController(http.Controller):
             ], limit=1)
 
             if session and session.line_ids:
-                session._wmds_release_cancel_holds()
+                # Punto de extensión: las líneas se liberan sin despacharse.
+                session._wmds_on_session_released(session.line_ids)
                 session.line_ids.unlink()
 
             return {"ok": True}
@@ -488,13 +407,13 @@ class DispatchSessionController(http.Controller):
             ], limit=1)
 
             if session:
-                # Las órdenes canceladas que esperaban este despacho ya no se embarcarán.
                 lines = session.line_ids
                 session.write({
                     'state': 'cancelled',
                     'date_end': fields.Datetime.now(),
                 })
-                session._wmds_release_cancel_holds(lines)
+                # Punto de extensión: las líneas se liberan sin despacharse.
+                session._wmds_on_session_released(lines)
                 return {"ok": True}
 
             return {"ok": True, "message": "No había sesión activa"}

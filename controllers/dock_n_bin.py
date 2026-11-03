@@ -33,12 +33,10 @@ class DockNBin(http.Controller):
                     ('dispatched', '=', True)
                 ])
 
-                return {
+                res = {
                     "valid": True,
                     "so": ei_tag.so_id.name,
                     "so_state": ei_tag.so_id.state,
-                    "cancel_hold": ei_tag.so_id._wmds_is_cancel_held() if ei_tag.so_id else False,
-                    "cancel_decision": ei_tag.wmds_cancel_decision or False,
                     "name": ei_tag.display_name_custom,
                     "total": ei_tag.so_id.ei_total,
                     "current": ei_tag.sequence_number,
@@ -52,6 +50,9 @@ class DockNBin(http.Controller):
                         "dispatched": ei_tag.dispatched
                     }
                 }
+                # Punto de extensión: datos extra de los complementos.
+                res.update(ei_tag._wmds_scan_extra_values())
+                return res
 
             # Si no existe, validar si es un formato SOXXXX/N válido según ei_total
             if '/' in attachment_id:

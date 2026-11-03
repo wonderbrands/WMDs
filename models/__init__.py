@@ -17,4 +17,5 @@ from . import dispatch_sheet
 from . import wmds_queued_tasks
 from . import wmds_mysql_config
 
+from . import wmds_extension_points
 from . import cancel_dispatch_hold
