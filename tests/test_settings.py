@@ -6,7 +6,7 @@ from odoo.tests import tagged
 from odoo.tests.common import TransactionCase
 
 ADDON_FIELDS = {
-    'module_wb_so_cancel_guarderia': 'wb_so_cancel_guarderia',
+    'module_wmds_cancel': 'wmds_cancel',
 }
 
 

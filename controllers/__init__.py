@@ -21,4 +21,3 @@ from . import compactacion
 from . import import_rackeo_controller
 from . import order_channel
 from . import mysql_driver_controller
-from . import cancel_dispatch

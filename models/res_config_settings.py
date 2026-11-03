@@ -11,8 +11,7 @@ from odoo import fields, models
 class ResConfigSettings(models.TransientModel):
     _inherit = 'res.config.settings'
 
-    # Fase 3 de la modularización: pasa a `module_wmds_cancel` al renombrar el complemento.
-    module_wb_so_cancel_guarderia = fields.Boolean(
+    module_wmds_cancel = fields.Boolean(
         string="Cancelaciones",
         help="Reubica a Guardería el stock de pedidos cancelados y retiene el OUT "
              "cuando la cancelación llega en pleno despacho.")

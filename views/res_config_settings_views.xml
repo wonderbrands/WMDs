@@ -13,8 +13,8 @@
                         <setting id="wmds_addon_cancel"
                                  string="Cancelaciones"
                                  help="Lleva a Guardería el stock de pedidos cancelados y, si la cancelación llega en pleno despacho, retiene el OUT hasta saber qué se embarcó.">
-                            <field name="module_wb_so_cancel_guarderia"/>
-                            <div class="text-muted mt-1" invisible="not module_wb_so_cancel_guarderia">
+                            <field name="module_wmds_cancel"/>
+                            <div class="text-muted mt-1" invisible="not module_wmds_cancel">
                                 Las opciones por almacén están en Inventario → Configuración → Almacenes.
                             </div>
                         </setting>
