@@ -46,6 +46,7 @@ src/
 | `available_main_manager_screens` | object | Configuración de pantallas del manager (Picks, Packs, Operadores, Cycle Count, etc.) |
 | `main_manager_screen` | object | Pantalla actual del manager seleccionada del sidebar |
 | `odoo_middleware` | `OdooManagerMiddleware` | Capa de comunicación con Odoo |
+| `features` | object | Complementos WMDs instalados (`/wmds/v2/features`), p. ej. `{cancel: true}`. Consultar con el getter `hasFeature(name)` |
 
 ### Métodos clave
 
@@ -110,6 +111,16 @@ El `endpointMap` mapea ~90 contextos a endpoints Odoo. Ejemplos:
 | `cycle_count_assigned` | `/wmds/v2/engine/cycle_count_assigned` |
 | (etc.) | ... |
 
+### Rutas de complementos
+
+Una entrada del `endpointMap` con `feature: '<clave>'` pertenece a un complemento (p. ej. `mark_cancelled_shipped`
+→ `cancel`). Si `/wmds/v2/features` dice que no está instalado, no se llama a Odoo; y si Odoo responde 404, se
+devuelve el mismo error `feature_unavailable`. `callOdoo` lo muestra como aviso «Función no disponible» en vez
+de un error genérico.
+
+En `available_main_manager_screens`, una pantalla con `feature: '<clave>'` solo aparece en el menú lateral si ese
+complemento está instalado.
+
 ---
 
 ## `App.vue` — Orquestador principal
@@ -127,7 +138,7 @@ El `endpointMap` mapea ~90 contextos a endpoints Odoo. Ejemplos:
 ### Flujo de inicio
 
 1. `beforeMount`: Restaura sesión de `sessionStorage` (`wmds_logged_user`)
-2. `mounted`: Carga `mandatory_uncompleted` → si hay tarea pendiente, la ejecuta
+2. `mounted`: Lanza `store.loadFeatures()` (sin esperar) y carga `mandatory_uncompleted` → si hay tarea pendiente, la ejecuta
 3. Si no hay usuario → intenta `skipLogIfManager()` (auto-login si es manager Odoo)
 4. Si no hay `current_screen` → redirige a `role_picker`
 
@@ -279,12 +290,12 @@ Las líneas se pueden agrupar por **ubicación** o por **picking** (toggle en la
 1. Selección de **Carrier** → crea/recupera sesión de despacho (`get_dispatch_session`)
 2. Escaneo de **etiquetas EI** → valida con `validate_attachment_guide`
 3. Persiste cada scan en backend (`save_dispatch_session_line`)
-4. Maneja pedidos cancelados con modal (`CancelledModalComponent`)
+4. Maneja pedidos cancelados con modal (`CancelledModalComponent`): por cada EI, retirarla (escanear) o, si la SO tiene el OUT retenido, marcar **«Ya se embarcó»** (`mark_cancelled_shipped`, con selector de producto si la SO tiene varios). Antes de entregar refresca el estado de las órdenes (`refreshCancelStates`).
 5. Botón "Entregar a paquetería" → `dispatch_orders` (que llama `dispatch_packet`)
 6. Completa sesión → `complete_dispatch_session` → genera **hoja de salida** imprimible
 7. Impresión IoT: busca el `actionService` de Odoo OWL para enviar a IoT Box
 
-**Endpoints llamados:** `get_carrier_list`, `get_dispatch_session`, `save_dispatch_session_line`, `remove_dispatch_session_line`, `clear_dispatch_session`, `complete_dispatch_session`, `cancel_dispatch_session`, `validate_attachment_guide`, `dispatch_orders` → `dispatch_packet`, `print_dispatch_sheet`
+**Endpoints llamados:** `get_carrier_list`, `get_dispatch_session`, `save_dispatch_session_line`, `remove_dispatch_session_line`, `mark_cancelled_shipped`, `clear_dispatch_session`, `complete_dispatch_session`, `cancel_dispatch_session`, `validate_attachment_guide`, `dispatch_orders` → `dispatch_packet`, `print_dispatch_sheet`
 
 **Vista de impresión:** Tabla resumen por SO + detalle de escaneos + firmas. Botón para imprimir vía Odoo IoT.
 

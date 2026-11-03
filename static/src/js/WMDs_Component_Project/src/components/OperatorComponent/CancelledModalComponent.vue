@@ -9,7 +9,9 @@
                         <h2 class="cancelled-modal-title">¡Atención! Pedidos Cancelados</h2>
                         <p class="cancelled-modal-subtitle">
                             Tienes <strong>{{ pending.length }}</strong> guía(s) cancelada(s).
-                            Debes sacarlas físicamente del carro y escanearlas una a una para confirmar.
+                            Sácalas físicamente del carro y escanéalas una a una para confirmar.
+                            Si una guía ya está dentro del contenedor/carrier y no se puede sacar,
+                            usa <strong>«Ya se embarcó»</strong>.
                         </p>
                     </div>
                 </div>
@@ -27,15 +29,60 @@
                             <span class="item-ei">{{ item.name }}</span>
                             <span class="item-so">{{ item.so_name }}</span>
                         </div>
-                        <span v-if="confirmed.includes(item.name)" class="item-badge-ok">Confirmada</span>
-                        <span v-else class="item-badge-pending">Pendiente</span>
+                        <span v-if="shipped.includes(item.name)" class="item-badge-shipped">Embarcada</span>
+                        <span v-else-if="confirmed.includes(item.name)" class="item-badge-ok">Retirada</span>
+                        <template v-else>
+                            <button
+                                v-if="item.hold"
+                                type="button"
+                                class="item-btn-shipped"
+                                :disabled="!!askingShip || !!productChoice"
+                                @click="askingShip = item"
+                            >Ya se embarcó</button>
+                            <span class="item-badge-pending">Pendiente</span>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Confirmación: el paquete ya está en el contenedor/carrier -->
+                <div v-if="askingShip" class="cancelled-modal-ask">
+                    <p>
+                        ¿Confirmas que la guía <strong>{{ askingShip.name }}</strong> ya está dentro del
+                        contenedor/carrier y <strong>no se puede sacar</strong>?
+                    </p>
+                    <p class="ask-note">
+                        Se entregará al cliente como una venta normal y Operaciones gestionará la devolución.
+                    </p>
+                    <div class="ask-actions">
+                        <button type="button" class="ask-btn ask-btn-yes" @click="confirmShipped">Sí, se embarcó</button>
+                        <button type="button" class="ask-btn ask-btn-no" @click="askingShip = null">No, la voy a retirar</button>
+                    </div>
+                </div>
+
+                <!-- Selección de producto (órdenes con varios productos: 1 guía = 1 pieza) -->
+                <div v-if="productChoice" class="cancelled-modal-ask">
+                    <p>¿Qué producto contiene la guía <strong>{{ productChoice.item.name }}</strong>?</p>
+                    <div class="ask-products">
+                        <button
+                            v-for="product in productChoice.products"
+                            :key="product.id"
+                            type="button"
+                            class="ask-btn ask-btn-product"
+                            @click="onMarkShipped(productChoice.item, product.id)"
+                        >
+                            {{ product.name }}
+                            <small>({{ product.remaining }} pendiente(s))</small>
+                        </button>
+                    </div>
+                    <div class="ask-actions">
+                        <button type="button" class="ask-btn ask-btn-no" @click="onCancelProductChoice()">Cancelar</button>
                     </div>
                 </div>
 
                 <!-- Progreso -->
                 <div class="cancelled-modal-progress">
                     <div class="progress-label">
-                        {{ confirmed.length }} / {{ pending.length }} confirmadas
+                        {{ confirmed.length }} / {{ pending.length }} resueltas
                     </div>
                     <div class="progress-track">
                         <div 
@@ -60,7 +107,7 @@
                 <!-- Aviso de cierre automático cuando todas están confirmadas -->
                 <div v-if="confirmed.length === pending.length && pending.length > 0" class="cancelled-modal-footer">
                     <i class="fa fa-spin fa-spinner" style="color: #2ecc71; font-size: 1.4rem;"></i>
-                    <span style="color: #2ecc71; font-weight: 600;">Todas removidas. Cerrando...</span>
+                    <span style="color: #2ecc71; font-weight: 600;">Todas resueltas. Cerrando...</span>
                 </div>
             </div>
         </div>
@@ -77,14 +124,19 @@ export default {
     },
     props: {
         show: { type: Boolean, default: false },
-        pending: { type: Array, required: true },       // [{ name, so_name }]
-        confirmed: { type: Array, required: true },     // ['SO12345/1']
+        pending: { type: Array, required: true },       // [{ name, so_name, hold }]
+        confirmed: { type: Array, required: true },     // ['SO12345/1'] retiradas o embarcadas
+        shipped: { type: Array, default: () => [] },    // ['SO12345/1'] marcadas como embarcadas
+        productChoice: { type: Object, default: null }, // { item, products: [{ id, name, remaining }] }
         lastError: { type: String, default: "" },
-        onScanCancelled: { type: Function, required: true }
+        onScanCancelled: { type: Function, required: true },
+        onMarkShipped: { type: Function, default: () => {} },          // (item, productId|null)
+        onCancelProductChoice: { type: Function, default: () => {} },
     },
     data() {
         return {
-            scannerKey: 0
+            scannerKey: 0,
+            askingShip: null,
         };
     },
     watch: {
@@ -92,11 +144,17 @@ export default {
             if (newVal) {
                 this.scannerKey++;
             }
+            this.askingShip = null;
         }
     },
     methods: {
         handleScan(scannedCode) {
             this.onScanCancelled(scannedCode);
+        },
+        confirmShipped() {
+            const item = this.askingShip;
+            this.askingShip = null;
+            this.onMarkShipped(item, null);
         }
     }
 }
@@ -241,6 +299,88 @@ export default {
     border-radius: 20px;
     font-weight: 600;
     white-space: nowrap;
+}
+
+.item-badge-shipped {
+    background: rgba(52, 152, 219, 0.15);
+    color: #5dade2;
+    border: 1px solid rgba(52, 152, 219, 0.4);
+    border-radius: 999px;
+    padding: 2px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.item-btn-shipped {
+    background: transparent;
+    color: #5dade2;
+    border: 1px solid #5dade2;
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-right: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.item-btn-shipped:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.cancelled-modal-ask {
+    background: rgba(52, 152, 219, 0.08);
+    border: 1px solid rgba(52, 152, 219, 0.35);
+    border-radius: 12px;
+    padding: 1rem;
+    color: #ecf0f1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.cancelled-modal-ask p {
+    margin: 0;
+}
+
+.ask-note {
+    font-size: 0.85rem;
+    color: #bdc3c7;
+}
+
+.ask-actions,
+.ask-products {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.ask-btn {
+    border: none;
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.ask-btn-yes {
+    background: #3498db;
+    color: #fff;
+}
+
+.ask-btn-no {
+    background: transparent;
+    color: #bdc3c7;
+    border: 1px solid #7f8c8d;
+}
+
+.ask-btn-product {
+    background: #2c3e50;
+    color: #ecf0f1;
+    text-align: left;
+    width: 100%;
 }
 
 .cancelled-modal-progress {

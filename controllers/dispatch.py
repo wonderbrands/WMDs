@@ -123,8 +123,14 @@ class Dispatch(http.Controller):
                 ('display_name_custom', 'in', packs_ids)
             ])
 
+            # Punto de extensión: los complementos pueden descartar EI o detener el despacho.
+            ei_tags, prefilter_error = ei_tags._wmds_dispatch_prefilter(operator=operator)
+            if prefilter_error:
+                return {"status": "error", "message": prefilter_error}
+
             # Pre-check for cancelled orders
-            cancelled_sos = ei_tags.mapped('so_id').filtered(lambda s: s.state == 'cancel')
+            cancelled_sos = ei_tags.mapped('so_id').filtered(
+                lambda s: s.state == 'cancel' and not s._wmds_dispatch_allows_cancelled())
             if cancelled_sos:
                 so_names = ", ".join(cancelled_sos.mapped('name'))
                 return {
@@ -132,6 +138,14 @@ class Dispatch(http.Controller):
                     "message": f"No se puede despachar: Los pedidos {so_names} están cancelados."
                 }
             
+            # Punto de extensión: EI que un complemento resuelve fuera del flujo normal.
+            special = ei_tags._wmds_dispatch_handle(operator=operator)
+            if special['errors']:
+                return {"status": "error", "message": " ".join(special['errors'])}
+            if special['handled'] and 'dispatch_status' in request.env['sale.order.ei']._fields:
+                special['handled'].write({'dispatch_status': 'success'})
+            ei_tags -= special['consumed']
+
             vals = {
                 'dispatched': True,
                 'on_dock': False,

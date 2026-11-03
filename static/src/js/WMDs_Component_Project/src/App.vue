@@ -126,6 +126,9 @@ export default {
     this.restorePersistedUser();
   },
   async mounted() {
+    // Sin await: no retrasa el arranque; si falla, las rutas de complementos se intentan igual.
+    this.store.loadFeatures();
+
     if (this.store.mandatory_uncompleted && typeof this.store.mandatory_uncompleted.loadFromStorage === 'function') {
         this.store.mandatory_uncompleted.loadFromStorage(this.role);
     }

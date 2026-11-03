@@ -534,6 +534,22 @@ class WmdsQueuedTasks(models.Model):
         ])
         tag_by_name = {t.display_name_custom: t for t in ei_tags}
 
+        # Punto de extensión: EI que un complemento resuelve antes del bucle. Las que quedan
+        # 'dispatched' se omiten en el bucle como ya despachadas.
+        special_log = []
+        try:
+            special = ei_tags._wmds_dispatch_handle(operator=operator)
+            if special['consumed']:
+                if special['handled'] and 'dispatch_status' in self.env['sale.order.ei']._fields:
+                    special['handled'].write({'dispatch_status': 'success'})
+                self.env.cr.commit()
+            special_log += special['log']
+            special_log += [f"ADVERTENCIA: {e}" for e in special['errors']]
+        except Exception as e:
+            self.env.cr.rollback()
+            _logger.error(f"Error en complementos antes del despacho: {e}\n{traceback.format_exc()}")
+            special_log.append(f"ERROR en complementos antes del despacho: {e}")
+
         # SO IDs presentes en este lote; usados por H-3 y H-5
         all_so_ids = list({t.so_id.id for t in ei_tags if t.so_id})
 
@@ -575,6 +591,7 @@ class WmdsQueuedTasks(models.Model):
         # últimas MAX_DETAIL_LINES; append/len/join siguen funcionando igual.
         MAX_DETAIL_LINES = 200
         log_lines = deque(maxlen=MAX_DETAIL_LINES)
+        log_lines.extend(special_log)
         PROGRESS_INTERVAL = 10   # H-1: número de paquetes entre cada escritura de progreso a la BD
         
         for idx, pack_id in enumerate(packs_ids):
