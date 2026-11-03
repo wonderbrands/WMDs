@@ -54,6 +54,11 @@ class StockWMDS(models.Model):
     picking_type_id_name = fields.Char(related='picking_type_id.name', string='Operation Type Name', store=False)
     validated_by_automation = fields.Boolean('Validated by Automation', default=False)
 
+    @api.model
+    def _cron_update_sla_priorities(self):
+        """ Método ejecutable desde cron en stock.picking para actualizar prioridades SLA """
+        return self.env['sale.order']._cron_update_sla_priorities()
+
     def button_validate(self):
         # 1. Enforce that destination locations for Rackeo pickings must be empty before validation
         for picking in self:

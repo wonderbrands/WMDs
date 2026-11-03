@@ -10,5 +10,15 @@
             <field name="interval_type">hours</field>
             <field name="active">True</field>
         </record>
+
+        <record id="wmds_cron_update_sla_priority_alerts" model="ir.cron">
+            <field name="name">WMDS: Actualizar Alertas de Prioridad SLA</field>
+            <field name="model_id" ref="sale.model_sale_order"/>
+            <field name="state">code</field>
+            <field name="code">model._cron_update_sla_priorities()</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">hours</field>
+            <field name="active">True</field>
+        </record>
     </data>
 </odoo>

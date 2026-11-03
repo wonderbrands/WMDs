@@ -250,10 +250,17 @@ class WmdsMysqlConfig(models.Model):
 
                 if target_dt:
                     dt_str = fields.Datetime.to_string(target_dt)
-                    so.write({
-                        'sla_date': dt_str,
-                        'priority_date': dt_str,
-                    })
+
+                    # IDEMPOTENCIA: Si ya tiene ajuste manual/empuje, NO sobreescribir sla_date
+                    if getattr(so, 'sla_manual_override', False):
+                        if not getattr(so, 'sla_original_date', False):
+                            so.write({'sla_original_date': dt_str})
+                        continue
+
+                    vals = {'sla_date': dt_str}
+                    if not getattr(so, 'sla_original_date', False):
+                        vals['sla_original_date'] = dt_str
+                    so.write(vals)
                     updated_orders_count += 1
 
             # Trigger priority recalculation for active sale orders if SLA module method exists

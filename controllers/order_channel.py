@@ -1396,7 +1396,6 @@ class OrderChannelController(http.Controller):
             old_so_sla = so.sla_date
             so_vals = {
                 'sla_date': new_sla_dt,
-                'priority_date': new_sla_dt,
                 'sla_manual_override': True,
                 'sla_override_reason': reason,
                 'sla_override_note': note,
@@ -1508,7 +1507,6 @@ class OrderChannelController(http.Controller):
                 old_so_sla = so.sla_date
                 so_vals = {
                     'sla_date': new_sla_dt,
-                    'priority_date': new_sla_dt,
                     'sla_manual_override': True,
                     'sla_override_reason': reason,
                     'sla_override_note': note,
