@@ -7,3 +7,4 @@ from . import test_import_rackeo
 
 
 from . import test_cancel_dispatch_hold
+from . import test_settings

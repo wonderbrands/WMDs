@@ -60,6 +60,7 @@
         "data/wmds_mysql_cron.xml",
         "views/wmds_queued_tasks_views.xml",
         "views/wmds_mysql_config_views.xml",
+        "views/res_config_settings_views.xml",
         "security/ir.model.access.csv",
 
     ],

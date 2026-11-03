@@ -18,4 +18,5 @@ from . import wmds_queued_tasks
 from . import wmds_mysql_config
 
 from . import wmds_extension_points
+from . import res_config_settings
 from . import cancel_dispatch_hold
