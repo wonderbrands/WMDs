@@ -297,9 +297,16 @@ se comporta igual que sin ellos.
 | `_wmds_extra_values()` | `wmds.dispatch.session.line` | `get_dispatch_session` | `{line.id: {}}` que se agrega a cada línea |
 | `_wmds_after_line_removed(ei_name, so_name, cancelled_removal, operator)` | `wmds.dispatch.session` | `remove_dispatch_session_line`, después de borrar la línea | `None` |
 | `_wmds_on_session_released(lines)` | `wmds.dispatch.session` | `clear_dispatch_session` (antes de borrar) y `cancel_dispatch_session` (después de cancelar) | `None` |
+| `_wmds_features()` | `wmds.features` (abstracto) | `/wmds/v2/features` | `{}`; cada complemento agrega su clave (`res['cancel'] = True`) |
+
+### `/wmds/v2/features`
+
+`POST` JSON, sin parámetros. Responde `{"features": {"cancel": true, ...}}` con los complementos instalados; una
+clave ausente = complemento no instalado. El front la llama al arrancar (`store.loadFeatures()`) para ocultar menús
+de complementos y no llamar rutas que no existen.
 
 ## Complementos que usan estos puntos de extensión
 
 | Complemento | Qué agrega |
 |---|---|
-| `wmds_cancel` | Cancelación durante el despacho: OUT retenido, decisión por EI (*Embarcada*/*Retirada*), ruta `mark_cancelled_shipped` y campos `cancel_hold`/`cancel_decision` en las respuestas de sesión y escaneo. Se activa en WMDS → Configuración → Ajustes. |
+| `wmds_cancel` | Cancelación durante el despacho: OUT retenido, decisión por EI (*Embarcada*/*Retirada*), ruta `mark_cancelled_shipped` y campos `cancel_hold`/`cancel_decision` en las respuestas de sesión y escaneo. Se activa en WMDS → Configuración → Ajustes. Clave en `/wmds/v2/features`: `cancel`. |

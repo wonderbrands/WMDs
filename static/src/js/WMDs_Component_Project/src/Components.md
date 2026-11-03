@@ -46,6 +46,7 @@ src/
 | `available_main_manager_screens` | object | Configuración de pantallas del manager (Picks, Packs, Operadores, Cycle Count, etc.) |
 | `main_manager_screen` | object | Pantalla actual del manager seleccionada del sidebar |
 | `odoo_middleware` | `OdooManagerMiddleware` | Capa de comunicación con Odoo |
+| `features` | object | Complementos WMDs instalados (`/wmds/v2/features`), p. ej. `{cancel: true}`. Consultar con el getter `hasFeature(name)` |
 
 ### Métodos clave
 
@@ -110,6 +111,16 @@ El `endpointMap` mapea ~90 contextos a endpoints Odoo. Ejemplos:
 | `cycle_count_assigned` | `/wmds/v2/engine/cycle_count_assigned` |
 | (etc.) | ... |
 
+### Rutas de complementos
+
+Una entrada del `endpointMap` con `feature: '<clave>'` pertenece a un complemento (p. ej. `mark_cancelled_shipped`
+→ `cancel`). Si `/wmds/v2/features` dice que no está instalado, no se llama a Odoo; y si Odoo responde 404, se
+devuelve el mismo error `feature_unavailable`. `callOdoo` lo muestra como aviso «Función no disponible» en vez
+de un error genérico.
+
+En `available_main_manager_screens`, una pantalla con `feature: '<clave>'` solo aparece en el menú lateral si ese
+complemento está instalado.
+
 ---
 
 ## `App.vue` — Orquestador principal
@@ -127,7 +138,7 @@ El `endpointMap` mapea ~90 contextos a endpoints Odoo. Ejemplos:
 ### Flujo de inicio
 
 1. `beforeMount`: Restaura sesión de `sessionStorage` (`wmds_logged_user`)
-2. `mounted`: Carga `mandatory_uncompleted` → si hay tarea pendiente, la ejecuta
+2. `mounted`: Lanza `store.loadFeatures()` (sin esperar) y carga `mandatory_uncompleted` → si hay tarea pendiente, la ejecuta
 3. Si no hay usuario → intenta `skipLogIfManager()` (auto-login si es manager Odoo)
 4. Si no hay `current_screen` → redirige a `role_picker`
 

@@ -4,7 +4,7 @@
         <div class="sidebar_content" v-show="!store.sidebar_collapsed">
             <div style="margin-top: 1em; width: 100%; margin-bottom: 5em;">
                 <img src="https://mma.prnewswire.com/media/1447948/LogoWonderBrands_Logo.jpg?p=facebook" style="max-width: 100%;">
-                <div class="options" v-for="option in Object.keys(store.available_main_manager_screens)" :key="option">
+                <div class="options" v-for="option in visibleOptions" :key="option">
                     
                     <Button v-if="!with_submenu.includes(option)" 
                         @click="selectScreen(option)"
@@ -57,6 +57,13 @@
                 with_submenu: ["pick"],
                 deployed_submenus: [],
                 selected: null
+            }
+        },
+        computed: {
+            // Una pantalla con `feature` solo se muestra si su complemento está instalado.
+            visibleOptions() {
+                const screens = this.store.available_main_manager_screens;
+                return Object.keys(screens).filter(option => !screens[option].feature || this.store.hasFeature(screens[option].feature));
             }
         },
         methods: {

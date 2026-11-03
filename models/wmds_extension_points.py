@@ -79,3 +79,17 @@ class WmdsDispatchSessionLineExtensionPoints(models.Model):
         :return: {line.id: dict} con lo que se agrega a cada línea de la respuesta.
         """
         return {line.id: {} for line in self}
+
+
+class WmdsFeatures(models.AbstractModel):
+    _name = "wmds.features"
+    _description = "Funcionalidades de complementos WMDs activas"
+
+    def _wmds_features(self):
+        """Funcionalidades que el front puede mostrar (`/wmds/v2/features`).
+
+        Cada complemento agrega su clave: ``res = super()._wmds_features(); res['x'] = True``.
+
+        :return: dict {clave: True}. Una clave ausente = complemento no instalado.
+        """
+        return {}
