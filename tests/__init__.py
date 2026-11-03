@@ -6,3 +6,4 @@ from . import test_compactacion
 from . import test_import_rackeo
 
 
+from . import test_cancel_dispatch_hold

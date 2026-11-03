@@ -78,7 +78,8 @@
 | `/wmds/v2/engine/post/validate_ei_carrier` | `POST` JSON | Valida que la EI pertenezca al carrier de la sesión actual. Compartido por BIN y DISPATCH. | `so_name` (str), `carrier_id` (int). |
 | `/wmds/v2/engine/post/get_dispatch_session` | `POST` JSON | Busca la sesión activa del operador y devuelve todos sus datos para restaurar estado. | `operator_login` (str). |
 | `/wmds/v2/engine/post/save_dispatch_session_line` | `POST` JSON | Agrega una línea de EI escaneada a la sesión. Crea la sesión si no existe. Obtiene producto y carrier automáticamente de la SO. Valida que no haya duplicados y que el carrier coincida. | `operator_login` (str), `carrier_id` (int), `ei_name` (str), `so_name` (str), `total` (int, default 0), `current` (int, default 0), `dispatched_count` (int, default 0). |
-| `/wmds/v2/engine/post/remove_dispatch_session_line` | `POST` JSON | Elimina una línea de la sesión activa. Si es por cancelación, registra en wmds.log de la SO. | `operator_login` (str), `ei_name` (str), `cancelled_removal` (bool, default False). |
+| `/wmds/v2/engine/post/remove_dispatch_session_line` | `POST` JSON | Elimina una línea de la sesión activa. Si es por cancelación, registra en wmds.log de la SO, marca la EI como *Retirada* y, si la SO tiene el OUT retenido y ya no le quedan EI en sesión, lo resuelve (lo no entregado va a Guardería). | `operator_login` (str), `ei_name` (str), `cancelled_removal` (bool, default False). |
+| `/wmds/v2/engine/post/mark_cancelled_shipped` | `POST` JSON | El despachador indica que la EI de una SO cancelada (OUT retenido) ya está dentro del contenedor/carrier. Si la SO tiene varios productos y no se envía `product_id`, responde `need_product` con la lista de productos con piezas pendientes. Errores en la clave `message`. Requiere `wb_so_cancel_guarderia`. | `operator_login` (str), `ei_name` (str), `product_id` (int, opcional). |
 | `/wmds/v2/engine/post/clear_dispatch_session` | `POST` JSON | Limpia todas las líneas de la sesión sin cancelarla. | `operator_login` (str). |
 | `/wmds/v2/engine/post/complete_dispatch_session` | `POST` JSON | Marca la sesión como completada, genera la hoja de salida (`wmds.dispatch.sheet`), y devuelve resumen de SOs y EIs. | `operator_login` (str). |
 | `/wmds/v2/engine/post/cancel_dispatch_session` | `POST` JSON | Cancela la sesión activa. | `operator_login` (str). |
@@ -109,7 +110,7 @@
 |---|---|---|---|
 | `/wmds/v2/engine/get/pending_full_dispatch` | `POST` JSON | Lista todos los movimientos de stock que están en DOCK y no han sido despachados. | Ninguno. |
 | `/wmds/v2/engine/post/dispatch_full_items` | `POST` JSON | Despacha parcial o totalmente ítems de fulfillment. Actualiza `qty_dispatched`, `dispatched`, `on_dock`. | `items` (list[dict] — `[{move_id, qty}]`), `operator_login` (str). |
-| `/wmds/v2/engine/post/dispatch_packet` | `POST` JSON | Despacha paquetes EI. Marca `dispatched=True`, limpia `on_dock`/`dock_id`. Si >10 paquetes, encola. Si todos los paquetes de una SO están despachados, valida automáticamente los pickings relacionados. | `picks_ids` (list[str]) — nombres de EI. `operator_login` (str). |
+| `/wmds/v2/engine/post/dispatch_packet` | `POST` JSON | Despacha paquetes EI. Marca `dispatched=True`, limpia `on_dock`/`dock_id`. Si >10 paquetes, encola. Si todos los paquetes de una SO están despachados, valida automáticamente los pickings relacionados. Las SO canceladas con OUT retenido se resuelven primero: OUT solo por las EI *Embarcadas* y el resto a Guardería; si alguna EI no tiene decisión, devuelve error. | `picks_ids` (list[str]) — nombres de EI. `operator_login` (str). |
 
 ---
 
@@ -280,3 +281,12 @@ Hereda los endpoints del controlador padre (`stock_barcode`). No añade rutas nu
 | `pickings.py` | `AvailableOperators` | Búsqueda legacy de recepciones |
 | `portal_wmds.py` | `WMDS_Portal` | Página principal de WMDS |
 | `user_access.py` | `UserAccess` | Autenticación y permisos |
+
+## Cancelación durante el despacho (integración con `wb_so_cancel_guarderia`)
+
+`models/cancel_dispatch_hold.py`: campos `sale.order.ei.wmds_cancel_decision` (*Embarcada*/*Retirada*) y
+`wmds_cancel_product_id`; responde al gancho `sale.order._wb_is_in_dispatch()` (EI en sesión de despacho activa o ya
+entregada). `get_dispatch_session` y `validate_attachment_guide` devuelven `cancel_hold` y `cancel_decision`;
+`clear_dispatch_session` y `cancel_dispatch_session` resuelven las SO retenidas como "nada embarcado". La tarea en cola
+(`_execute_dispatch_package`) resuelve las retenidas antes de procesar los paquetes. Sin `wb_so_cancel_guarderia`
+instalado nada de esto se activa.

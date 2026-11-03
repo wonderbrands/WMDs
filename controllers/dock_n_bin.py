@@ -37,6 +37,8 @@ class DockNBin(http.Controller):
                     "valid": True,
                     "so": ei_tag.so_id.name,
                     "so_state": ei_tag.so_id.state,
+                    "cancel_hold": ei_tag.so_id._wmds_is_cancel_held() if ei_tag.so_id else False,
+                    "cancel_decision": ei_tag.wmds_cancel_decision or False,
                     "name": ei_tag.display_name_custom,
                     "total": ei_tag.so_id.ei_total,
                     "current": ei_tag.sequence_number,

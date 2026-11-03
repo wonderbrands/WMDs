@@ -500,6 +500,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_dispatch_session: {url: '/wmds/v2/engine/post/get_dispatch_session', method: 'POST'},
             save_dispatch_session_line: {url: '/wmds/v2/engine/post/save_dispatch_session_line', method: 'POST'},
             remove_dispatch_session_line: {url: '/wmds/v2/engine/post/remove_dispatch_session_line', method: 'POST'},
+            mark_cancelled_shipped: {url: '/wmds/v2/engine/post/mark_cancelled_shipped', method: 'POST'},
             clear_dispatch_session: {url: '/wmds/v2/engine/post/clear_dispatch_session', method: 'POST'},
             complete_dispatch_session: {url: '/wmds/v2/engine/post/complete_dispatch_session', method: 'POST'},
             cancel_dispatch_session: {url: '/wmds/v2/engine/post/cancel_dispatch_session', method: 'POST'},

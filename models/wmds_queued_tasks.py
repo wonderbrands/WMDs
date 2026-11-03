@@ -534,6 +534,23 @@ class WmdsQueuedTasks(models.Model):
         ])
         tag_by_name = {t.display_name_custom: t for t in ei_tags}
 
+        # Órdenes canceladas en pleno despacho (OUT retenido): se resuelven antes del bucle.
+        # Sus EI embarcadas quedan 'dispatched' y el bucle las omite como ya despachadas.
+        hold_log = []
+        held_tags = ei_tags.filtered(lambda t: t.so_id and t.so_id._wmds_is_cancel_held())
+        if held_tags:
+            try:
+                handled, hold_errors = held_tags._wmds_process_cancel_holds(operator=operator)
+                if 'dispatch_status' in self.env['sale.order.ei']._fields:
+                    handled.write({'dispatch_status': 'success'})
+                self.env.cr.commit()
+                hold_log += [f"Despacho de orden cancelada resuelto: {n}" for n in handled.mapped('display_name_custom')]
+                hold_log += [f"ADVERTENCIA: {e}" for e in hold_errors]
+            except Exception as e:
+                self.env.cr.rollback()
+                _logger.error(f"Error resolviendo órdenes canceladas retenidas: {e}\n{traceback.format_exc()}")
+                hold_log.append(f"ERROR resolviendo órdenes canceladas retenidas: {e}")
+
         # SO IDs presentes en este lote; usados por H-3 y H-5
         all_so_ids = list({t.so_id.id for t in ei_tags if t.so_id})
 
@@ -575,6 +592,7 @@ class WmdsQueuedTasks(models.Model):
         # últimas MAX_DETAIL_LINES; append/len/join siguen funcionando igual.
         MAX_DETAIL_LINES = 200
         log_lines = deque(maxlen=MAX_DETAIL_LINES)
+        log_lines.extend(hold_log)
         PROGRESS_INTERVAL = 10   # H-1: número de paquetes entre cada escritura de progreso a la BD
         
         for idx, pack_id in enumerate(packs_ids):

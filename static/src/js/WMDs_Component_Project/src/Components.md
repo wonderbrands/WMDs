@@ -279,12 +279,12 @@ Las líneas se pueden agrupar por **ubicación** o por **picking** (toggle en la
 1. Selección de **Carrier** → crea/recupera sesión de despacho (`get_dispatch_session`)
 2. Escaneo de **etiquetas EI** → valida con `validate_attachment_guide`
 3. Persiste cada scan en backend (`save_dispatch_session_line`)
-4. Maneja pedidos cancelados con modal (`CancelledModalComponent`)
+4. Maneja pedidos cancelados con modal (`CancelledModalComponent`): por cada EI, retirarla (escanear) o, si la SO tiene el OUT retenido, marcar **«Ya se embarcó»** (`mark_cancelled_shipped`, con selector de producto si la SO tiene varios). Antes de entregar refresca el estado de las órdenes (`refreshCancelStates`).
 5. Botón "Entregar a paquetería" → `dispatch_orders` (que llama `dispatch_packet`)
 6. Completa sesión → `complete_dispatch_session` → genera **hoja de salida** imprimible
 7. Impresión IoT: busca el `actionService` de Odoo OWL para enviar a IoT Box
 
-**Endpoints llamados:** `get_carrier_list`, `get_dispatch_session`, `save_dispatch_session_line`, `remove_dispatch_session_line`, `clear_dispatch_session`, `complete_dispatch_session`, `cancel_dispatch_session`, `validate_attachment_guide`, `dispatch_orders` → `dispatch_packet`, `print_dispatch_sheet`
+**Endpoints llamados:** `get_carrier_list`, `get_dispatch_session`, `save_dispatch_session_line`, `remove_dispatch_session_line`, `mark_cancelled_shipped`, `clear_dispatch_session`, `complete_dispatch_session`, `cancel_dispatch_session`, `validate_attachment_guide`, `dispatch_orders` → `dispatch_packet`, `print_dispatch_sheet`
 
 **Vista de impresión:** Tabla resumen por SO + detalle de escaneos + firmas. Botón para imprimir vía Odoo IoT.
 
