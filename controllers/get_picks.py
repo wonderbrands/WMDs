@@ -45,8 +45,20 @@ class GetPicks(http.Controller):
             col_domain = [("picking_type_id.name", "=", "Pick")]
             if len(list(kw.keys()))>0:
                 for key, value in kw.items():
-                    domain_key = "sale_id.channel" if key == "channel" else key
+                    if key == "channel":
+                        domain_key = "sale_id.channel"
+                    elif key in ("sla_date", "sla_priority_level", "sla_priority_label"):
+                        domain_key = f"sale_id.{key}"
+                    else:
+                        domain_key = key
                     col_domain.append((domain_key, "ilike", value))
+
+            sort_by = parsed_params.get('sort_by')
+            sort_order = parsed_params.get('sort_order') or 'desc'
+            if sort_by in ('sla_date', 'sla_priority_level', 'sla_priority_label', 'channel'):
+                order_clause = 'id desc'
+            else:
+                order_clause = f"{sort_by} {sort_order}" if sort_by and sort_order else 'id desc'
 
             fields_to_read = ["id", "name", "origin", "sale_id", "operator", "bin_id", "scheduled_date", "state", "wmds_status", "sla_date", "sla_priority_level", "sla_priority_label"]
             
@@ -55,7 +67,7 @@ class GetPicks(http.Controller):
                 fields=fields_to_read,
                 limit=parsed_params.get('per_page'),
                 offset=(parsed_params.get('cur_page') - 1) * parsed_params.get('per_page'),
-                order=parsed_params.get('sort_by') + ' ' + parsed_params.get('sort_order') if parsed_params.get('sort_by') and parsed_params.get('sort_order') else 'id desc'
+                order=order_clause
             )
             
             total = request.env['stock.picking'].sudo().search_count(col_domain)
@@ -97,10 +109,10 @@ class GetPicks(http.Controller):
             ]
 
             so_ids = [p['sale_id'][0] for p in picks_raw if p.get('sale_id')]
-            so_channel_map = {}
+            so_map = {}
             if so_ids:
                 orders = request.env['sale.order'].sudo().browse(so_ids)
-                so_channel_map = {so.id: so.channel for so in orders}
+                so_map = {so.id: so for so in orders}
 
             data = []
             for p in picks_raw:
@@ -123,7 +135,8 @@ class GetPicks(http.Controller):
                     }
                 
                 so_id = p['sale_id'][0] if p.get('sale_id') else None
-                ch_name = so_channel_map.get(so_id, '') if so_id else ''
+                so = so_map.get(so_id) if so_id else None
+                ch_name = so.channel if (so and so.channel) else ''
 
                 data.append({
                     "id": p['id'],
@@ -133,9 +146,9 @@ class GetPicks(http.Controller):
                     "operator": operator_data,
                     "bin_id": bin_data,
                     "scheduled_date": p['scheduled_date'],
-                    "sla_date": p.get('sla_date') or False,
-                    "sla_priority_level": p.get('sla_priority_level') or 'normal',
-                    "sla_priority_label": p.get('sla_priority_label') or '',
+                    "sla_date": p.get('sla_date') or (so.sla_date if so else False),
+                    "sla_priority_level": p.get('sla_priority_level') or (so.sla_priority_level if so else 'normal'),
+                    "sla_priority_label": p.get('sla_priority_label') or (so.sla_priority_label if so else ''),
                     "state": {
                         "label": convert_value_in_label(map_cols, p['state'], "state"),
                         "severity": convert_value_in_label(map_cols, p['state'], "state", return_severity=True)
@@ -145,6 +158,10 @@ class GetPicks(http.Controller):
                         "severity": convert_value_in_label(map_cols, p['wmds_status'], "wmds_status", return_severity=True)
                     }
                 })
+
+            if sort_by in ('sla_date', 'sla_priority_level', 'sla_priority_label'):
+                reverse = (sort_order == 'desc')
+                data.sort(key=lambda x: str(x.get(sort_by) or ''), reverse=reverse)
 
             return {
                 "map_cols": map_cols,
@@ -369,16 +386,29 @@ class GetPicks(http.Controller):
             col_domain = [("picking_type_id.name", "ilike", "Pack")]
             if len(list(kw.keys()))>0:
                 for key, value in kw.items():
-                    col_domain.append((key, "ilike", value))
+                    if key == "channel":
+                        domain_key = "sale_id.channel"
+                    elif key in ("sla_date", "sla_priority_level", "sla_priority_label"):
+                        domain_key = f"sale_id.{key}"
+                    else:
+                        domain_key = key
+                    col_domain.append((domain_key, "ilike", value))
 
-            fields_to_read = ["id", "name", "origin", "operator", "bin_id", "scheduled_date", "state", "wmds_status", "sla_date", "sla_priority_level", "sla_priority_label"]
+            sort_by = parsed_params.get('sort_by')
+            sort_order = parsed_params.get('sort_order') or 'desc'
+            if sort_by in ('sla_date', 'sla_priority_level', 'sla_priority_label', 'channel'):
+                order_clause = 'id desc'
+            else:
+                order_clause = f"{sort_by} {sort_order}" if sort_by and sort_order else 'id desc'
+
+            fields_to_read = ["id", "name", "origin", "sale_id", "operator", "bin_id", "scheduled_date", "state", "wmds_status", "sla_date", "sla_priority_level", "sla_priority_label"]
             
             picks_raw = request.env['stock.picking'].sudo().search_read(
                 col_domain,
                 fields=fields_to_read,
                 limit=parsed_params.get('per_page'),
                 offset=(parsed_params.get('cur_page') - 1) * parsed_params.get('per_page'),
-                order=parsed_params.get('sort_by') + ' ' + parsed_params.get('sort_order') if parsed_params.get('sort_by') and parsed_params.get('sort_order') else 'id desc'
+                order=order_clause
             )
             
             total = request.env['stock.picking'].sudo().search_count(col_domain)
@@ -418,6 +448,12 @@ class GetPicks(http.Controller):
                 }
             ]
 
+            so_ids = [p['sale_id'][0] for p in picks_raw if p.get('sale_id')]
+            so_map = {}
+            if so_ids:
+                orders = request.env['sale.order'].sudo().browse(so_ids)
+                so_map = {so.id: so for so in orders}
+
             data = []
             for p in picks_raw:
                 operator_data = None
@@ -438,6 +474,9 @@ class GetPicks(http.Controller):
                         "id": bin_id
                     }
                 
+                so_id = p['sale_id'][0] if p.get('sale_id') else None
+                so = so_map.get(so_id) if so_id else None
+
                 data.append({
                     "id": p['id'],
                     "name": p['name'],
@@ -445,9 +484,9 @@ class GetPicks(http.Controller):
                     "operator": operator_data,
                     "bin_id": bin_data,
                     "scheduled_date": p['scheduled_date'],
-                    "sla_date": p.get('sla_date') or False,
-                    "sla_priority_level": p.get('sla_priority_level') or 'normal',
-                    "sla_priority_label": p.get('sla_priority_label') or '',
+                    "sla_date": p.get('sla_date') or (so.sla_date if so else False),
+                    "sla_priority_level": p.get('sla_priority_level') or (so.sla_priority_level if so else 'normal'),
+                    "sla_priority_label": p.get('sla_priority_label') or (so.sla_priority_label if so else ''),
                     "state": {
                         "label": convert_value_in_label(map_cols, p['state'], "state"),
                         "severity": convert_value_in_label(map_cols, p['state'], "state", return_severity=True)
@@ -457,6 +496,10 @@ class GetPicks(http.Controller):
                         "severity": convert_value_in_label(map_cols, p['wmds_status'], "wmds_status", return_severity=True)
                     }
                 })
+
+            if sort_by in ('sla_date', 'sla_priority_level', 'sla_priority_label'):
+                reverse = (sort_order == 'desc')
+                data.sort(key=lambda x: str(x.get(sort_by) or ''), reverse=reverse)
 
             return {
                 "map_cols": map_cols,

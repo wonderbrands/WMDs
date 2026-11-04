@@ -11,7 +11,7 @@
 
     'images': ['static/description/icon.png'],
     'category': 'Technical',
-    'version': '18.0.18.1',
+    'version': '18.0.18.2',
 
     'depends': [
         'base',

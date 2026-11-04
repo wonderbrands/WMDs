@@ -53,6 +53,9 @@ class StockWMDS(models.Model):
     wmds_log = fields.One2many('wmds.log', 'pick', string='WMDS Log', readonly=True)
     picking_type_id_name = fields.Char(related='picking_type_id.name', string='Operation Type Name', store=False)
     validated_by_automation = fields.Boolean('Validated by Automation', default=False)
+    sla_date = fields.Datetime(related='sale_id.sla_date', string='SLA', store=False, readonly=True)
+    sla_priority_level = fields.Selection(related='sale_id.sla_priority_level', string='Nivel Prioridad SLA', store=False, readonly=True)
+    sla_priority_label = fields.Char(related='sale_id.sla_priority_label', string='Aviso Recolección', store=False, readonly=True)
 
     @api.model
     def _cron_update_sla_priorities(self):
