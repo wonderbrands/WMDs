@@ -4,5 +4,4 @@ from . import test_import_picks_mapping
 from . import test_cycle_count
 from . import test_compactacion
 from . import test_import_rackeo
-
-
+from . import test_bin_dock_operations

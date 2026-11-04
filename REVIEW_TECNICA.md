@@ -54,7 +54,7 @@ Arquitectura **híbrida MVC + SPA embebida**:
 ```
 
 - **No hay capa de servicio intermedia**: los controladores contienen lógica de negocio directamente.
-- **Duplicación back-end/front-end**: operaciones como `move_to_bin` existen tanto en el controlador (síncrono, <10 ítems) como en el modelo `wmds.queued_tasks` (asíncrono, >10 ítems).
+- ~~**Duplicación back-end/front-end**: operaciones como `move_to_bin` existen tanto en el controlador (síncrono, <10 ítems) como en el modelo `wmds.queued_tasks` (asíncrono, >10 ítems).~~ (RESUELTO: lógica única en `bin_dock_operations.py`, siempre síncrona)
 - **Acoplamiento fuerte con módulos internos**: `WB_data_sale_order`, `wb_printer_IoT`.
 
 ### Flujo de Datos Principal
@@ -63,8 +63,8 @@ Arquitectura **híbrida MVC + SPA embebida**:
 2. **Asignación**: Manager asigna operador/BIN a picks/batches → `get_picks.py:post_pick_assign_operator`
 3. **Pickeo**: Operador escanea productos → `barcode_controller.py:process_scan` actualiza `wmds_picked_qty`
 4. **Validación**: `barcode_controller.py:validate_operation` → sincroniza `quantity`, llama `button_validate()` → backorders automáticos
-5. **Movimiento a BIN**: `dock_n_bin.py:move_to_bin` (>10 → queued task) → estado `on_bin=True`
-6. **Movimiento a DOCK**: `dock_n_bin.py:move_bin_to_dock` (>10 → queued task) → estado `on_dock=True`
+5. **Movimiento a BIN**: `dock_n_bin.py:move_to_bin` → `bin.storage._wmds_move_to_bin` (síncrono) → estado `on_bin=True`
+6. **Movimiento a DOCK**: `dock_n_bin.py:move_bin_to_dock` → `bin.storage._wmds_move_to_dock` (síncrono) → estado `on_dock=True`
 7. **Despacho**: `dispatch.py:dispatch_packet` → EI tags marcados `dispatched=True` → validación OUT automática
 8. **Logging transversal**: Cada operación crea `wmds.log` con propagación automática pick↔batch↔sale↔purchase
 
@@ -80,7 +80,7 @@ Arquitectura **híbrida MVC + SPA embebida**:
 - **Calidad**: Acceptable. La lógica de validación de Rackeo N1 está duplicada entre `button_validate()` y `barcode_controller.py:process_dest_location_scan`. El `_get_stock_barcode_data()` está definido dos veces en `StockWMDS` y `BatchWMDS` con lógica muy similar pero no idéntica. El `_FORBIDDEN_LOCATIONS` está hardcodeado como constante de clase en vez de ser configurable.
 
 #### `wmds_queued_tasks.py` (828 líneas)
-- **Responsabilidad**: Cola de tareas asíncronas para operaciones de alto volumen (>10 ítems). Tipos: `move_to_bin`, `move_to_dock`, `dispatch_package`.
+- **Responsabilidad**: Cola de tareas asíncronas para despachos de alto volumen (>10 guías): `dispatch_package`. Los tipos `move_to_bin`/`move_to_dock` quedan solo como legado (historial y vaciado de tareas previas); los traslados BIN/DOCK ya no se encolan.
 - **Dependencias**: PostgreSQL advisory lock (847192847), `ir.cron` dedicado (`wmds.ir_cron_process_wmds_queued_tasks`), Odoo ORM en `SUPERUSER_ID`.
 - **Calidad**: Mixta. Bien diseñado el patrón de advisory lock para evitar concurrencia entre workers. Sin embargo:
   - Uso excesivo de `self.env.cr.commit()` que rompe la atomicidad de Odoo
@@ -186,7 +186,7 @@ Arquitectura **híbrida MVC + SPA embebida**:
 
 | Anti-patrón | Ubicación | Detalle |
 |-------------|-----------|---------|
-| **Lógica duplicada** | `dock_n_bin.py` ↔ `wmds_queued_tasks.py` | `move_to_bin` y `move_to_dock` implementados dos veces (controlador síncrono + tarea asíncrona) |
+| ~~**Lógica duplicada**~~ (RESUELTO) | `dock_n_bin.py` ↔ `wmds_queued_tasks.py` | `move_to_bin` y `move_to_dock` implementados dos veces (controlador síncrono + tarea asíncrona). Ahora viven en `bin_dock_operations.py` |
 | **Función duplicada** | `get_picks.py:9` ↔ `cycle_count.py:9` | `convert_value_in_label()` definida idénticamente en dos archivos |
 | **QR code duplicado** | `user.py`, `dock_n_bin.py` | Tres modelos generan QR codes con lógica casi idéntica — extraer a mixin |
 | **God controller** | `cycle_count.py` (1123 líneas) | 20 endpoints en un solo archivo |
@@ -269,7 +269,7 @@ Arquitectura **híbrida MVC + SPA embebida**:
 
 10. **Dividir el Pinia store** (`store/index.js`, 701 líneas) en módulos por dominio: `stores/picks.js`, `stores/batch.js`, `stores/operators.js`, `stores/cycleCount.js`, `stores/dispatch.js`.
 
-11. **Consolidar lógica `move_to_bin`/`move_to_dock`**: El controlador y el modelo `wmds.queued_tasks` comparten ~80% del código. Mover la lógica core de movimiento a métodos del modelo `bin.storage` o `stock.move`, invocados tanto desde el controlador como desde la tarea asíncrona.
+11. ~~**Consolidar lógica `move_to_bin`/`move_to_dock`**~~ (RESUELTO en `refactor/queue_task_bin_dock`): El controlador y el modelo `wmds.queued_tasks` comparten ~80% del código. Mover la lógica core de movimiento a métodos del modelo `bin.storage` o `stock.move`, invocados tanto desde el controlador como desde la tarea asíncrona.
 
 12. **Usar `odoo.http.request.jsonrequest`** en lugar de `**kw` en controladores para tener tipado implícito de parámetros.
 
