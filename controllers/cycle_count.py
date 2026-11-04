@@ -1,5 +1,6 @@
 from odoo import http, fields
 from odoo.http import request
+from datetime import datetime, timedelta
 import logging
 import re
 import pytz
@@ -965,6 +966,453 @@ class CycleCount(http.Controller):
             }
         except Exception as e:
             _logger.error(f"Error generando Excel de conteo cíclico: {e}", exc_info=True)
+            return {'ok': False, 'error': str(e)}
+
+    @http.route('/wmds/v2/engine/download_bulk_cycle_counts_excel', type='json', auth='user', methods=['POST'])
+    def download_bulk_cycle_counts_excel(self, **kw):
+        try:
+            count_ids = kw.get('count_ids')
+            date_from = kw.get('date_from')
+            date_to = kw.get('date_to')
+            export_all = kw.get('export_all', False)
+            state = kw.get('state', 'all')
+
+            domain = []
+            if count_ids and isinstance(count_ids, list):
+                domain.append(('id', 'in', count_ids))
+            else:
+                if not export_all:
+                    # CDMX local time is UTC-6
+                    if date_from:
+                        try:
+                            df_parsed = datetime.strptime(str(date_from).strip()[:10], '%Y-%m-%d')
+                            utc_from = df_parsed + timedelta(hours=6)
+                            domain.append(('create_date', '>=', fields.Datetime.to_string(utc_from)))
+                        except Exception as e:
+                            _logger.warning(f"Error parsing date_from {date_from}: {e}")
+                    if date_to:
+                        try:
+                            dt_parsed = datetime.strptime(str(date_to).strip()[:10], '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+                            utc_to = dt_parsed + timedelta(hours=6)
+                            domain.append(('create_date', '<=', fields.Datetime.to_string(utc_to)))
+                        except Exception as e:
+                            _logger.warning(f"Error parsing date_to {date_to}: {e}")
+
+                if state and state != 'all':
+                    domain.append(('state', '=', state))
+
+            counts = request.env['scheduled.cycle.count'].sudo().with_context(active_test=False).search(
+                domain, order='create_date desc, id desc'
+            )
+
+            if not counts:
+                return {
+                    'ok': False,
+                    'error': 'No se encontraron conteos cíclicos con los criterios especificados.'
+                }
+
+            # Construir Excel en memoria con xlsxwriter
+            output_stream = io.BytesIO()
+            wb = xlsxwriter.Workbook(output_stream, {'in_memory': True})
+
+            # Estilos
+            fmt_title = wb.add_format({
+                'bold': True, 'font_size': 14, 'font_color': '#1e293b',
+                'align': 'left', 'valign': 'vcenter'
+            })
+            fmt_subtitle = wb.add_format({
+                'font_size': 10, 'font_color': '#64748b', 'align': 'left'
+            })
+            fmt_header = wb.add_format({
+                'bold': True, 'bg_color': '#1e3a8a', 'font_color': '#ffffff',
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 10
+            })
+            fmt_wave_hdr = wb.add_format({
+                'bold': True, 'bg_color': '#0284c7', 'font_color': '#ffffff',
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 10
+            })
+            fmt_final_hdr = wb.add_format({
+                'bold': True, 'bg_color': '#15803d', 'font_color': '#ffffff',
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 10
+            })
+            fmt_cell = wb.add_format({
+                'border': 1, 'align': 'left', 'valign': 'vcenter', 'font_size': 9
+            })
+            fmt_cell_center = wb.add_format({
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 9
+            })
+            fmt_cell_num = wb.add_format({
+                'border': 1, 'align': 'right', 'valign': 'vcenter', 'font_size': 9,
+                'num_format': '#,##0.00'
+            })
+            fmt_cell_diff_pos = wb.add_format({
+                'border': 1, 'align': 'right', 'valign': 'vcenter', 'font_size': 9,
+                'font_color': '#15803d', 'bold': True, 'bg_color': '#dcfce7',
+                'num_format': '+#,##0.00'
+            })
+            fmt_cell_diff_neg = wb.add_format({
+                'border': 1, 'align': 'right', 'valign': 'vcenter', 'font_size': 9,
+                'font_color': '#b91c1c', 'bold': True, 'bg_color': '#fee2e2',
+                'num_format': '-#,##0.00'
+            })
+            fmt_cell_diff_zero = wb.add_format({
+                'border': 1, 'align': 'right', 'valign': 'vcenter', 'font_size': 9,
+                'font_color': '#64748b', 'num_format': '0.00'
+            })
+            fmt_discrepancy_yes = wb.add_format({
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 9,
+                'bg_color': '#fef3c7', 'font_color': '#b45309', 'bold': True
+            })
+            fmt_discrepancy_no = wb.add_format({
+                'border': 1, 'align': 'center', 'valign': 'vcenter', 'font_size': 9,
+                'bg_color': '#f1f5f9', 'font_color': '#475569'
+            })
+
+            log_pattern = re.compile(
+                r'AJUSTE DE INVENTARIO - Producto:\s*(?:\[([^\]]+)\])?\s*([^|]+)\s*\|\s*Ubicaci[oó]n:\s*([^|]+)\s*\|\s*Cant\.\s*Anterior:\s*([0-9.]+)\s*\|\s*Cant\.\s*Nueva:\s*([0-9.]+)'
+            )
+
+            count_summaries = []
+            all_consolidated_items = []
+
+            # Procesar cada conteo cíclico
+            for count in counts:
+                is_closed = count.state in ['finalized', 'cancelled']
+                adj_map = {}
+                if is_closed:
+                    adj_logs = request.env['wmds.log'].sudo().search([
+                        ('cycle_count', '=', count.id),
+                        ('log', 'ilike', 'AJUSTE DE INVENTARIO%')
+                    ], order='id asc')
+                    for l in adj_logs:
+                        m = log_pattern.search(l.log or '')
+                        if m:
+                            sku_match, name_match, loc_match, old_q, new_q = m.groups()
+                            parsed_sku = (sku_match or '').strip()
+                            norm_loc = _normalize_loc_key(loc_match)
+                            o_q = float(old_q)
+                            n_q = float(new_q)
+                            adj_map[(norm_loc, parsed_sku)] = {
+                                'old_qty': o_q,
+                                'new_qty': n_q,
+                                'diff': n_q - o_q
+                            }
+
+                comp_res = self.get_cycle_count_comparison(count_id=count.id)
+                comp_data = comp_res.get('data', []) if comp_res.get('ok') else []
+
+                discrepancy_count = 0
+                state_lbl = "FINALIZADO" if count.state == 'finalized' else ("CANCELADO" if count.state == 'cancelled' else "EN PROCESO")
+                operators = list({w.operator_id.name.split()[0] for w in count.wave_ids if w.operator_id and w.operator_id.name})
+
+                for item in sorted(comp_data, key=lambda x: (x.get('location_name', ''), x.get('product_sku', ''))):
+                    loc_name = item.get('location_name', '')
+                    sku = item.get('product_sku', '')
+                    barcode = item.get('barcode', '')
+                    prod_name = item.get('product_name', '')
+                    theo_qty = float(item.get('theoretical_qty') or 0.0)
+                    final_qty = theo_qty
+                    diff_qty = 0.0
+                    is_adjusted = False
+
+                    if is_closed:
+                        loc_norm = _normalize_loc_key(loc_name)
+                        adj_info = adj_map.get((loc_norm, sku))
+                        if adj_info:
+                            theo_qty = adj_info['old_qty']
+                            final_qty = adj_info['new_qty']
+                            diff_qty = adj_info['diff']
+                            is_adjusted = True
+                        else:
+                            diff_qty = 0.0
+                            if count.snapshot_ids:
+                                final_qty = theo_qty
+                            else:
+                                valid_counts = [float(v) for v in item.get('wave_counts', {}).values() if v != '-' and v is not None]
+                                final_qty = valid_counts[-1] if valid_counts else theo_qty
+                                theo_qty = final_qty
+
+                    has_disc = bool(item.get('discrepancy') or diff_qty != 0)
+                    if has_disc:
+                        discrepancy_count += 1
+
+                    all_consolidated_items.append({
+                        'count_name': count.name,
+                        'count_date': count.create_date.strftime('%Y-%m-%d %H:%M') if count.create_date else '',
+                        'count_state': state_lbl,
+                        'location_name': loc_name,
+                        'sku': sku,
+                        'barcode': barcode,
+                        'product_name': prod_name,
+                        'theo_qty': theo_qty,
+                        'final_qty': final_qty,
+                        'diff_qty': diff_qty,
+                        'has_discrepancy': has_disc,
+                        'is_adjusted': is_adjusted,
+                    })
+
+                count_summaries.append({
+                    'name': count.name,
+                    'notes': count.notes or '',
+                    'state': state_lbl,
+                    'create_date': count.create_date.strftime('%Y-%m-%d %H:%M') if count.create_date else '',
+                    'create_user': count.create_uid.name if count.create_uid else '',
+                    'locations_count': len(count.selected_location_ids),
+                    'waves_count': len(count.wave_ids),
+                    'operators': ", ".join(operators) if operators else "N/A",
+                    'total_skus': len(comp_data),
+                    'discrepancy_skus': discrepancy_count,
+                    'adjustments_count': len(adj_map),
+                    'net_adjustment_qty': sum(v['diff'] for v in adj_map.values()),
+                })
+
+            # -------------------------------------------------------------
+            # HOJA 1: RESUMEN GENERAL DE CONTEOS CÍCLICOS
+            # -------------------------------------------------------------
+            ws_res = wb.add_worksheet("Resumen Conteos")
+            ws_res.set_row(0, 24)
+            ws_res.set_row(1, 18)
+            ws_res.write(0, 0, f"REPORTE CONSOLIDADO DE CONTEOS CÍCLICOS ({len(counts)} CICLOS)", fmt_title)
+            range_lbl = f"{date_from or 'Inicio'} al {date_to or 'Fin'}" if (date_from or date_to) else "Todos los registros"
+            ws_res.write(1, 0, f"Filtro: {range_lbl} | Generado: {datetime.now().strftime('%Y-%m-%d %H:%M')}", fmt_subtitle)
+
+            res_headers = [
+                "Código CC", "Referencia / Notas", "Estado", "Fecha Creación", "Creado Por",
+                "Ubicaciones", "Total Olas", "Operadores", "Total SKUs", "SKUs c/ Discrepancia",
+                "Ajustes Aplicados", "Neto Ajuste (Uds)"
+            ]
+            ws_res.set_row(3, 26)
+            for col_i, h in enumerate(res_headers):
+                ws_res.write(3, col_i, h, fmt_header)
+
+            r_idx = 4
+            for s in count_summaries:
+                ws_res.write(r_idx, 0, s['name'], fmt_cell_center)
+                ws_res.write(r_idx, 1, s['notes'], fmt_cell)
+                ws_res.write(r_idx, 2, s['state'], fmt_cell_center)
+                ws_res.write(r_idx, 3, s['create_date'], fmt_cell_center)
+                ws_res.write(r_idx, 4, s['create_user'], fmt_cell)
+                ws_res.write(r_idx, 5, s['locations_count'], fmt_cell_num)
+                ws_res.write(r_idx, 6, s['waves_count'], fmt_cell_num)
+                ws_res.write(r_idx, 7, s['operators'], fmt_cell)
+                ws_res.write(r_idx, 8, s['total_skus'], fmt_cell_num)
+                ws_res.write(r_idx, 9, s['discrepancy_skus'], fmt_cell_num)
+                ws_res.write(r_idx, 10, s['adjustments_count'], fmt_cell_num)
+                net_q = s['net_adjustment_qty']
+                if net_q > 0:
+                    ws_res.write(r_idx, 11, net_q, fmt_cell_diff_pos)
+                elif net_q < 0:
+                    ws_res.write(r_idx, 11, net_q, fmt_cell_diff_neg)
+                else:
+                    ws_res.write(r_idx, 11, net_q, fmt_cell_diff_zero)
+                r_idx += 1
+
+            ws_res.set_column(0, 0, 14)
+            ws_res.set_column(1, 1, 26)
+            ws_res.set_column(2, 2, 14)
+            ws_res.set_column(3, 3, 18)
+            ws_res.set_column(4, 4, 20)
+            ws_res.set_column(5, 6, 14)
+            ws_res.set_column(7, 7, 24)
+            ws_res.set_column(8, 11, 16)
+
+            # -------------------------------------------------------------
+            # HOJA 2: DETALLE CONSOLIDADO (TODOS LOS ITEMS / DISCREPANCIAS)
+            # -------------------------------------------------------------
+            ws_det = wb.add_worksheet("Detalle Consolidado")
+            ws_det.set_row(0, 24)
+            ws_det.set_row(1, 18)
+            ws_det.write(0, 0, f"DETALLE CONSOLIDADO DE ITEMS Y DISCREPANCIAS ({len(all_consolidated_items)} REGISTROS)", fmt_title)
+            ws_det.write(1, 0, f"Matriz completa para tablas dinámicas y auditoría de almacén", fmt_subtitle)
+
+            det_headers = [
+                "Código CC", "Fecha CC", "Estado CC", "Ubicación", "SKU",
+                "Código de Barras", "Producto", "Stock Teórico", "Cant. Final",
+                "Diferencia", "¿Discrepancia?", "¿Ajuste Realizado?"
+            ]
+            ws_det.set_row(3, 26)
+            for c_i, dh in enumerate(det_headers):
+                if "Cant. Final" in dh or "Diferencia" in dh:
+                    ws_det.write(3, c_i, dh, fmt_final_hdr)
+                else:
+                    ws_det.write(3, c_i, dh, fmt_header)
+
+            d_row = 4
+            for itm in all_consolidated_items:
+                ws_det.write(d_row, 0, itm['count_name'], fmt_cell_center)
+                ws_det.write(d_row, 1, itm['count_date'], fmt_cell_center)
+                ws_det.write(d_row, 2, itm['count_state'], fmt_cell_center)
+                ws_det.write(d_row, 3, itm['location_name'], fmt_cell)
+                ws_det.write(d_row, 4, itm['sku'], fmt_cell_center)
+                ws_det.write(d_row, 5, itm['barcode'], fmt_cell_center)
+                ws_det.write(d_row, 6, itm['product_name'], fmt_cell)
+                ws_det.write(d_row, 7, itm['theo_qty'], fmt_cell_num)
+                ws_det.write(d_row, 8, itm['final_qty'], fmt_cell_num)
+
+                diff = itm['diff_qty']
+                if diff > 0:
+                    ws_det.write(d_row, 9, diff, fmt_cell_diff_pos)
+                elif diff < 0:
+                    ws_det.write(d_row, 9, diff, fmt_cell_diff_neg)
+                else:
+                    ws_det.write(d_row, 9, diff, fmt_cell_diff_zero)
+
+                if itm['has_discrepancy']:
+                    ws_det.write(d_row, 10, "SÍ", fmt_discrepancy_yes)
+                else:
+                    ws_det.write(d_row, 10, "NO", fmt_discrepancy_no)
+
+                if itm['is_adjusted']:
+                    ws_det.write(d_row, 11, "AJUSTADO", fmt_discrepancy_yes)
+                else:
+                    ws_det.write(d_row, 11, "SIN AJUSTE", fmt_discrepancy_no)
+
+                d_row += 1
+
+            ws_det.set_column(0, 0, 14)
+            ws_det.set_column(1, 1, 16)
+            ws_det.set_column(2, 2, 14)
+            ws_det.set_column(3, 3, 28)
+            ws_det.set_column(4, 4, 16)
+            ws_det.set_column(5, 5, 16)
+            ws_det.set_column(6, 6, 36)
+            ws_det.set_column(7, 9, 14)
+            ws_det.set_column(10, 11, 16)
+
+            # -------------------------------------------------------------
+            # HOJAS INDIVIDUALES POR CONTEO (Si la selección es <= 10 conteos)
+            # -------------------------------------------------------------
+            if len(counts) <= 10:
+                for count in counts:
+                    sheet_name = f"{count.name}"[:31]
+                    ws_cnt = wb.add_worksheet(sheet_name)
+                    ws_cnt.set_row(0, 24)
+                    ws_cnt.set_row(1, 18)
+                    ws_cnt.write(0, 0, f"CONTEO CÍCLICO: {count.name}", fmt_title)
+                    state_lbl = "FINALIZADO" if count.state == 'finalized' else ("CANCELADO" if count.state == 'cancelled' else "EN PROCESO")
+                    ws_cnt.write(1, 0, f"Estado: {state_lbl} | Ref: {count.notes or 'N/A'} | Fecha: {count.create_date.strftime('%Y-%m-%d %H:%M') if count.create_date else 'N/A'}", fmt_subtitle)
+
+                    waves = count.wave_ids.sorted(key=lambda w: w.id)
+                    single_headers = ["Ubicación", "SKU", "Código de Barras", "Producto", "Stock Teórico"]
+                    for idx, w in enumerate(waves):
+                        op_name = w.operator_id.name.split()[0] if w.operator_id and w.operator_id.name else 'Op'
+                        single_headers.append(f"Ola {idx + 1}: {w.name} ({op_name})")
+                    single_headers.append("¿Discrepancia?")
+                    single_headers.extend(["Cant. Final Buena", "Aumento / Decremento"])
+
+                    ws_cnt.set_row(3, 26)
+                    for col_idx, h in enumerate(single_headers):
+                        if "Ola" in h:
+                            ws_cnt.write(3, col_idx, h, fmt_wave_hdr)
+                        elif "Cant. Final" in h or "Aumento" in h:
+                            ws_cnt.write(3, col_idx, h, fmt_final_hdr)
+                        else:
+                            ws_cnt.write(3, col_idx, h, fmt_header)
+
+                    comp_res = self.get_cycle_count_comparison(count_id=count.id)
+                    comp_data = comp_res.get('data', []) if comp_res.get('ok') else []
+
+                    c_r = 4
+                    for item in sorted(comp_data, key=lambda x: (x.get('location_name', ''), x.get('product_sku', ''))):
+                        loc_name = item.get('location_name', '')
+                        sku = item.get('product_sku', '')
+                        barcode = item.get('barcode', '')
+                        prod_name = item.get('product_name', '')
+                        theo_qty = float(item.get('theoretical_qty') or 0.0)
+                        final_qty = theo_qty
+                        diff_qty = 0.0
+
+                        if count.state in ['finalized', 'cancelled']:
+                            loc_norm = _normalize_loc_key(loc_name)
+                            # Log lookup if adjusted
+                            adj_info = None
+                            adj_logs = request.env['wmds.log'].sudo().search([
+                                ('cycle_count', '=', count.id),
+                                ('log', 'ilike', f'%[{sku}]%')
+                            ], limit=1)
+                            for l in adj_logs:
+                                m = log_pattern.search(l.log or '')
+                                if m and (m.group(1) or '').strip() == sku:
+                                    theo_qty = float(m.group(4))
+                                    final_qty = float(m.group(5))
+                                    diff_qty = final_qty - theo_qty
+                                    adj_info = True
+                                    break
+                            if not adj_info:
+                                diff_qty = 0.0
+                                if count.snapshot_ids:
+                                    final_qty = theo_qty
+                                else:
+                                    valid_counts = [float(v) for v in item.get('wave_counts', {}).values() if v != '-' and v is not None]
+                                    final_qty = valid_counts[-1] if valid_counts else theo_qty
+                                    theo_qty = final_qty
+
+                        ws_cnt.write(c_r, 0, loc_name, fmt_cell)
+                        ws_cnt.write(c_r, 1, sku, fmt_cell_center)
+                        ws_cnt.write(c_r, 2, barcode, fmt_cell_center)
+                        ws_cnt.write(c_r, 3, prod_name, fmt_cell)
+                        ws_cnt.write(c_r, 4, theo_qty, fmt_cell_num)
+
+                        col_ptr = 5
+                        for w in waves:
+                            w_cnt = item.get('wave_counts', {}).get(str(w.id), '-')
+                            if w_cnt == '-' or w_cnt is None:
+                                ws_cnt.write(c_r, col_ptr, "-", fmt_cell_center)
+                            else:
+                                ws_cnt.write(c_r, col_ptr, float(w_cnt), fmt_cell_num)
+                            col_ptr += 1
+
+                        disc = item.get('discrepancy', False) or diff_qty != 0
+                        if disc:
+                            ws_cnt.write(c_r, col_ptr, "SÍ", fmt_discrepancy_yes)
+                        else:
+                            ws_cnt.write(c_r, col_ptr, "NO", fmt_discrepancy_no)
+                        col_ptr += 1
+
+                        ws_cnt.write(c_r, col_ptr, final_qty, fmt_cell_num)
+                        col_ptr += 1
+
+                        if diff_qty > 0:
+                            ws_cnt.write(c_r, col_ptr, diff_qty, fmt_cell_diff_pos)
+                        elif diff_qty < 0:
+                            ws_cnt.write(c_r, col_ptr, diff_qty, fmt_cell_diff_neg)
+                        else:
+                            ws_cnt.write(c_r, col_ptr, diff_qty, fmt_cell_diff_zero)
+
+                        c_r += 1
+
+                    ws_cnt.set_column(0, 0, 28)
+                    ws_cnt.set_column(1, 1, 16)
+                    ws_cnt.set_column(2, 2, 16)
+                    ws_cnt.set_column(3, 3, 34)
+                    ws_cnt.set_column(4, 4, 14)
+                    for idx in range(len(waves)):
+                        ws_cnt.set_column(5 + idx, 5 + idx, 16)
+                    ws_cnt.set_column(5 + len(waves), 5 + len(waves) + 2, 16)
+
+            wb.close()
+            output_stream.seek(0)
+            xlsx_data = output_stream.read()
+            xlsx_base64 = base64.b64encode(xlsx_data).decode('utf-8')
+
+            if export_all:
+                filename = f"Reporte_Masivo_Conteos_TODOS_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+            elif date_from and date_to:
+                filename = f"Reporte_Masivo_Conteos_{date_from}_al_{date_to}.xlsx"
+            elif date_from:
+                filename = f"Reporte_Masivo_Conteos_desde_{date_from}.xlsx"
+            else:
+                filename = f"Reporte_Masivo_Conteos_{len(counts)}_ciclos.xlsx"
+
+            return {
+                'ok': True,
+                'xlsx_file': xlsx_base64,
+                'filename': filename,
+                'total_counts': len(counts),
+                'message': f"Reporte masivo generado con éxito ({len(counts)} conteos cíclicos incluidos)."
+            }
+        except Exception as e:
+            _logger.error(f"Error generando Excel masivo de conteos cíclicos: {e}", exc_info=True)
             return {'ok': False, 'error': str(e)}
 
     @http.route('/wmds/v2/engine/reopen_cycle_count_wave', type='json', auth='user', methods=['POST'])
