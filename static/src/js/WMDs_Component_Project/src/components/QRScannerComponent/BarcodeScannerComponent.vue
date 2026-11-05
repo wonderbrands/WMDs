@@ -54,6 +54,8 @@ import Button from 'primevue/button';
 import Message from 'primevue/message';
 import ToggleSwitch from 'primevue/toggleswitch';
 import { useGeneralStore } from "../../store/index"
+import { initLocalDb, enqueueScan, updateScanStatus } from "../../services/localDb";
+import { scanQueueWorker } from "../../services/scanQueueWorker";
 
 export default {
     name: "BarcodeScannerComponent", 
@@ -84,10 +86,13 @@ export default {
         can_close: { type: Boolean, default: false },
         onScan: Function,
         extra_data: Object,
-        disableFocus: { type: Boolean, default: false }
+        disableFocus: { type: Boolean, default: false },
+        queueMode: { type: Boolean, default: false },
+        skipQueue: { type: Boolean, default: false }
     },
     mounted() {
         console.log("mounted");
+        initLocalDb();
         if (this.reader === 'camera') {
             this.initCamera();
         } else {
@@ -105,9 +110,15 @@ export default {
     methods: {
         handleGlobalKeydown(e) {
             if (this.disableFocus) return;
-            console.log("handleGlobalKeydown", e.key);
-            if (this.reader === 'laser' && document.activeElement !== this.$refs.laserInput) {
-                this.focusLaserInput();
+            if (this.reader === 'laser') {
+                if (e.key === 'Enter' && this.laser_input && this.laser_input.trim()) {
+                    if (this.inputTimeout) clearTimeout(this.inputTimeout);
+                    this.processScanedData();
+                    return;
+                }
+                if (document.activeElement !== this.$refs.laserInput) {
+                    this.focusLaserInput();
+                }
             }
         },
         async initCamera() {
@@ -207,8 +218,7 @@ export default {
             }
         },
         handleInput() {
-            console.log("handleInput", this.laser_input);
-            if (this.scan_lockout) {
+            if (this.scan_lockout && !this.queueMode && this.reader !== 'laser') {
                 this.laser_input = "";
                 return;
             }
@@ -219,17 +229,16 @@ export default {
 
             this.inputTimeout = setTimeout(() => {
                 this.processScanedData();
-            }, 50); 
+            }, 30); 
         },
         processScanedData() {
-            console.log("processScanedData");
-            if (this.laser_input.trim() !== "") {
-                this.triggerScan(this.laser_input); 
+            const raw = this.laser_input.trim();
+            if (raw !== "") {
                 this.laser_input = "";
+                this.triggerScan(raw); 
             }
         },
         playBeep() {
-            console.log("playBeep");
             try {
                 const AudioContext = window.AudioContext || window.webkitAudioContext;
                 const ctx = new AudioContext();
@@ -245,27 +254,121 @@ export default {
                 gainNode.connect(ctx.destination);
                 
                 oscillator.start();
-                oscillator.stop(ctx.currentTime + 0.1);
+                oscillator.stop(ctx.currentTime + 0.08);
             } catch (error) {
-                console.log("AudioContext not supported");
+                // AudioContext not supported or blocked
             }
         },
-        triggerScan(code) {
+        async triggerScan(code) {
             console.log("triggerScan", code);
-            this.scan_lockout = true;
             this.playBeep();
-            
-            if (this.context) {
-                this.store.executeActionByContext(this.context, code, this.extra_data);
-            }
-            else if (this.onScan) {
-                this.onScan(code);
+
+            if (this.reader === 'camera') {
+                this.scan_lockout = true;
+                setTimeout(() => {
+                    this.scan_lockout = false;
+                }, 800);
+            } else if (!this.queueMode) {
+                this.scan_lockout = true;
+                setTimeout(() => {
+                    this.scan_lockout = false;
+                }, 200);
+            } else {
+                this.scan_lockout = false;
             }
 
-            setTimeout(() => {
-                console.log("scan_lockout lifted");
-                this.scan_lockout = false;
-            }, 3000);
+            // Escaneo interactivo directo (ubicación, BIN, DOCK o skipQueue explícito)
+            if (this.skipQueue || (!this.queueMode && this.onScan && (!this.context || this.context === 'direct_scan'))) {
+                if (this.onScan) {
+                    return await this.onScan(code);
+                }
+                if (this.context) {
+                    return await this.store.executeActionByContext(this.context, code, this.extra_data);
+                }
+                return;
+            }
+
+            const scanType = this.context || (this.queueMode ? 'dispatch_ei' : 'direct_scan');
+            const sessionId = (this.extra_data && typeof this.extra_data.sessionId === 'string' ? this.extra_data.sessionId : this.context) || 'general';
+
+            // 1. Guardar de inmediato en IndexedDB como 'pending' (Write-Ahead Buffer)
+            const record = await enqueueScan({
+                sessionId,
+                barcode: code,
+                type: scanType,
+                status: 'pending',
+                payload: {
+                    context: this.context || null,
+                    carrier_id: this.extra_data?.selectedCarrierId || null
+                }
+            });
+            await scanQueueWorker.refreshBufferStats();
+
+            // 2. Si el consumidor maneja su propio onScan (ej. CycleCountOperator, DispatchComponent, Compaction, etc.):
+            if (this.onScan) {
+                if (this.queueMode) {
+                    await this.onScan(code);
+                    scanQueueWorker.kickQueue();
+                    return;
+                }
+                try {
+                    const res = await this.onScan(code);
+                    if (record && record.id) {
+                        if (res && (res.error || res.ok === false)) {
+                            const errMsg = (typeof res.error === 'object' ? res.error.message : res.error) || 'Error en operación';
+                            await updateScanStatus(record.id, 'error', { errorMsg: errMsg, serverResponse: res });
+                            if (this.store && typeof this.store.notifyBufferError === 'function') {
+                                this.store.notifyBufferError(errMsg, code);
+                            }
+                        } else {
+                            await updateScanStatus(record.id, 'synced', { serverResponse: res || null });
+                        }
+                    }
+                } catch (err) {
+                    const errMsg = err?.message || String(err);
+                    if (record && record.id) {
+                        await updateScanStatus(record.id, 'error', { errorMsg: errMsg });
+                    }
+                    if (this.store && typeof this.store.notifyBufferError === 'function') {
+                        this.store.notifyBufferError(errMsg, code);
+                    }
+                } finally {
+                    scanQueueWorker.refreshBufferStats();
+                }
+                return;
+            }
+
+            // 3. Si tiene contexto interactivo directo (distinto de cola masiva 'bin_scan_so'):
+            if (this.context && this.context !== 'bin_scan_so') {
+                try {
+                    const res = await this.store.executeActionByContext(this.context, code, this.extra_data);
+                    if (record && record.id) {
+                        if (res && (res.error || res.ok === false)) {
+                            const errMsg = (typeof res.error === 'object' ? res.error.message : res.error) || 'Error en validación';
+                            await updateScanStatus(record.id, 'error', { errorMsg: errMsg, serverResponse: res });
+                            if (this.store && typeof this.store.notifyBufferError === 'function') {
+                                this.store.notifyBufferError(errMsg, code);
+                            }
+                        } else {
+                            await updateScanStatus(record.id, 'synced', { serverResponse: res || null });
+                        }
+                    }
+                } catch (err) {
+                    const errMsg = err?.message || String(err);
+                    if (record && record.id) {
+                        await updateScanStatus(record.id, 'error', { errorMsg: errMsg });
+                    }
+                    if (this.store && typeof this.store.notifyBufferError === 'function') {
+                        this.store.notifyBufferError(errMsg, code);
+                    }
+                } finally {
+                    scanQueueWorker.refreshBufferStats();
+                }
+                return;
+            }
+
+            // 4. Cola en segundo plano (para 'bin_scan_so', 'dispatch_ei', etc.):
+            scanQueueWorker.kickQueue();
         },
         handleTouchStart(e) {
             if (this.$el.scrollTop === 0) {

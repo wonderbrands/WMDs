@@ -29,6 +29,7 @@
                 <div class="scanner-section">
                     <BarcodeScannerComponent 
                         :key="scannerKey"
+                        :skipQueue="true"
                         instructions="Escanea ubicación origen"
                         :onScan="handleOriginScan"
                     />
@@ -89,9 +90,10 @@
                     <button 
                         class="btn btn-primary" 
                         @click="confirmLocationClosure"
-                        :disabled="!hasSelectedItems"
+                        :disabled="!hasSelectedItems || isConfirmationBlocked || closingLocation"
                     >
-                        <i class="fa fa-check"></i> Confirmar y cerrar ubicación
+                        <i :class="closingLocation || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-check')"></i> 
+                        {{ closingLocation ? 'Cerrando...' : (isBufferBusy ? ('Sincronizando (' + bufferPendingCount + ')...') : (hasBufferErrors ? 'Errores en cola' : 'Confirmar y cerrar ubicación')) }}
                     </button>
                     <button class="btn btn-secondary" @click="cancelOriginSelection">
                         Cancelar / Cambiar Ubicación
@@ -140,6 +142,7 @@
                 <div class="scanner-section">
                     <BarcodeScannerComponent 
                         :key="scannerKey"
+                        :skipQueue="true"
                         instructions="Escanea ubicación destino"
                         :onScan="handleDestScan"
                     />
@@ -178,8 +181,13 @@
                 </div>
 
                 <div class="action-buttons">
-                    <button class="btn btn-success" @click="executeCompaction">
-                        <i class="fa fa-check"></i> Confirmar y finalizar
+                    <button 
+                        class="btn btn-success" 
+                        @click="executeCompaction"
+                        :disabled="isConfirmationBlocked || compacting"
+                    >
+                        <i :class="compacting || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-check')"></i> 
+                        {{ compacting ? 'Finalizando...' : (isBufferBusy ? 'Sincronizando...' : (hasBufferErrors ? 'Errores en cola' : 'Confirmar y finalizar')) }}
                     </button>
                     <button class="btn btn-secondary" @click="reScanDest">
                         Re-escanear destino
@@ -217,10 +225,27 @@ export default {
             confirmedMoves: [], // list of { location_id, location_name, product_id, product_name, qty }
 
             // Destination Location state
-            destLocation: { id: null, name: "" }
+            destLocation: { id: null, name: "" },
+            closingLocation: false,
+            compacting: false
         }
     },
     computed: {
+        isConfirmationBlocked() {
+            return this.store.isConfirmationBlocked;
+        },
+        isBufferBusy() {
+            return this.store.isBufferBusy;
+        },
+        bufferPendingCount() {
+            return this.store.bufferPendingCount;
+        },
+        hasBufferErrors() {
+            return this.store.hasBufferErrors;
+        },
+        bufferErrorCount() {
+            return this.store.bufferErrorCount;
+        },
         hasSelectedItems() {
             return Object.values(this.selectedQtys).some(qty => qty > 0);
         }
@@ -295,6 +320,8 @@ export default {
             } catch (err) {
                 console.error(err);
             } finally {
+                this.compacting = false;
+                this.closingLocation = false;
                 this.store.loading = false;
             }
         },
@@ -314,6 +341,25 @@ export default {
         },
 
         async confirmLocationClosure() {
+            if (this.isConfirmationBlocked) {
+                if (this.hasBufferErrors) {
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Errores en cola',
+                        detail: `Hay ${this.bufferErrorCount} escaneos con error. Reinténtalos o límpialos antes de cerrar la ubicación.`,
+                        life: 5000
+                    });
+                } else if (this.isBufferBusy) {
+                    this.$toast.add({
+                        severity: 'warn',
+                        summary: 'Sincronizando',
+                        detail: `Espera a que finalicen los ${this.bufferPendingCount} escaneos en cola antes de cerrar la ubicación.`,
+                        life: 4000
+                    });
+                }
+                return;
+            }
+
             const linesToSend = [];
             Object.entries(this.selectedQtys).forEach(([prodId, qty]) => {
                 if (qty > 0) {
@@ -326,6 +372,7 @@ export default {
 
             if (linesToSend.length === 0) return;
 
+            this.closingLocation = true;
             this.store.loading = true;
             try {
                 const response = await this.store.callOdoo("compactacion_add_lines", "", {
@@ -365,6 +412,8 @@ export default {
             } catch (err) {
                 console.error(err);
             } finally {
+                this.compacting = false;
+                this.closingLocation = false;
                 this.store.loading = false;
             }
         },
@@ -409,6 +458,8 @@ export default {
             } catch (err) {
                 console.error(err);
             } finally {
+                this.compacting = false;
+                this.closingLocation = false;
                 this.store.loading = false;
             }
         },
@@ -420,6 +471,26 @@ export default {
         },
 
         async executeCompaction() {
+            if (this.isConfirmationBlocked) {
+                if (this.hasBufferErrors) {
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Errores en cola',
+                        detail: `Hay ${this.bufferErrorCount} escaneos con error. Reinténtalos o límpialos antes de finalizar la compactación.`,
+                        life: 5000
+                    });
+                } else if (this.isBufferBusy) {
+                    this.$toast.add({
+                        severity: 'warn',
+                        summary: 'Sincronizando',
+                        detail: `Espera a que finalicen los ${this.bufferPendingCount} escaneos en cola antes de finalizar la compactación.`,
+                        life: 4000
+                    });
+                }
+                return;
+            }
+
+            this.compacting = true;
             this.store.loading = true;
             try {
                 const response = await this.store.callOdoo("compactacion_validate_picking", "", {
@@ -448,6 +519,8 @@ export default {
             } catch (err) {
                 console.error(err);
             } finally {
+                this.compacting = false;
+                this.closingLocation = false;
                 this.store.loading = false;
             }
         },

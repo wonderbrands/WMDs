@@ -74,19 +74,25 @@
                             @click="changeCarrier"
                         />
                     </div>
-                    <div class="picked-summary-badge">
-                        <i class="fa fa-shopping-basket"></i>
-                        <span>{{ so.length }}</span>
+                    <div class="flex align-items-center gap-2">
+                        <div v-if="pendingQueueCount > 0" class="queue-status-badge" title="Paquetes en cola local">
+                            <i class="fa fa-spinner fa-spin"></i>
+                            <span>{{ pendingQueueCount }} en cola</span>
+                        </div>
+                        <div class="picked-summary-badge">
+                            <i class="fa fa-shopping-basket"></i>
+                            <span>{{ so.length }}</span>
+                        </div>
                     </div>
                 </div>
 
                 <div class="scanner-col">
                     <div v-if="ready" class="scanner-wrapper">
                         <BarcodeScannerComponent 
-                            :key="scannerKey"
                             instructions="Escanea la guía para despacho"
                             :onScan="(data) => searchAndValidateSO(data)"
                             :disableFocus="cancelledModal.show"
+                            :queueMode="true"
                         />
                     </div>
                 </div>
@@ -94,10 +100,11 @@
                 <div class="buttons-col">
                     <Button v-if="so.length > 0"
                         @click="dispatchToCarrier"
-                        class="p-button-success p-button-sm" 
-                        label="Entregar a paquetería" 
-                        icon="fa fa-truck"
-                        :loading="dispatching"
+                        :class="(hasBufferErrors ? 'p-button-danger' : 'p-button-success') + ' p-button-sm'" 
+                        :label="dispatching ? 'Despachando...' : (isBufferBusy ? ('Sincronizando guías (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Guías con error (' + bufferErrorCount + ')') : 'Entregar a paquetería'))" 
+                        :icon="dispatching || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-truck')"
+                        :loading="dispatching || isBufferBusy"
+                        :disabled="isConfirmationBlocked || dispatching"
                     />
                     <Button 
                         @click="exitFlow"
@@ -154,16 +161,33 @@
                     </div>
 
                     <div class="log-list">
-                        <div v-for="order in paginatedSo" :key="order.name" class="log-item" :class="{ 'log-item-cancelled': order.so_state === 'cancel' }">
+                        <div v-for="order in paginatedSo" :key="order.name" class="log-item" :class="{ 'log-item-cancelled': order.so_state === 'cancel', 'log-item-sync-error': order.sync_status === 'error' }">
                             <div class="log-item-info">
-                                <div>
+                                <div class="flex align-items-center flex-wrap gap-2">
                                     <i class="fa fa-barcode barcode-icon"></i>
-                                    {{ order.name }}
-                                    <small class="text-info ml-2">({{ order.current }}/{{ order.total }})</small>
+                                    <span>{{ order.name }}</span>
+                                    <small class="text-info ml-1">({{ order.current }}/{{ order.total }})</small>
                                     <span v-if="order.so_state === 'cancel'" class="badge-cancelled">CANCELADO</span>
+
+                                    <!-- Status Pills -->
+                                    <span v-if="order.sync_status === 'pending'" class="badge-queue badge-pending">
+                                        <i class="fa fa-clock-o"></i> En cola
+                                    </span>
+                                    <span v-else-if="order.sync_status === 'processing'" class="badge-queue badge-processing">
+                                        <i class="fa fa-spinner fa-spin"></i> Validando
+                                    </span>
+                                    <span v-else-if="order.sync_status === 'error'" class="badge-queue badge-error" :title="order.sync_error">
+                                        <i class="fa fa-exclamation-triangle"></i> Error
+                                    </span>
+                                    <span v-else class="badge-queue badge-synced" title="Sincronizado">
+                                        <i class="fa fa-check"></i>
+                                    </span>
                                 </div>
                                 <div v-if="order.product_name" class="log-item-product">
                                     <small>{{ order.product_name }}</small>
+                                </div>
+                                <div v-if="order.sync_error" class="log-item-error-msg">
+                                    <small class="text-danger"><i class="fa fa-warning"></i> {{ order.sync_error }}</small>
                                 </div>
                             </div>
                             <Button v-if="order.so_state !== 'cancel'" icon="fa fa-times" class="p-button-rounded p-button-danger p-button-text" @click="removeOrder(order)" />
@@ -324,6 +348,8 @@ import BarcodeScannerComponent from '../QRScannerComponent/BarcodeScannerCompone
 import CancelledModalComponent from './CancelledModalComponent.vue';
 import Button from 'primevue/button';
 import { useGeneralStore } from "../../store/index";
+import { localDb, enqueueScan, getPendingScans, clearSyncedScans } from "../../services/localDb";
+import { scanQueueWorker } from "../../services/scanQueueWorker";
 
 export default {
     name: "DispatchComponent",
@@ -338,6 +364,7 @@ export default {
             so: [],
             ready: false,
             scannerKey: 0,
+            unsubscribeQueue: null,
             dispatchMode: 'individual',
             pendingFullItems: [],
             sessionId: null,
@@ -382,6 +409,21 @@ export default {
         }
     },
     computed: {
+        isConfirmationBlocked() {
+            return this.store.isConfirmationBlocked;
+        },
+        isBufferBusy() {
+            return this.store.isBufferBusy;
+        },
+        bufferPendingCount() {
+            return this.store.bufferPendingCount;
+        },
+        hasBufferErrors() {
+            return this.store.hasBufferErrors;
+        },
+        bufferErrorCount() {
+            return this.store.bufferErrorCount;
+        },
         scanSummary() {
             const summaryMap = {};
             this.so.forEach(item => {
@@ -422,8 +464,10 @@ export default {
         cancelledOrdersList() {
             const cancelled = this.so.filter(o => o.so_state === 'cancel');
             return [...new Set(cancelled.map(o => o.so_name))];
+        },
+        pendingQueueCount() {
+            return this.so.filter(o => o.sync_status === 'pending' || o.sync_status === 'processing').length;
         }
-
 
     },
     watch: {
@@ -448,6 +492,11 @@ export default {
     async mounted() {
         console.log("Action: DispatchComponent mounted");
 
+        scanQueueWorker.init(this.store);
+        this.unsubscribeQueue = scanQueueWorker.subscribe((event, data) => {
+            this.handleQueueEvent(event, data);
+        });
+
         await this.fetchCarrierList();
         await this.recoverSession();
 
@@ -459,6 +508,12 @@ export default {
         
         if (this.dispatchMode === 'full') {
             this.fetchPendingFullItems();
+        }
+    },
+    beforeUnmount() {
+        if (this.unsubscribeQueue) {
+            this.unsubscribeQueue();
+            this.unsubscribeQueue = null;
         }
     },
     methods: {
@@ -491,6 +546,62 @@ export default {
             if (c) {
                 this.sessionCarrierId = c.id;
                 this.sessionCarrierName = c.name;
+                const activeSessionKey = String(this.sessionId || ('carrier_' + this.sessionCarrierId));
+                scanQueueWorker.setActiveSession(activeSessionKey);
+            }
+        },
+
+        handleQueueEvent(event, data) {
+            if (event === 'processing') {
+                const item = this.so.find(o => o.name === data.barcode);
+                if (item) {
+                    item.sync_status = 'processing';
+                }
+            } else if (event === 'synced') {
+                const { item: queuedItem, result } = data;
+                const item = this.so.find(o => o.name === queuedItem.barcode);
+                if (item) {
+                    item.sync_status = 'synced';
+                    item.sync_error = null;
+                    item.so_name = result.so || item.so_name;
+                    item.so_state = result.so_state || 'sale';
+                    item.total = result.total || item.total;
+                    item.current = result.current || item.current;
+                    item.dispatched_count = result.dispatched_count || 0;
+                    item.product_name = result.product_name || '';
+                    item.carrier_name = result.carrier_name || this.sessionCarrierName;
+                    item.line_id = result.line_id;
+                    if (result.session_id && !this.sessionId) {
+                        const oldKey = String(this.sessionCarrierId ? 'carrier_' + this.sessionCarrierId : 'default');
+                        this.sessionId = result.session_id;
+                        localDb.scanQueue.where('sessionId').equals(oldKey).modify({ sessionId: String(result.session_id) });
+                        scanQueueWorker.setActiveSession(String(result.session_id));
+                    }
+                }
+            } else if (event === 'error') {
+                const { item: queuedItem, error, isBusinessError, serverResponse } = data;
+                const item = this.so.find(o => o.name === queuedItem.barcode);
+                const resp = serverResponse || queuedItem.serverResponse;
+                if (item) {
+                    item.sync_status = 'error';
+                    item.sync_error = error;
+                    if (resp && resp.so_state === 'cancel') {
+                        item.so_state = 'cancel';
+                        item.so_name = resp.so || item.so_name;
+                        this.openCancelledModal(
+                            [{ name: item.name, so_name: item.so_name }],
+                            null
+                        );
+                    }
+                }
+                if (this.$toast) {
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Error en escaneo',
+                        detail: `[${queuedItem.barcode}]: ${error}`,
+                        life: 5000
+                    });
+                }
             }
         },
 
@@ -524,6 +635,8 @@ export default {
                         carrier_name: line.carrier_name,
                         scan_datetime: line.scan_datetime,
                         line_id: line.line_id,
+                        sync_status: 'synced',
+                        sync_error: null,
                     }));
 
                     this.sessionRecovered = true;
@@ -556,6 +669,34 @@ export default {
                         this.sessionCarrierId = response.carrier_id;
                         this.sessionCarrierName = response.carrier_name || '';
                     }
+                }
+
+                // Despertar worker y restaurar escaneos locales pendientes en Dexie
+                const activeSessionKey = String(this.sessionId || (this.sessionCarrierId ? 'carrier_' + this.sessionCarrierId : 'default'));
+                scanQueueWorker.setActiveSession(activeSessionKey);
+
+                const pendingScans = await getPendingScans(activeSessionKey);
+                if (pendingScans && pendingScans.length > 0) {
+                    for (const ps of pendingScans) {
+                        if (!this.so.some(o => o.name === ps.barcode)) {
+                            const parseMatch = ps.barcode.match(/^([A-Za-z0-9_\-]+)\/(\d+)/);
+                            this.so.push({
+                                name: ps.barcode,
+                                so_name: parseMatch ? parseMatch[1] : ps.barcode,
+                                so_state: 'draft',
+                                total: 1,
+                                current: parseMatch ? parseInt(parseMatch[2], 10) : 1,
+                                dispatched_count: 0,
+                                product_name: 'En cola local...',
+                                carrier_name: this.sessionCarrierName || '',
+                                scan_datetime: new Date(ps.timestamp).toISOString(),
+                                sync_status: ps.status || 'pending',
+                                sync_error: ps.errorMsg || null,
+                                line_id: null,
+                            });
+                        }
+                    }
+                    scanQueueWorker.kickQueue();
                 }
             } catch (e) {
                 console.error("Error recuperando sesión:", e);
@@ -713,114 +854,68 @@ export default {
         },
 
         async searchAndValidateSO(data) {
+            const cleanBarcode = String(data || '').trim();
+            if (!cleanBarcode) return;
+
+            // 1. Chequeo local de duplicado
+            if (this.so.some(o => o.name === cleanBarcode)) {
+                if (this.$toast) {
+                    this.$toast.add({ 
+                        severity: 'warn', 
+                        summary: 'Duplicado', 
+                        detail: `La etiqueta ${cleanBarcode} ya fue escaneada en esta sesión.`, 
+                        life: 3000 
+                    });
+                }
+                return;
+            }
+
+            // 2. Extraer nombre SO preliminar si coincide con SOXXXX/N
+            const parseMatch = cleanBarcode.match(/^([A-Za-z0-9_\-]+)\/(\d+)/);
+            const guessedSo = parseMatch ? parseMatch[1] : cleanBarcode;
+            const guessedCurrent = parseMatch ? parseInt(parseMatch[2], 10) : 1;
+
+            const newItem = {
+                name: cleanBarcode,
+                so_name: guessedSo,
+                so_state: 'draft',
+                total: guessedCurrent,
+                current: guessedCurrent,
+                dispatched_count: 0,
+                product_name: 'En cola local...',
+                carrier_name: this.sessionCarrierName || '',
+                scan_datetime: new Date().toISOString(),
+                sync_status: 'pending',
+                sync_error: null,
+                line_id: null,
+            };
+
+            // Inserción inmediata en memoria local (reactividad Vue instantánea)
+            this.so.push(newItem);
+
+            // 3. Persistir en buffer Dexie (IndexedDB) de forma instantánea
+            const activeSessionKey = String(this.sessionId || (this.sessionCarrierId ? 'carrier_' + this.sessionCarrierId : 'default'));
             try {
-                if (this.so.some(o => o.name === data)) {
-                    if (this.$toast) {
-                        this.$toast.add({ 
-                            severity: 'warn', 
-                            summary: 'Duplicado', 
-                            detail: `La etiqueta ${data} ya fue escaneada en esta sesión.`, 
-                            life: 3000 
-                        });
+                await enqueueScan({
+                    sessionId: activeSessionKey,
+                    barcode: cleanBarcode,
+                    type: 'dispatch_ei',
+                    payload: {
+                        operator_login: this.store.role?.email,
+                        carrier_id: this.sessionCarrierId,
+                        carrier_name: this.sessionCarrierName
                     }
-                    this.restartScanner();
-                    return;
-                }
-
-                let response = await this.store.callOdoo("validate_attachment_guide", "", {
-                    attachment_id: data,
                 });
-
-                if (response.valid) {
-                    if (response.so_state === 'cancel') {
-                        if(this.$toast) {
-                            this.$toast.add({ 
-                                severity: 'error', 
-                                summary: 'Pedido cancelado', 
-                                detail: `El pedido ${response.so} está cancelado. Se agregará a la lista en rojo para que proceda a removerlo físicamente.`, 
-                                life: 6000 
-                            });
-                        }
-                        const newItem = {
-                            name: response.name,
-                            so_name: response.so,
-                            so_state: 'cancel',
-                            total: response.total,
-                            current: response.current,
-                            dispatched_count: response.dispatched_count || 0,
-                            product_name: '',
-                            carrier_name: '',
-                            scan_datetime: new Date().toISOString(),
-                            line_id: null,
-                        };
-                        this.so.push(newItem);
-                        await this.persistScanToSession(newItem);
-
-                        const cancelledLines = this.so.filter(o => o.so_state === 'cancel');
-                        if (cancelledLines.length > 0) {
-                            this.openCancelledModal(
-                                cancelledLines.map(o => ({ name: o.name, so_name: o.so_name })),
-                                null
-                            );
-                        }
-                    } else if (response.state && response.state.dispatched) {
-
-                        if(this.$toast) {
-                            this.$toast.add({ 
-                                severity: 'error', 
-                                summary: 'Guía ya Despachada', 
-                                detail: `La guía ${data} ya ha sido procesada anteriormente.`, 
-                                life: 4000 
-                            });
-                        }
-                    } else if (response.state && !response.state.on_dock) {
-                        if(this.$toast) {
-                            this.$toast.add({ 
-                                severity: 'error', 
-                                summary: 'Ubicación incorrecta', 
-                                detail: `La guía ${data} no se encuentra en un DOCK y no puede ser despachada.`, 
-                                life: 4000 
-                            });
-                        }
-                    } else {
-                        const newItem = {
-                            name: response.name,
-                            so_name: response.so,
-                            so_state: response.so_state,
-                            total: response.total,
-                            current: response.current,
-                            dispatched_count: response.dispatched_count || 0,
-                            product_name: '',
-                            carrier_name: '',
-                            scan_datetime: new Date().toISOString(),
-                            line_id: null,
-                        };
-                        this.so.push(newItem);
-
-                        // ── Persistir en backend (valida carrier) ──
-                        await this.persistScanToSession(newItem);
-                    }
-                } else {
-                    if(this.$toast) {
-                        this.$toast.add({ 
-                            severity: 'error', 
-                            summary: 'Guía inválida', 
-                            detail: 'El código escaneado no corresponde a una guía válida para despacho o el formato es incorrecto.', 
-                            life: 4000 
-                        });
-                    }
-                }
-                
-                this.restartScanner();
-            } catch (e) {
-                this.restartScanner();
+                scanQueueWorker.setActiveSession(activeSessionKey);
+            } catch (err) {
+                console.error("Error encolando escaneo en Dexie:", err);
+                newItem.sync_status = 'error';
+                newItem.sync_error = 'Error en base de datos local';
             }
         },
 
         restartScanner() {
-            this.scannerKey++;
-            // Silent refresh after each scan
-            this.recoverSession();
+            // Con cola no-bloqueante no es necesario reiniciar el componente
         },
 
         async dispatchToCarrier() {
@@ -828,19 +923,39 @@ export default {
                 return;
             }
 
-            const cancelledOrders = this.so.filter(o => o.so_state === 'cancel');
-            if (cancelledOrders.length > 0) {
-                // Abrir modal obligatorio antes de poder despachar
-                this.openCancelledModal(
-                    cancelledOrders.map(o => ({ name: o.name, so_name: o.so_name })),
-                    () => this.dispatchToCarrier() // reintentar despacho tras confirmar
-                );
+            if (this.isConfirmationBlocked) {
+                if (this.$toast) {
+                    if (this.hasBufferErrors) {
+                        this.$toast.add({
+                            severity: 'error',
+                            summary: 'Guías con error en cola',
+                            detail: `Hay ${this.bufferErrorCount} escaneos con error en la cola local. Resuélvalos o límpielos antes de entregar a paquetería.`,
+                            life: 5000
+                        });
+                    } else if (this.isBufferBusy) {
+                        this.$toast.add({
+                            severity: 'warn',
+                            summary: 'Sincronizando guías',
+                            detail: `Espera a que finalicen las ${this.bufferPendingCount} guías en cola antes de entregar a paquetería.`,
+                            life: 4000
+                        });
+                    }
+                }
                 return;
             }
-            
-            this.dispatching = true;
 
+            this.dispatching = true;
             try {
+                const cancelledOrders = this.so.filter(o => o.so_state === 'cancel');
+                if (cancelledOrders.length > 0) {
+                    // Abrir modal obligatorio antes de poder despachar
+                    this.openCancelledModal(
+                        cancelledOrders.map(o => ({ name: o.name, so_name: o.so_name })),
+                        () => this.dispatchToCarrier() // reintentar despacho tras confirmar
+                    );
+                    return;
+                }
+
                 const picks_ids = this.so.map(o => o.name);
                 let response = await this.store.callOdoo("dispatch_orders", "", {
                     operator_login: this.store.role.email,
@@ -876,6 +991,9 @@ export default {
                         }
                     }
 
+                    const activeSessionKey = String(this.sessionId || (this.sessionCarrierId ? 'carrier_' + this.sessionCarrierId : 'default'));
+                    await clearSyncedScans(activeSessionKey);
+
                     const sessionCompleted = await this.completeSession();
                     
                     if (sessionCompleted) {
@@ -884,8 +1002,6 @@ export default {
                         this.generatePrintDataFromLocal();
                         this.showPrintView = true;
                     }
-
-                    this.restartScanner(); 
                 } else {
 
                     throw new Error(response.message || "Error desconocido");
@@ -1050,6 +1166,9 @@ export default {
             if (!confirm("¿Estás seguro de limpiar todos los escaneos?\nEsto también cancelará la sesión actual.")) {
                 return;
             }
+            const activeSessionKey = String(this.sessionId || (this.sessionCarrierId ? 'carrier_' + this.sessionCarrierId : 'default'));
+            await clearSyncedScans(activeSessionKey);
+            await localDb.scanQueue.where('sessionId').equals(activeSessionKey).delete();
             await this.clearSession();
             this.so = [];
         },
@@ -1060,6 +1179,8 @@ export default {
                 const eiName = this.so[index].name;
                 this.so.splice(index, 1);
                 await this.removeFromSession(eiName);
+                const activeSessionKey = String(this.sessionId || (this.sessionCarrierId ? 'carrier_' + this.sessionCarrierId : 'default'));
+                await localDb.scanQueue.where({ sessionId: activeSessionKey, barcode: eiName }).delete();
             }
         },
 
@@ -2010,5 +2131,64 @@ export default {
 @keyframes fadeIn {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
+}
+
+.queue-status-badge {
+    background: #f39c12;
+    color: #fff;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    animation: queuePulse 1.5s infinite ease-in-out;
+}
+
+@keyframes queuePulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+}
+
+.badge-queue {
+    font-size: 0.72rem;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.badge-pending {
+    background: rgba(241, 196, 15, 0.2);
+    color: #f1c40f;
+    border: 1px solid #f1c40f;
+}
+
+.badge-processing {
+    background: rgba(52, 152, 219, 0.2);
+    color: #3498db;
+    border: 1px solid #3498db;
+}
+
+.badge-synced {
+    background: rgba(46, 204, 113, 0.15);
+    color: #2ecc71;
+}
+
+.badge-error {
+    background: rgba(231, 76, 60, 0.2);
+    color: #e74c3c;
+    border: 1px solid #e74c3c;
+}
+
+.log-item-sync-error {
+    border-left: 3px solid #e74c3c !important;
+}
+
+.log-item-error-msg {
+    margin-top: 2px;
 }
 </style>

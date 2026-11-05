@@ -579,8 +579,9 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             console.error("Fetch/JSON Parse Error:", error);
             return {
                 error: {
-                    message: 'Error de red o al procesar la respuesta del servidor.',
-                    data: { debug: error.toString() }
+                    message: error.message || 'Error de red o al procesar la respuesta del servidor.',
+                    data: { debug: error.toString() },
+                    is_network_error: true
                 }
             };
         }

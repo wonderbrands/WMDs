@@ -179,10 +179,14 @@
                     Faltan ubicaciones destino por escanear
                 </div>
             </div>
-            <Button label="VALIDAR OPERACIÓN" icon="fa fa-check" class="p-button-success validate-btn" 
+            <Button 
+                :label="loading ? 'Validando...' : (isBufferBusy ? ('Sincronizando (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Escaneos con error (' + bufferErrorCount + ')') : 'VALIDAR OPERACIÓN'))" 
+                :icon="loading || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-check')" 
+                :class="(hasBufferErrors ? 'p-button-danger' : 'p-button-success') + ' validate-btn'" 
                 @click="validateOperation" 
-                :disabled="!canValidate"
-                :loading="loading" />
+                :disabled="!canValidate || isConfirmationBlocked || loading"
+                :loading="loading || isBufferBusy" 
+            />
         </div>
 
         <!-- Backorder Confirmation Dialog -->
@@ -261,6 +265,21 @@ export default {
         }
     },
     computed: {
+        isConfirmationBlocked() {
+            return this.store.isConfirmationBlocked;
+        },
+        isBufferBusy() {
+            return this.store.isBufferBusy;
+        },
+        bufferPendingCount() {
+            return this.store.bufferPendingCount;
+        },
+        hasBufferErrors() {
+            return this.store.hasBufferErrors;
+        },
+        bufferErrorCount() {
+            return this.store.bufferErrorCount;
+        },
         operationTypeTitle() {
             if (this.operationData.is_pful) return 'Resurtido Fulfillment (Pick)';
             if (this.operationData.is_dful) return 'Resurtido Fulfillment (Despacho)';
@@ -295,6 +314,7 @@ export default {
             return (this.totalPickedCount / this.totalDemandCount) * 100;
         },
         canValidate() {
+            if (this.isConfirmationBlocked) return false;
             const hasPicked = (this.operationData.lines || []).some(l => l.picked > 0);
             if (!hasPicked) return false;
             
@@ -653,6 +673,25 @@ export default {
             }
         },
         async validateOperation() {
+            if (this.isConfirmationBlocked) {
+                if (this.hasBufferErrors) {
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Escaneos con error',
+                        detail: `Hay ${this.bufferErrorCount} escaneos con error en la cola. Reinténtalos o límpialos en el panel inferior antes de validar.`,
+                        life: 5000
+                    });
+                } else if (this.isBufferBusy) {
+                    this.$toast.add({
+                        severity: 'warn',
+                        summary: 'Validando escaneos',
+                        detail: `Espera a que finalicen los ${this.bufferPendingCount} escaneos en cola antes de validar la operación.`,
+                        life: 4000
+                    });
+                }
+                return;
+            }
+
             // No permitir cantidades negativas en la validación
             const hasNegative = (this.operationData.lines || []).some(l => l.picked < 0);
             if (hasNegative) {

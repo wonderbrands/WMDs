@@ -19,6 +19,15 @@ export const useGeneralStore = defineStore('general_store', {
       last_scanned_element: null,
       order_channel_drawer_open: false,
       sla_critical_count: 0,
+      buffer_stats: {
+          pending: 0,
+          processing: 0,
+          synced: 0,
+          error: 0,
+          total_active: 0,
+          has_data: false,
+          last_error: null
+      },
       available_main_manager_screens: {
 
         home:{
@@ -333,6 +342,11 @@ export const useGeneralStore = defineStore('general_store', {
       odoo_middleware: OdooManagerMiddleware()
   }),
   getters: {
+    isBufferBusy: (state) => ((state.buffer_stats?.pending || 0) + (state.buffer_stats?.processing || 0)) > 0,
+    hasBufferErrors: (state) => (state.buffer_stats?.error || 0) > 0,
+    bufferPendingCount: (state) => (state.buffer_stats?.pending || 0) + (state.buffer_stats?.processing || 0),
+    bufferErrorCount: (state) => state.buffer_stats?.error || 0,
+    isConfirmationBlocked: (state) => (((state.buffer_stats?.pending || 0) + (state.buffer_stats?.processing || 0)) > 0) || ((state.buffer_stats?.error || 0) > 0)
   },
   actions: {
     formatDate(utcDate) {
@@ -383,7 +397,7 @@ export const useGeneralStore = defineStore('general_store', {
                 });
             }
             console.error("Error en callOdoo:", e);
-            return { error: { message: 'Error de Conexión: No se pudo contactar al servidor.' } };
+            return { error: { message: e.message || 'Error de Conexión: No se pudo contactar al servidor.', is_network_error: true } };
         }
         finally {
             if (!isSilent) this.loading = false;
@@ -472,6 +486,18 @@ export const useGeneralStore = defineStore('general_store', {
                 const response = await this.callOdoo("validate_attachment_guide", "", {
                     attachment_id: scannedData,
                 });
+                if (response && response.error) {
+                    this.toast.add({
+                        severity: 'error',
+                        summary: 'Error de Conexión',
+                        detail: `Fallo al validar ${scannedData}: ${response.error.message || 'Sin conexión'}. Guardado en buffer local para reenvío.`,
+                        life: 6000
+                    });
+                    if (component && typeof component.restartScanner === 'function') {
+                        component.restartScanner();
+                    }
+                    return;
+                }
                 if (response.valid) {
                     const state = response.state;
                     if (state.dispatched) {
@@ -784,6 +810,74 @@ export const useGeneralStore = defineStore('general_store', {
         } finally {
             this.loading = false;
         }
+    },
+    updateBufferStats(stats) {
+        if (!stats) return;
+        const pending = stats.pending || 0;
+        const processing = stats.processing || 0;
+        const synced = stats.synced || 0;
+        const error = stats.error || 0;
+        const totalActive = pending + processing;
+        this.buffer_stats = {
+            pending,
+            processing,
+            synced,
+            error,
+            total_active: totalActive,
+            totalActive: totalActive,
+            has_data: (totalActive + synced + error) > 0,
+            hasData: (totalActive + synced + error) > 0,
+            last_error: stats.lastError || stats.last_error || null,
+            lastError: stats.lastError || stats.last_error || null
+        };
+    },
+    notifyBufferError(errorMsg, barcode = '') {
+        console.warn(`[Buffer Alert] ${barcode}: ${errorMsg}`);
+        if (this.toast) {
+            this.toast.add({
+                severity: 'error',
+                summary: 'Fallo en Buffer de Escaneo',
+                detail: barcode ? `Error al sincronizar ${barcode}: ${errorMsg}` : `Error en buffer: ${errorMsg}`,
+                life: 7000
+            });
+        }
+    },
+    notifyBufferSuccess(item, result = {}) {
+        if (!this.toast) return;
+        const barcode = item?.barcode || '';
+        const type = item?.type || '';
+        let detail = `Código ${barcode} procesado con éxito.`;
+
+        const current = result?.current || item?.payload?.current;
+        const total = result?.total || item?.payload?.total;
+        const so = result?.so || result?.so_name;
+
+        if (type === 'bin_scan_so') {
+            detail = so ? `Guía ${barcode} agregada a BIN (${so})` : `Guía ${barcode} validada para BIN`;
+        } else if (type === 'dispatch_ei') {
+            if (so && current && total) {
+                detail = `${so} (${current}/${total}): Guía ${barcode} registrada`;
+            } else if (so) {
+                detail = `Orden ${so} (${barcode}) despachada`;
+            }
+        } else if (result?.message) {
+            detail = result.message;
+        }
+
+        this.toast.add({
+            severity: 'success',
+            summary: 'Escaneo Sincronizado',
+            detail,
+            life: 3000
+        });
+    },
+    async waitForBufferDrain(timeoutMs = 15000) {
+        const start = Date.now();
+        while (((this.buffer_stats?.pending || 0) + (this.buffer_stats?.processing || 0)) > 0) {
+            if (Date.now() - start > timeoutMs) return false;
+            await new Promise(r => setTimeout(r, 200));
+        }
+        return true;
     }
   }
 })

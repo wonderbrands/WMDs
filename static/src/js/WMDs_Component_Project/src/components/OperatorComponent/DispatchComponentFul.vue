@@ -19,6 +19,7 @@
                 <div v-if="ready" class="scanner-wrapper">
                     <BarcodeScannerComponent 
                         :key="scannerKey"
+                        :skipQueue="true"
                         instructions="Escanea la operación WH/DFUL/xxxxx o pedido SOXXXX para despacho"
                         :onScan="(data) => handleScan(data)"
                     />
@@ -77,7 +78,14 @@
             <template #footer>
                 <div class="flex justify-content-between w-full gap-2">
                     <Button label="Cancelar" class="p-button-text p-button-secondary flex-1" @click="cancelWholesaleDispatch" />
-                    <Button label="Confirmar" class="p-button-success flex-1" @click="confirmWholesaleDispatch" :loading="loading" />
+                    <Button 
+                        :label="loading ? 'Confirmando...' : (isBufferBusy ? ('Sincronizando (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Errores en cola (' + bufferErrorCount + ')') : 'Confirmar'))" 
+                        :icon="loading || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-check')" 
+                        :class="(hasBufferErrors ? 'p-button-danger' : 'p-button-success') + ' flex-1'" 
+                        @click="confirmWholesaleDispatch" 
+                        :loading="loading || isBufferBusy" 
+                        :disabled="isConfirmationBlocked || loading" 
+                    />
                 </div>
             </template>
         </Dialog>
@@ -128,6 +136,23 @@ export default {
             showConfirmDialog: false,
             showPrintDialog: false,
             scannedWholesaleSO: null
+        }
+    },
+    computed: {
+        isConfirmationBlocked() {
+            return this.store.isConfirmationBlocked;
+        },
+        isBufferBusy() {
+            return this.store.isBufferBusy;
+        },
+        bufferPendingCount() {
+            return this.store.bufferPendingCount;
+        },
+        hasBufferErrors() {
+            return this.store.hasBufferErrors;
+        },
+        bufferErrorCount() {
+            return this.store.bufferErrorCount;
         }
     },
     mounted() {
@@ -227,8 +252,29 @@ export default {
         },
         async confirmWholesaleDispatch() {
             if (!this.scannedWholesaleSO) return;
-            this.loading = true;
             const toast = this.$toast || this.store.toast;
+            if (this.isConfirmationBlocked) {
+                if (toast) {
+                    if (this.hasBufferErrors) {
+                        toast.add({
+                            severity: 'error',
+                            summary: 'Errores en cola',
+                            detail: `Hay ${this.bufferErrorCount} escaneos con error. Reinténtalos o límpialos antes de confirmar.`,
+                            life: 5000
+                        });
+                    } else if (this.isBufferBusy) {
+                        toast.add({
+                            severity: 'warn',
+                            summary: 'Sincronizando',
+                            detail: `Espera a que finalicen las ${this.bufferPendingCount} operaciones en cola antes de confirmar.`,
+                            life: 4000
+                        });
+                    }
+                }
+                return;
+            }
+
+            this.loading = true;
             try {
                 const res = await this.store.callOdoo("validate_dfull_pick", "", {
                     pick_name: this.scannedWholesaleSO.name,

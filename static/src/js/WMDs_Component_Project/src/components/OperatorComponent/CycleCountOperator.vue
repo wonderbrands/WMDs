@@ -28,10 +28,11 @@
                 <Button 
                     v-if="pending_locations.length === 0"
                     @click="finishWave"
-                    class="p-button-text p-button-success p-button-sm mr-2" 
-                    label="Finalizar ola" 
-                    icon="fa fa-check-circle"
-                    :loading="loading"
+                    :class="(hasBufferErrors ? 'p-button-danger' : 'p-button-success') + ' p-button-text p-button-sm mr-2'" 
+                    :label="loading ? 'Finalizando...' : (isBufferBusy ? ('Sincronizando (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Errores en cola (' + bufferErrorCount + ')') : 'Finalizar ola'))" 
+                    :icon="loading || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-check-circle')"
+                    :loading="loading || isBufferBusy"
+                    :disabled="isConfirmationBlocked || loading"
                 />
                 <Button 
                     @click="exitFlow"
@@ -120,7 +121,15 @@
                 <i class="fa fa-check-circle success-icon"></i>
                 <h3>¡Conteo Terminado!</h3>
                 <p>Has procesado todas las ubicaciones de esta ola.</p>
-                <Button label="FINALIZAR OLA" icon="fa fa-check" severity="success" size="large" @click="finishWave" />
+                <Button 
+                    :label="loading ? 'Finalizando...' : (isBufferBusy ? ('Sincronizando (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Errores en cola (' + bufferErrorCount + ')') : 'FINALIZAR OLA'))" 
+                    :icon="loading || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-check')" 
+                    :class="hasBufferErrors ? 'p-button-danger' : 'p-button-success'"
+                    size="large" 
+                    @click="finishWave" 
+                    :loading="loading || isBufferBusy"
+                    :disabled="isConfirmationBlocked || loading"
+                />
             </div>
         </div>
 
@@ -212,6 +221,21 @@ export default {
         }
     },
     computed: {
+        isConfirmationBlocked() {
+            return this.store.isConfirmationBlocked;
+        },
+        isBufferBusy() {
+            return this.store.isBufferBusy;
+        },
+        bufferPendingCount() {
+            return this.store.bufferPendingCount;
+        },
+        hasBufferErrors() {
+            return this.store.hasBufferErrors;
+        },
+        bufferErrorCount() {
+            return this.store.bufferErrorCount;
+        },
         pending_locations() {
             return (this.locations_list || []).filter(l => l.status === 'pending');
         },
@@ -270,13 +294,14 @@ export default {
         },
 
         async handleProductScan(data) {
+            let res = null;
             try {
-                let res = await this.store.callOdoo("validate_cycle_count_product", "", {
+                res = await this.store.callOdoo("validate_cycle_count_product", "", {
                     barcode: data,
                     location_id: this.current_location.id
                 });
 
-                if (res.ok) {
+                if (res && res.ok) {
                     this.current_product = {
                         id: res.product_id,
                         name: res.product_name,
@@ -285,14 +310,16 @@ export default {
                     };
                     this.quantity = 1;
                     this.step = 'quantity';
+                    return res;
                 } else {
                     this.$toast.add({ 
                         severity: 'error', 
                         summary: 'Producto no Encontrado', 
-                        detail: (res.error || 'Producto no encontrado.'), 
+                        detail: (res?.error || 'Producto no encontrado.'), 
                         life: 4000 
                     });
                     this.scannerKey++;
+                    return res || { ok: false, error: 'Producto no encontrado.' };
                 }
             } catch (e) {
                 this.$toast.add({ 
@@ -302,8 +329,10 @@ export default {
                     life: 4000 
                 });
                 this.scannerKey++;
+                throw e;
+            } finally {
+                await this.loadWaveInfo(true);
             }
-            await this.loadWaveInfo(true);
         },
 
         async markEmpty() {
@@ -416,6 +445,24 @@ export default {
         },
 
         async finishWave() {
+            if (this.isConfirmationBlocked) {
+                if (this.hasBufferErrors) {
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Errores en cola',
+                        detail: `Hay ${this.bufferErrorCount} escaneos con error. Reinténtalos o límpialos antes de finalizar la ola.`,
+                        life: 5000
+                    });
+                } else if (this.isBufferBusy) {
+                    this.$toast.add({
+                        severity: 'warn',
+                        summary: 'Sincronizando',
+                        detail: `Espera a que finalicen las ${this.bufferPendingCount} operaciones en cola antes de finalizar la ola.`,
+                        life: 4000
+                    });
+                }
+                return;
+            }
             if (this.pending_locations.length > 0) {
                 this.$toast.add({ 
                     severity: 'warn', 
