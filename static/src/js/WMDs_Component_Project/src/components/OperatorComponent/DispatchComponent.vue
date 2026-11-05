@@ -100,10 +100,11 @@
                 <div class="buttons-col">
                     <Button v-if="so.length > 0"
                         @click="dispatchToCarrier"
-                        class="p-button-success p-button-sm" 
-                        label="Entregar a paquetería" 
-                        icon="fa fa-truck"
-                        :loading="dispatching"
+                        :class="(hasBufferErrors ? 'p-button-danger' : 'p-button-success') + ' p-button-sm'" 
+                        :label="dispatching ? 'Despachando...' : (isBufferBusy ? ('Sincronizando guías (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Guías con error (' + bufferErrorCount + ')') : 'Entregar a paquetería'))" 
+                        :icon="dispatching || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-truck')"
+                        :loading="dispatching || isBufferBusy"
+                        :disabled="isConfirmationBlocked || dispatching"
                     />
                     <Button 
                         @click="exitFlow"
@@ -408,6 +409,21 @@ export default {
         }
     },
     computed: {
+        isConfirmationBlocked() {
+            return this.store.isConfirmationBlocked;
+        },
+        isBufferBusy() {
+            return this.store.isBufferBusy;
+        },
+        bufferPendingCount() {
+            return this.store.bufferPendingCount;
+        },
+        hasBufferErrors() {
+            return this.store.hasBufferErrors;
+        },
+        bufferErrorCount() {
+            return this.store.bufferErrorCount;
+        },
         scanSummary() {
             const summaryMap = {};
             this.so.forEach(item => {
@@ -907,45 +923,39 @@ export default {
                 return;
             }
 
-            const hasPending = this.so.some(o => o.sync_status === 'pending' || o.sync_status === 'processing');
-            if (hasPending) {
+            if (this.isConfirmationBlocked) {
                 if (this.$toast) {
-                    this.$toast.add({
-                        severity: 'warn',
-                        summary: 'Sincronización en proceso',
-                        detail: 'Hay paquetes en cola de procesamiento. Espere a que finalice la sincronización antes de entregar a paquetería.',
-                        life: 4000
-                    });
+                    if (this.hasBufferErrors) {
+                        this.$toast.add({
+                            severity: 'error',
+                            summary: 'Guías con error en cola',
+                            detail: `Hay ${this.bufferErrorCount} escaneos con error en la cola local. Resuélvalos o límpielos antes de entregar a paquetería.`,
+                            life: 5000
+                        });
+                    } else if (this.isBufferBusy) {
+                        this.$toast.add({
+                            severity: 'warn',
+                            summary: 'Sincronizando guías',
+                            detail: `Espera a que finalicen las ${this.bufferPendingCount} guías en cola antes de entregar a paquetería.`,
+                            life: 4000
+                        });
+                    }
                 }
                 return;
             }
 
-            const hasErrors = this.so.some(o => o.sync_status === 'error');
-            if (hasErrors) {
-                if (this.$toast) {
-                    this.$toast.add({
-                        severity: 'error',
-                        summary: 'Paquetes con error',
-                        detail: 'Hay paquetes con error de validación en la lista. Remuévalos antes de entregar a paquetería.',
-                        life: 5000
-                    });
-                }
-                return;
-            }
-
-            const cancelledOrders = this.so.filter(o => o.so_state === 'cancel');
-            if (cancelledOrders.length > 0) {
-                // Abrir modal obligatorio antes de poder despachar
-                this.openCancelledModal(
-                    cancelledOrders.map(o => ({ name: o.name, so_name: o.so_name })),
-                    () => this.dispatchToCarrier() // reintentar despacho tras confirmar
-                );
-                return;
-            }
-            
             this.dispatching = true;
-
             try {
+                const cancelledOrders = this.so.filter(o => o.so_state === 'cancel');
+                if (cancelledOrders.length > 0) {
+                    // Abrir modal obligatorio antes de poder despachar
+                    this.openCancelledModal(
+                        cancelledOrders.map(o => ({ name: o.name, so_name: o.so_name })),
+                        () => this.dispatchToCarrier() // reintentar despacho tras confirmar
+                    );
+                    return;
+                }
+
                 const picks_ids = this.so.map(o => o.name);
                 let response = await this.store.callOdoo("dispatch_orders", "", {
                     operator_login: this.store.role.email,

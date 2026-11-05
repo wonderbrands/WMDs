@@ -13,6 +13,7 @@
             <div v-if="ready && !scannedBin && !showDockConfirmation" class="scanner-wrapper">
                 <QRScannerComponent 
                     :key="scannerKey"
+                    :skipQueue="true"
                     context="dock_validate_bin"
                     :extra_data="this"
                     instructions="Escanea el BIN que vas a mover"
@@ -27,6 +28,7 @@
                 />
                 <QRScannerComponent 
                     :key="scannerKey + 1"
+                    :skipQueue="true"
                     instructions="Escanea la ubicación DOCK"
                     :onScan="(data) => validateDestDock(data)"
                 />
@@ -52,7 +54,14 @@
                     </p>
                     <p class="packages-alert">Se moverán <b>{{ packageCount }}</b> paquetes en total.</p>
                     <div class="confirmation-buttons">
-                        <Button label="Confirmar Envío" icon="fa fa-check" class="p-button-success" @click="confirmDockMove" />
+                        <Button 
+                            :label="confirming ? 'Confirmando...' : (isBufferBusy ? ('Sincronizando (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Errores en cola (' + bufferErrorCount + ')') : 'Confirmar Envío'))" 
+                            :icon="confirming || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-check')" 
+                            :class="hasBufferErrors ? 'p-button-danger' : 'p-button-success'"
+                            :disabled="isConfirmationBlocked || confirming"
+                            :loading="confirming || isBufferBusy"
+                            @click="confirmDockMove" 
+                        />
                         <Button label="Corregir DOCK" icon="fa fa-refresh" class="p-button-secondary" @click="cancelDockConfirmation" />
                     </div>
                 </div>
@@ -185,6 +194,7 @@ export default {
             packageCount: 0,
             packageDetails: [],
             showDockConfirmation: false,
+            confirming: false,
             targetDock: null,
             binCarrierName: '',
             currentPage: 1,
@@ -193,6 +203,21 @@ export default {
 
     },
     computed: {
+        isConfirmationBlocked() {
+            return this.store.isConfirmationBlocked;
+        },
+        isBufferBusy() {
+            return this.store.isBufferBusy;
+        },
+        bufferPendingCount() {
+            return this.store.bufferPendingCount;
+        },
+        hasBufferErrors() {
+            return this.store.hasBufferErrors;
+        },
+        bufferErrorCount() {
+            return this.store.bufferErrorCount;
+        },
         totalPages() {
             return Math.ceil(this.packageDetails.length / 4) || 1;
         },
@@ -314,6 +339,26 @@ export default {
 
         async confirmDockMove() {
             console.log("Action: confirmDockMove triggered");
+            if (this.isConfirmationBlocked) {
+                if (this.hasBufferErrors) {
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Errores en cola',
+                        detail: `Hay ${this.bufferErrorCount} escaneos con error en la cola. Resuélvelos o límpielos antes de confirmar.`,
+                        life: 5000
+                    });
+                } else if (this.isBufferBusy) {
+                    this.$toast.add({
+                        severity: 'warn',
+                        summary: 'Validando operaciones',
+                        detail: `Espera a que finalicen las ${this.bufferPendingCount} operaciones en cola antes de confirmar.`,
+                        life: 4000
+                    });
+                }
+                return;
+            }
+
+            this.confirming = true;
             try {
                 console.log("Action: Calling Odoo move_bin_to_dock with bin:", this.scannedBin, "and dock:", this.targetDock);
                 let response = await this.store.callOdoo("move_bin_to_dock", "", {
@@ -366,6 +411,8 @@ export default {
                     detail: 'No se pudo establecer comunicación con el servidor. ' + (e.message || 'Error de red'), 
                     life: 4000 
                 });
+            } finally {
+                this.confirming = false;
             }
         },
 

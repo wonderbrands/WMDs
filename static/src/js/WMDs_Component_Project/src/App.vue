@@ -1,5 +1,6 @@
 <template>
   <Toast />
+  <BufferStatusWidget />
   <LoadingComponent v-if="store.loading" />
 
   <component 
@@ -41,13 +42,17 @@ import BarcodeOperationComponent from "./components/OperatorComponent/BarcodeOpe
 import CycleCountOperator from "./components/OperatorComponent/CycleCountOperator.vue"
 import CompactionComponent from "./components/OperatorComponent/CompactionComponent.vue"
 import BlockBinComponent from "./components/OperatorComponent/BlockBinComponent.vue"
+import BufferStatusWidget from "./components/Common/BufferStatusWidget.vue"
 
 import { useGeneralStore } from "./store/index"
+import { initLocalDb } from "./services/localDb"
+import { scanQueueWorker } from "./services/scanQueueWorker"
 
 export default {
   name: 'App',
   components: {
     Toast,
+    BufferStatusWidget,
     LoadingComponent,
     RolePicker,
     ManagerComponent,
@@ -126,6 +131,8 @@ export default {
     this.restorePersistedUser();
   },
   async mounted() {
+    await initLocalDb();
+    await scanQueueWorker.init(this.store);
     if (this.store.mandatory_uncompleted && typeof this.store.mandatory_uncompleted.loadFromStorage === 'function') {
         this.store.mandatory_uncompleted.loadFromStorage(this.role);
     }

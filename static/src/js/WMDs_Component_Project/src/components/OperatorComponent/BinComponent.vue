@@ -67,6 +67,7 @@
                         class="p-button-rounded p-button-secondary back-button" 
                     />
                     <QRScannerComponent 
+                        :skipQueue="true"
                         instructions="Escanea la ubicación BIN"
                         :onScan="(data) => validateBin(data)"
                     />
@@ -79,7 +80,14 @@
                         <p>Vas a mover <b>{{ so.length }}</b> órdenes al BIN: <b>{{ targetBin }}</b></p>
                         <p style="font-size: 0.85rem; color: #3498db;"><i class="fa fa-truck"></i> Carrier: <b>{{ selectedCarrierName }}</b></p>
                         <div class="confirmation-buttons">
-                            <Button label="Confirmar" icon="fa fa-check" class="p-button-success" @click="confirmMove" />
+                            <Button 
+                                :label="confirming ? 'Confirmando...' : (isBufferBusy ? ('Sincronizando (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Errores en cola (' + bufferErrorCount + ')') : 'Confirmar'))" 
+                                :icon="confirming || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-check')" 
+                                :class="hasBufferErrors ? 'p-button-danger' : 'p-button-success'"
+                                :disabled="isConfirmationBlocked || confirming"
+                                :loading="confirming || isBufferBusy"
+                                @click="confirmMove" 
+                            />
                             <Button label="Re-escanear BIN" icon="fa fa-refresh" class="p-button-secondary" @click="cancelConfirmation" />
                         </div>
                     </div>
@@ -89,15 +97,17 @@
             <div class="buttons-col" v-if="!showConfirmation">
                 <Button v-if="so.length > 0 && !scan_bin"
                     @click="goToScanBin"
-                    class="p-button-success p-button-sm" 
-                    label="Trasladar a BIN" 
-                    icon="fa fa-paper-plane"
+                    :class="(hasBufferErrors ? 'p-button-danger' : 'p-button-success') + ' p-button-sm'" 
+                    :label="isBufferBusy ? ('Validando paquetes (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Errores en cola (' + bufferErrorCount + ')') : 'Trasladar a BIN')" 
+                    :icon="isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-paper-plane')"
+                    :disabled="isConfirmationBlocked"
                 />
                 <Button v-if="so.length === 0 && !scan_bin && !lastUsedBin"
                     @click="goToScanBin"
                     class="p-button-warning p-button-sm" 
                     label="Bloquear un BIN" 
                     icon="fa fa-lock"
+                    :disabled="isConfirmationBlocked"
                 />
                 <Button v-if="lastUsedBin && so.length === 0"
                     @click="blockLastBin"
@@ -205,6 +215,7 @@ import QRScannerComponent from '../QRScannerComponent/QRScannerComponent.vue';
 import BarcodeScannerComponent from '../QRScannerComponent/BarcodeScannerComponent.vue';
 import Button from 'primevue/button';
 import { useGeneralStore } from "../../store/index";
+import { scanQueueWorker } from "../../services/scanQueueWorker";
 
 export default {
     name: "BinComponent",
@@ -221,6 +232,7 @@ export default {
             ready: false,
             scannerKey: 0,
             showConfirmation: false,
+            confirming: false,
             targetBin: null,
             lastUsedBin: null,
             currentPage: 1,
@@ -235,6 +247,21 @@ export default {
         }
     },
     computed: {
+        isConfirmationBlocked() {
+            return this.store.isConfirmationBlocked;
+        },
+        isBufferBusy() {
+            return this.store.isBufferBusy;
+        },
+        bufferPendingCount() {
+            return this.store.bufferPendingCount;
+        },
+        hasBufferErrors() {
+            return this.store.hasBufferErrors;
+        },
+        bufferErrorCount() {
+            return this.store.bufferErrorCount;
+        },
         scanSummary() {
             const summaryMap = {};
             this.so.forEach(item => {
@@ -294,11 +321,31 @@ export default {
     },
     async mounted() {
         console.log("Action: BinComponent mounted");
+        this.unsubscribeWorker = scanQueueWorker.subscribe((event, data) => {
+            if (event === 'synced' && data.item && (data.item.type === 'bin_scan_so' || data.item.payload?.context === 'bin_scan_so')) {
+                const res = data.result || data.item.serverResponse;
+                if (res && res.name && !this.so.some(o => o.name === res.name)) {
+                    this.so.push({
+                        name: res.name,
+                        so_name: res.so,
+                        total: res.total,
+                        current: res.current,
+                        processed_count: res.processed_count || 0
+                    });
+                }
+            }
+        });
         await this.fetchCarrierList();
         setTimeout(() => {
             this.ready = true;
             this.loadingCarriers = false;
         }, 500);
+    },
+    beforeUnmount() {
+        if (this.unsubscribeWorker) {
+            this.unsubscribeWorker();
+            this.unsubscribeWorker = null;
+        }
     },
     methods: {
         // ── Carrier ──
@@ -348,7 +395,6 @@ export default {
         },
         async validateBin(data) {
             console.log("Action: validateBin data received:", data);
-            
             try {
                 let parsedData = typeof data === 'string' ? JSON.parse(data) : data;
                 const binName = parsedData.name;
@@ -388,6 +434,26 @@ export default {
         },
         async confirmMove() {
             console.log("Action: confirmMove triggered");
+            if (this.isConfirmationBlocked) {
+                if (this.hasBufferErrors) {
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Etiquetas con error',
+                        detail: `Hay ${this.bufferErrorCount} escaneos con error en la cola. Resuélvelos o descártalos antes de confirmar.`,
+                        life: 5000
+                    });
+                } else if (this.isBufferBusy) {
+                    this.$toast.add({
+                        severity: 'warn',
+                        summary: 'Validando escaneos',
+                        detail: `Espera a que finalicen los ${this.bufferPendingCount} escaneos en cola antes de confirmar.`,
+                        life: 4000
+                    });
+                }
+                return;
+            }
+
+            this.confirming = true;
             try {
                 const binName = this.targetBin;
                 console.log("Action: Calling Odoo move_to_bin with bin:", binName);
@@ -430,6 +496,8 @@ export default {
             } catch (e) {
                 console.log("Action: Error in confirmMove", e);
                 this.$toast.add({ severity: 'error', summary: 'Error de Servidor', detail: 'No se pudo realizar el movimiento en Odoo.', life: 3000 });
+            } finally {
+                this.confirming = false;
             }
         },
         async blockLastBin() {
@@ -461,6 +529,24 @@ export default {
         },
         goToScanBin() {
             console.log("Action: goToScanBin triggered");
+            if (this.isConfirmationBlocked) {
+                if (this.hasBufferErrors) {
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Etiquetas con error',
+                        detail: `Hay ${this.bufferErrorCount} escaneos con error en la cola. Reinténtalos o límpialos antes de trasladar a BIN.`,
+                        life: 5000
+                    });
+                } else if (this.isBufferBusy) {
+                    this.$toast.add({
+                        severity: 'warn',
+                        summary: 'Validando escaneos',
+                        detail: `Espera a que finalicen los ${this.bufferPendingCount} escaneos en cola antes de trasladar a BIN.`,
+                        life: 4000
+                    });
+                }
+                return;
+            }
             this.scan_bin = true;
         },
         clearAllOrders() {
