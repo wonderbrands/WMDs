@@ -1,5 +1,7 @@
 from odoo import http, fields
 from odoo.http import request
+from odoo.exceptions import UserError
+from odoo.service.model import PG_CONCURRENCY_EXCEPTIONS_TO_RETRY
 import traceback
 import logging
 
@@ -102,10 +104,6 @@ class DockNBin(http.Controller):
         try:
             bin_name = kw.get("bin")
             operator_login = kw.get("operator")
-            orders = kw.get("orders")
-            batch_id = kw.get("batch_id")
-            pick_id = kw.get("pick_id")
-            carrier_id = kw.get("carrier_id")
 
             if not bin_name or not operator_login:
                 _logger.error("Faltan datos en move_to_bin")
@@ -119,227 +117,21 @@ class DockNBin(http.Controller):
             if bin_storage.state == 'blocked':
                 return {'error': f"El BIN {bin_name} está bloqueado. No se pueden ingresar más productos.", 'ok': False}
 
-            # Determine count of items to move
-            item_count = 0
-            if orders:
-                item_count = len(orders)
-            elif batch_id or pick_id:
-                if batch_id:
-                    batch = request.env['stock.picking.batch'].sudo().browse(batch_id)
-                    pickings = batch.picking_ids
-                else:
-                    picking = request.env['stock.picking'].sudo().browse(pick_id)
-                    pickings = picking
-                moves = pickings.mapped('move_ids').filtered(lambda m: m.state == 'done' and not m.dispatched)
-                item_count = len(moves)
+            # Se ejecuta en la propia petición (sin cola) para que el BIN quede listo de inmediato.
+            return bin_storage._wmds_move_to_bin(
+                operator_login,
+                orders=kw.get("orders"),
+                batch_id=kw.get("batch_id"),
+                pick_id=kw.get("pick_id"),
+                carrier_id=kw.get("carrier_id"),
+            )
 
-            if item_count > 10:
-                import json
-                task = request.env['wmds.queued_tasks'].sudo().create({
-                    'task_type': 'move_to_bin',
-                    'params': json.dumps(kw),
-                    'operator_login': operator_login or '',
-                    'status': 'pending',
-                })
-                task._trigger_async_process()
-                return {
-                    "ok": True,
-                    "status": "queued",
-                    "queued_task_id": task.id,
-                    "message": f"Debido a que son más de 10 paquetes ({item_count}), la tarea se ha encolado en segundo plano."
-                }
-
-            operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
-
-
-            # Guardar el carrier en el BIN
-            if carrier_id:
-                bin_storage.write({'carrier_id': int(carrier_id)})
-
-            bin_log = request.env["bin.log"].sudo().search([('bin_id', '=', bin_storage.id)], limit=1)
-            if not bin_log:
-                bin_log = request.env["bin.log"].sudo().create({'bin_id': bin_storage.id})
-
-            operator_name = operator_orm.name if operator_orm else "Desconocido"
-
-            # Validar mezcla de tipos (Full vs Ecommerce)
-            has_ei = request.env["sale.order.ei"].sudo().search_count([
-                ('bin_id', '=', bin_storage.id),
-                ('on_bin', '=', True)
-            ]) > 0
-            
-            has_moves = request.env["stock.move"].sudo().search_count([
-                ('bin_id', '=', bin_storage.id),
-                ('on_bin', '=', True)
-            ]) > 0
-
-            if batch_id or pick_id:
-                if has_ei:
-                    return {'error': 'El BIN ya contiene pedidos. No se pueden mezclar con fulfillment.'}
-                # Caso Full o Picking específico: Procesar por ID
-                if batch_id:
-                    batch = request.env['stock.picking.batch'].sudo().browse(batch_id)
-                    pickings = batch.picking_ids
-                    log_target = {"batch_pick": batch.id}
-                    log_label = f"Lote {batch.name}"
-                    batch_origins = list(filter(None, set(pickings.mapped('origin'))))
-                    origin = batch_origins[0] if batch_origins else False
-                else:
-                    picking = request.env['stock.picking'].sudo().browse(pick_id)
-                    pickings = picking
-                    log_target = {"pick": picking.id}
-                    log_label = f"Traslado {picking.name}"
-                    origin = picking.origin
-
-                if origin:
-                    # Regla: Ningún otro BIN puede tener este mismo documento origen asignado
-                    other_bin = request.env['bin.storage'].sudo().search([
-                        ('origin_doc', '=', origin),
-                        ('id', '!=', bin_storage.id)
-                    ], limit=1)
-                    if other_bin:
-                        return {'error': f"El documento origen '{origin}' ya está asignado al BIN '{other_bin.name}'. No puede haber más de un BIN para el mismo origen."}
-
-                    # Regla: Este BIN solo puede admitir un documento origen
-                    if bin_storage.origin_doc and bin_storage.origin_doc != origin:
-                        return {'error': f"El BIN {bin_storage.name} ya está asignado al origen '{bin_storage.origin_doc}'. No se pueden ingresar productos del origen '{origin}'."}
-                    elif not bin_storage.origin_doc:
-                        bin_storage.write({'origin_doc': origin})
-
-                moves = pickings.mapped('move_ids').filtered(lambda m: m.state == 'done' and not m.dispatched)
-                
-                for move in moves:
-                    move.write({
-                        'on_bin': True,
-                        'bin_id': bin_storage.id,
-                        'on_dock': False,
-                        'dock_id': False,
-                        'dispatched': False
-                    })
-                    
-                    log_msg = f"El operador {operator_name} puso el producto {move.product_id.display_name} (de la orden {move.picking_id.name}) en el bin {bin_storage.name}"
-                    
-                    request.env["log.line"].sudo().create({
-                        "operator_id": operator_orm.id if operator_orm else False,
-                        "qty": move.quantity,
-                        "message": log_msg,
-                        "bin_log_id": bin_log.id
-                    })
-
-                # Auto-close PACK pickings for wholesale orders
-                for picking in pickings:
-                    if picking.sale_id and picking.sale_id.data_is_wholesale_sale:
-                        pack_pickings = request.env['stock.picking'].sudo().search([
-                            ('sale_id', '=', picking.sale_id.id),
-                            ('picking_type_id.name', 'ilike', 'Pack'),
-                            ('state', 'not in', ['done', 'cancel'])
-                        ])
-                        for pack_pick in pack_pickings:
-                            try:
-                                pack_pick.action_assign()
-                                for move in pack_pick.move_ids:
-                                    if move.state not in ('done', 'cancel'):
-                                        move.write({
-                                            'quantity': move.product_uom_qty,
-                                            'picked': True
-                                        })
-                                res = pack_pick.button_validate()
-                                if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
-                                    wizard = request.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
-                                        'pick_ids': [(4, pack_pick.id)]
-                                    })
-                                    wizard.process()
-                                _logger.info(f"Auto-validated wholesale PACK picking {pack_pick.name} for SO {picking.sale_id.name}")
-                            except Exception as pe:
-                                _logger.error(f"Error auto-validating wholesale PACK picking {pack_pick.name}: {pe}")
-
-                # Log General
-                log_vals = {
-                    "log": f"{log_label} movido a BIN {bin_storage.name} por {operator_name}",
-                    "user": operator_orm.id if operator_orm else False,
-                }
-                log_vals.update(log_target)
-                request.env["wmds.log"].sudo().create(log_vals)
-
-                return {
-                    "ok": True,
-                    "count": len(moves),
-                    "origin": origin or "",
-                    "bin": bin_storage.name
-                }
-
-            if orders:
-                if has_moves:
-                    return {'error': 'El BIN ya contiene productos de fulfillment. No se pueden mezclar con pedidos.'}
-                # Caso Ecommerce/Picks: Procesar por etiquetas EI
-                for so_custom_name in orders:
-                    _logger.info(f"Procesando etiqueta: {so_custom_name}")
-                    # Intentar buscar o crear la etiqueta EI
-                    ei_tag = request.env["sale.order.ei"].sudo().search([
-                        ('display_name_custom', '=', so_custom_name)
-                    ], limit=1)
-
-                    if not ei_tag and '/' in so_custom_name:
-                        parts = so_custom_name.split('/')
-                        if len(parts) == 2:
-                            so_name, seq_str = parts
-                            so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
-                            if so:
-                                try:
-                                    seq = int(seq_str)
-                                    if 0 < seq <= so.ei_total:
-                                        ei_tag = request.env["sale.order.ei"].sudo().create({
-                                            'so_id': so.id,
-                                            'sequence_number': seq
-                                        })
-                                        _logger.info(f"Etiqueta {so_custom_name} creada")
-                                except ValueError:
-                                    pass
-
-                    if ei_tag:
-                        _logger.info(f"Actualizando estado de ei_tag {ei_tag.id}")
-                        ei_tag.write({
-                            'on_bin': True,
-                            'bin_id': bin_storage.id,
-                            'on_dock': False,
-                            'dock_id': False,
-                            'dispatched': False
-                        })
-                        
-                        log_msg = f"El operador {operator_name} puso el paquete {so_custom_name} en el bin {bin_storage.name}"
-
-                        request.env["log.line"].sudo().create({
-                            "operator_id": operator_orm.id if operator_orm else False,
-                            "qty": 1,
-                            "message": log_msg,
-                            "bin_log_id": bin_log.id
-                        })
-
-                        if ei_tag.so_id:
-                            # Propagación automática desde pick -> sale y batch
-                            picking = request.env['stock.picking'].sudo().search([
-                                ('sale_id', '=', ei_tag.so_id.id),
-                                ('state', 'in', ['assigned', 'done']),
-                                ('picking_type_id.name', 'ilike', 'Pick')
-                            ], order='date_done desc', limit=1)
-                            
-                            if picking:
-                                request.env["wmds.log"].sudo().create({
-                                    "pick": picking.id,
-                                    "log": log_msg,
-                                    "user": operator_orm.id if operator_orm else False,
-                                })
-                            else:
-                                request.env["wmds.log"].sudo().create({
-                                    "sale": ei_tag.so_id.id,
-                                    "log": log_msg,
-                                    "user": operator_orm.id if operator_orm else False,
-                                })
-                    else:
-                        _logger.warning(f"No se pudo encontrar ni crear ei_tag para {so_custom_name}")
-
-            return {"ok": True}
-
+        except PG_CONCURRENCY_EXCEPTIONS_TO_RETRY:
+            # Odoo reintenta la petición completa ante errores de concurrencia
+            raise
+        except UserError as e:
+            request.env.cr.rollback()
+            return {"error": str(e)}
         except Exception as e:
             request.env.cr.rollback()
             _logger.error(f"Error grave en move_to_bin: {str(e)}\n{traceback.format_exc()}")
@@ -576,193 +368,18 @@ class DockNBin(http.Controller):
             if not bin_name or not dock_name or not operator_login:
                 return {'error': 'Faltan datos: bin, dock u operator', 'ok': False}
 
-            operator_orm = request.env["res.users"].sudo().search([('login', '=', operator_login)], limit=1)
             bin_storage = request.env["bin.storage"].sudo().search([('name', '=', bin_name)], limit=1)
             dock_storage = request.env["dock.storage"].sudo().search([('name', '=', dock_name)], limit=1)
 
             if not dock_storage or not bin_storage:
                 return {'error': 'Bin o Dock no existe', 'ok': False}
 
-            if bin_storage.state != 'blocked':
-                return {'error': f"El BIN {bin_storage.name} debe estar bloqueado para poder ser trasladado a DOCK.", 'ok': False}
+            # Se ejecuta en la propia petición (sin cola) para liberar el BIN de inmediato.
+            return bin_storage._wmds_move_to_dock(dock_storage, operator_login, selected_packages)
 
-            # Determine count of items to move
-            item_count = 0
-            if selected_packages:
-                item_count = len(selected_packages)
-            else:
-                ei_count = request.env["sale.order.ei"].sudo().search_count([
-                    ('bin_id', '=', bin_storage.id),
-                    ('on_bin', '=', True)
-                ])
-                move_count = request.env["stock.move"].sudo().search_count([
-                    ('bin_id', '=', bin_storage.id),
-                    ('on_bin', '=', True)
-                ])
-                item_count = ei_count + move_count
-
-            if item_count > 10:
-                import json
-                task = request.env['wmds.queued_tasks'].sudo().create({
-                    'task_type': 'move_to_dock',
-                    'params': json.dumps(kw),
-                    'operator_login': operator_login or '',
-                    'status': 'pending',
-                })
-                task._trigger_async_process()
-                return {
-                    "ok": True,
-                    "status": "queued",
-                    "queued_task_id": task.id,
-                    "moved_packages": item_count,
-                    "message": f"Debido a que son más de 10 paquetes ({item_count}), la tarea se ha encolado en segundo plano."
-                }
-
-
-            # Filter logic for partial movement
-            ei_domain = [('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]
-            move_domain = [('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]
-
-            if selected_packages:
-                ei_names = [p['name'] for p in selected_packages if not p.get('is_full')]
-                move_ids = [p['move_id'] for p in selected_packages if p.get('is_full')]
-                
-                if ei_names:
-                    ei_domain.append(('display_name_custom', 'in', ei_names))
-                else:
-                    ei_domain.append(('id', '=', 0)) # None
-
-                if move_ids:
-                    move_domain.append(('id', 'in', move_ids))
-                else:
-                    move_domain.append(('id', '=', 0)) # None
-
-            # Validar mezcla en el DOCK
-            # Solo validar si se va a mover algo de ese tipo
-            moving_ei = request.env["sale.order.ei"].sudo().search_count(ei_domain) > 0
-            moving_moves = request.env["stock.move"].sudo().search_count(move_domain) > 0
-
-            dock_has_ei = request.env["sale.order.ei"].sudo().search_count([
-                ('dock_id', '=', dock_storage.id),
-                ('on_dock', '=', True)
-            ]) > 0
-            dock_has_moves = request.env["stock.move"].sudo().search_count([
-                ('dock_id', '=', dock_storage.id),
-                ('on_dock', '=', True)
-            ]) > 0
-
-            if moving_ei and dock_has_moves:
-                return {'error': 'El DOCK ya contiene productos de fulfillment. No se pueden mezclar con pedidos.', 'ok': False}
-            if moving_moves and dock_has_ei:
-                return {'error': 'El DOCK ya contiene pedidos. No se pueden mezclar con fulfillment.', 'ok': False}
-
-            dock_log = request.env["dock.log"].sudo().search([
-                ('dock_id', '=', dock_storage.id), 
-                ('bin_id', '=', bin_storage.id)
-            ], limit=1)
-
-            if not dock_log:
-                dock_log = request.env["dock.log"].sudo().create({
-                    'dock_id': dock_storage.id,
-                    'bin_id': bin_storage.id
-                })
-
-            operator_name = operator_orm.name if operator_orm else "Desconocido"
-
-            # Mover EI Tags
-            ei_tags = request.env["sale.order.ei"].sudo().search(ei_domain)
-
-            for tag in ei_tags:
-                tag.on_bin = False
-                tag.bin_id = False
-                tag.on_dock = True
-                tag.dock_id = dock_storage.id
-
-                log_msg = f"El operador {operator_name} movió el paquete {tag.display_name_custom} del {bin_storage.name} al DOCK {dock_storage.name}"
-
-                request.env["log.line"].sudo().create({
-                    "operator_id": operator_orm.id if operator_orm else False,
-                    "qty": 1,
-                    "message": log_msg,
-                    "dock_log_id": dock_log.id
-                })
-
-                if tag.so_id:
-                    # Propagación automática desde pick -> sale y batch
-                    picking = request.env['stock.picking'].sudo().search([
-                        ('sale_id', '=', tag.so_id.id),
-                        ('state', 'in', ['assigned', 'done']),
-                        ('picking_type_id.name', 'ilike', 'Pick')
-                    ], order='date_done desc', limit=1)
-                    
-                    if picking:
-                        request.env["wmds.log"].sudo().create({
-                            "pick": picking.id,
-                            "log": log_msg,
-                            "user": operator_orm.id if operator_orm else False,
-                        })
-                    else:
-                        request.env["wmds.log"].sudo().create({
-                            "sale": tag.so_id.id,
-                            "log": log_msg,
-                            "user": operator_orm.id if operator_orm else False,
-                        })
-
-            # Mover Stock Moves
-            moves = request.env["stock.move"].sudo().search(move_domain)
-
-            processed_pickings = request.env['stock.picking']
-            processed_batches = request.env['stock.picking.batch']
-
-            for move in moves:
-                move.on_bin = False
-                move.bin_id = False
-                move.on_dock = True
-                move.dock_id = dock_storage.id
-
-                log_msg = f"El operador {operator_name} movió el producto {move.product_id.display_name} del {bin_storage.name} al DOCK {dock_storage.name}"
-
-                request.env["log.line"].sudo().create({
-                    "operator_id": operator_orm.id if operator_orm else False,
-                    "qty": move.quantity,
-                    "message": log_msg,
-                    "dock_log_id": dock_log.id
-                })
-                
-                if move.picking_id:
-                    processed_pickings |= move.picking_id
-                    if move.picking_id.batch_id:
-                        processed_batches |= move.picking_id.batch_id
-
-            # Log en Pickings y Batches de Full
-            for batch in processed_batches:
-                request.env["wmds.log"].sudo().create({
-                    "batch_pick": batch.id,
-                    "log": f"Lote movido a DOCK {dock_storage.name} por {operator_name}",
-                    "user": operator_orm.id if operator_orm else False,
-                })
-            
-            # Para pickings que no tienen batch
-            for picking in processed_pickings.filtered(lambda p: not p.batch_id):
-                request.env["wmds.log"].sudo().create({
-                    "pick": picking.id,
-                    "log": f"Traslado {picking.name} movido a DOCK {dock_storage.name} por {operator_name}",
-                    "user": operator_orm.id if operator_orm else False,
-                })
-
-            # Verificar si el BIN quedó vacío para liberarlo
-            has_remaining = request.env["sale.order.ei"].sudo().search_count([('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]) > 0 or \
-                            request.env["stock.move"].sudo().search_count([('bin_id', '=', bin_storage.id), ('on_bin', '=', True)]) > 0
-            
-            if not has_remaining:
-                bin_storage.write({
-                    'state': 'available',
-                    'carrier_id': False,
-                    'origin_doc': False,
-                })
-
-            return {"ok": True, "moved_packages": len(ei_tags) + len(moves)}
-
+        except PG_CONCURRENCY_EXCEPTIONS_TO_RETRY:
+            # Odoo reintenta la petición completa ante errores de concurrencia
+            raise
         except Exception as e:
             request.env.cr.rollback()
             return {"error": str(e), "ok": False}
