@@ -81,10 +81,10 @@
                         <p style="font-size: 0.85rem; color: #3498db;"><i class="fa fa-truck"></i> Carrier: <b>{{ selectedCarrierName }}</b></p>
                         <div class="confirmation-buttons">
                             <Button 
-                                :label="confirming ? 'Confirmando...' : (isBufferBusy ? ('Sincronizando (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Errores en cola (' + bufferErrorCount + ')') : 'Confirmar'))" 
-                                :icon="confirming || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-check')" 
-                                :class="hasBufferErrors ? 'p-button-danger' : 'p-button-success'"
-                                :disabled="isConfirmationBlocked || confirming"
+                                :label="confirming ? 'Confirmando...' : (isBufferBusy ? ('Sincronizando (' + bufferPendingCount + ')...') : 'Confirmar')" 
+                                :icon="confirming || isBufferBusy ? 'fa fa-spinner fa-spin' : 'fa fa-check'" 
+                                class="p-button-success"
+                                :disabled="isBufferBusy || confirming"
                                 :loading="confirming || isBufferBusy"
                                 @click="confirmMove" 
                             />
@@ -97,17 +97,17 @@
             <div class="buttons-col" v-if="!showConfirmation">
                 <Button v-if="so.length > 0 && !scan_bin"
                     @click="goToScanBin"
-                    :class="(hasBufferErrors ? 'p-button-danger' : 'p-button-success') + ' p-button-sm'" 
-                    :label="isBufferBusy ? ('Validando paquetes (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Errores en cola (' + bufferErrorCount + ')') : 'Trasladar a BIN')" 
-                    :icon="isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-paper-plane')"
-                    :disabled="isConfirmationBlocked"
+                    class="p-button-success p-button-sm" 
+                    :label="isBufferBusy ? ('Validando paquetes (' + bufferPendingCount + ')...') : 'Trasladar a BIN'" 
+                    :icon="isBufferBusy ? 'fa fa-spinner fa-spin' : 'fa fa-paper-plane'"
+                    :disabled="isBufferBusy"
                 />
                 <Button v-if="so.length === 0 && !scan_bin && !lastUsedBin"
                     @click="goToScanBin"
                     class="p-button-warning p-button-sm" 
                     label="Bloquear un BIN" 
                     icon="fa fa-lock"
-                    :disabled="isConfirmationBlocked"
+                    :disabled="isBufferBusy"
                 />
                 <Button v-if="lastUsedBin && so.length === 0"
                     @click="blockLastBin"
@@ -207,6 +207,32 @@
             </div>
 
         </template>
+
+        <!-- Diálogo para escaneos erróneos no bloqueantes -->
+        <Dialog 
+            v-model:visible="showBufferErrorDialog" 
+            header="Escaneos Erróneos en Cola" 
+            modal 
+            :style="{ width: '90vw', maxWidth: '520px' }"
+        >
+            <div class="p-3">
+                <p class="mb-3 font-semibold text-danger">
+                    Los siguientes escaneos fueron erróneos, ¿desea proceder sin ellos?
+                </p>
+                <div class="error-scans-list" style="max-height: 250px; overflow-y: auto; border: 1px solid #fee2e2; border-radius: 6px; padding: 8px; background: #fff5f5;">
+                    <div v-for="err in bufferErrorsList" :key="err.id" class="flex justify-content-between align-items-center py-2 border-bottom-1 border-200">
+                        <span class="font-bold text-dark">{{ err.barcode }}</span>
+                        <small class="text-danger font-medium">{{ err.errorMsg || 'No encontrado' }}</small>
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex justify-content-end gap-2 w-full">
+                    <Button label="Cancelar" class="p-button-secondary p-button-text" @click="showBufferErrorDialog = false" />
+                    <Button label="Proceder sin ellos" class="p-button-warning" icon="fa fa-arrow-right" @click="proceedWithoutErrors" />
+                </div>
+            </template>
+        </Dialog>
     </div>
 </template>
 
@@ -214,15 +240,18 @@
 import QRScannerComponent from '../QRScannerComponent/QRScannerComponent.vue';
 import BarcodeScannerComponent from '../QRScannerComponent/BarcodeScannerComponent.vue';
 import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
 import { useGeneralStore } from "../../store/index";
 import { scanQueueWorker } from "../../services/scanQueueWorker";
+import { getErrorScans } from "../../services/localDb";
 
 export default {
     name: "BinComponent",
     components: {
         QRScannerComponent,
         BarcodeScannerComponent,
-        Button
+        Button,
+        Dialog
     },
     data() {
         return {
@@ -237,6 +266,11 @@ export default {
             lastUsedBin: null,
             currentPage: 1,
             summaryCurrentPage: 1,
+
+            // Diálogo de errores no bloqueantes
+            showBufferErrorDialog: false,
+            bufferErrorsList: [],
+            onProceedErrorAction: null,
 
             // ── Carrier ──
             carrierList: [],
@@ -434,15 +468,8 @@ export default {
         },
         async confirmMove() {
             console.log("Action: confirmMove triggered");
-            if (this.isConfirmationBlocked) {
-                if (this.hasBufferErrors) {
-                    this.$toast.add({
-                        severity: 'error',
-                        summary: 'Etiquetas con error',
-                        detail: `Hay ${this.bufferErrorCount} escaneos con error en la cola. Resuélvelos o descártalos antes de confirmar.`,
-                        life: 5000
-                    });
-                } else if (this.isBufferBusy) {
+            if (this.isBufferBusy) {
+                if (this.$toast) {
                     this.$toast.add({
                         severity: 'warn',
                         summary: 'Validando escaneos',
@@ -453,6 +480,18 @@ export default {
                 return;
             }
 
+            if (this.hasBufferErrors) {
+                this.bufferErrorsList = await getErrorScans();
+                this.onProceedErrorAction = () => {
+                    this.executeConfirmMove();
+                };
+                this.showBufferErrorDialog = true;
+                return;
+            }
+
+            await this.executeConfirmMove();
+        },
+        async executeConfirmMove() {
             this.confirming = true;
             try {
                 const binName = this.targetBin;
@@ -500,6 +539,19 @@ export default {
                 this.confirming = false;
             }
         },
+        async proceedWithoutErrors() {
+            try {
+                await scanQueueWorker.triggerClearAllErrors();
+            } catch (e) {
+                console.error("Error clearing errors:", e);
+            }
+            this.showBufferErrorDialog = false;
+            if (this.onProceedErrorAction) {
+                const action = this.onProceedErrorAction;
+                this.onProceedErrorAction = null;
+                await action();
+            }
+        },
         async blockLastBin() {
             if (!this.lastUsedBin) return;
             try {
@@ -527,17 +579,10 @@ export default {
             console.log("Action: backToScanSO triggered");
             this.scan_bin = false;
         },
-        goToScanBin() {
+        async goToScanBin() {
             console.log("Action: goToScanBin triggered");
-            if (this.isConfirmationBlocked) {
-                if (this.hasBufferErrors) {
-                    this.$toast.add({
-                        severity: 'error',
-                        summary: 'Etiquetas con error',
-                        detail: `Hay ${this.bufferErrorCount} escaneos con error en la cola. Reinténtalos o límpialos antes de trasladar a BIN.`,
-                        life: 5000
-                    });
-                } else if (this.isBufferBusy) {
+            if (this.isBufferBusy) {
+                if (this.$toast) {
                     this.$toast.add({
                         severity: 'warn',
                         summary: 'Validando escaneos',
@@ -547,6 +592,16 @@ export default {
                 }
                 return;
             }
+
+            if (this.hasBufferErrors) {
+                this.bufferErrorsList = await getErrorScans();
+                this.onProceedErrorAction = () => {
+                    this.scan_bin = true;
+                };
+                this.showBufferErrorDialog = true;
+                return;
+            }
+
             this.scan_bin = true;
         },
         clearAllOrders() {

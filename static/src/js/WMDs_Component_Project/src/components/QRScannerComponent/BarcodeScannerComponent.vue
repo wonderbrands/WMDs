@@ -30,6 +30,7 @@
                 type="text" 
                 v-model="laser_input" 
                 @input="handleInput"
+                @keydown.enter.prevent="handleEnterKey"
                 @blur="keepFocus"
                 class="hidden-input"
                 inputmode="none"
@@ -111,7 +112,8 @@ export default {
         handleGlobalKeydown(e) {
             if (this.disableFocus) return;
             if (this.reader === 'laser') {
-                if (e.key === 'Enter' && this.laser_input && this.laser_input.trim()) {
+                if ((e.key === 'Enter' || e.keyCode === 13) && this.laser_input && this.laser_input.trim()) {
+                    e.preventDefault();
                     if (this.inputTimeout) clearTimeout(this.inputTimeout);
                     this.processScanedData();
                     return;
@@ -120,6 +122,10 @@ export default {
                     this.focusLaserInput();
                 }
             }
+        },
+        handleEnterKey() {
+            if (this.inputTimeout) clearTimeout(this.inputTimeout);
+            this.processScanedData();
         },
         async initCamera() {
             console.log("initCamera");
@@ -205,7 +211,12 @@ export default {
             if (this.disableFocus) return;
             console.log("focusLaserInput");
             if (this.reader === 'laser' && this.$refs.laserInput) {
-                this.$refs.laserInput.focus();
+                const el = this.$refs.laserInput;
+                el.focus();
+                try {
+                    const len = el.value.length;
+                    el.setSelectionRange(len, len);
+                } catch (err) {}
             }
         },
         keepFocus() {
@@ -223,16 +234,22 @@ export default {
                 return;
             }
 
+            if (this.laser_input.includes('\n') || this.laser_input.includes('\r')) {
+                if (this.inputTimeout) clearTimeout(this.inputTimeout);
+                this.processScanedData();
+                return;
+            }
+
             if (this.inputTimeout) {
                 clearTimeout(this.inputTimeout);
             }
 
             this.inputTimeout = setTimeout(() => {
                 this.processScanedData();
-            }, 30); 
+            }, 150); 
         },
         processScanedData() {
-            const raw = this.laser_input.trim();
+            const raw = this.laser_input.replace(/[\r\n]/g, '').trim();
             if (raw !== "") {
                 this.laser_input = "";
                 this.triggerScan(raw); 

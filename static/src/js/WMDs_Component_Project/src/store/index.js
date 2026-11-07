@@ -346,7 +346,7 @@ export const useGeneralStore = defineStore('general_store', {
     hasBufferErrors: (state) => (state.buffer_stats?.error || 0) > 0,
     bufferPendingCount: (state) => (state.buffer_stats?.pending || 0) + (state.buffer_stats?.processing || 0),
     bufferErrorCount: (state) => state.buffer_stats?.error || 0,
-    isConfirmationBlocked: (state) => (((state.buffer_stats?.pending || 0) + (state.buffer_stats?.processing || 0)) > 0) || ((state.buffer_stats?.error || 0) > 0)
+    isConfirmationBlocked: (state) => ((state.buffer_stats?.pending || 0) + (state.buffer_stats?.processing || 0)) > 0
   },
   actions: {
     formatDate(utcDate) {

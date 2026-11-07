@@ -100,11 +100,11 @@
                 <div class="buttons-col">
                     <Button v-if="so.length > 0"
                         @click="dispatchToCarrier"
-                        :class="(hasBufferErrors ? 'p-button-danger' : 'p-button-success') + ' p-button-sm'" 
-                        :label="dispatching ? 'Despachando...' : (isBufferBusy ? ('Sincronizando guías (' + bufferPendingCount + ')...') : (hasBufferErrors ? ('Guías con error (' + bufferErrorCount + ')') : 'Entregar a paquetería'))" 
-                        :icon="dispatching || isBufferBusy ? 'fa fa-spinner fa-spin' : (hasBufferErrors ? 'fa fa-exclamation-triangle' : 'fa fa-truck')"
+                        class="p-button-success p-button-sm" 
+                        :label="dispatching ? 'Despachando...' : (isBufferBusy ? ('Sincronizando guías (' + bufferPendingCount + ')...') : 'Entregar a paquetería')" 
+                        :icon="dispatching || isBufferBusy ? 'fa fa-spinner fa-spin' : 'fa fa-truck'"
                         :loading="dispatching || isBufferBusy"
-                        :disabled="isConfirmationBlocked || dispatching"
+                        :disabled="isBufferBusy || dispatching"
                     />
                     <Button 
                         @click="exitFlow"
@@ -339,6 +339,32 @@
         :lastError="cancelledModal.lastError"
         :onScanCancelled="confirmCancelledScan"
     />
+
+    <!-- Diálogo para escaneos erróneos no bloqueantes -->
+    <Dialog 
+        v-model:visible="showBufferErrorDialog" 
+        header="Escaneos Erróneos en Cola" 
+        modal 
+        :style="{ width: '90vw', maxWidth: '520px' }"
+    >
+        <div class="p-3">
+            <p class="mb-3 font-semibold text-danger">
+                Los siguientes escaneos fueron erróneos, ¿desea proceder sin ellos?
+            </p>
+            <div class="error-scans-list" style="max-height: 250px; overflow-y: auto; border: 1px solid #fee2e2; border-radius: 6px; padding: 8px; background: #fff5f5;">
+                <div v-for="err in bufferErrorsList" :key="err.id" class="flex justify-content-between align-items-center py-2 border-bottom-1 border-200">
+                    <span class="font-bold text-dark">{{ err.barcode }}</span>
+                    <small class="text-danger font-medium">{{ err.errorMsg || 'No encontrado' }}</small>
+                </div>
+            </div>
+        </div>
+        <template #footer>
+            <div class="flex justify-content-end gap-2 w-full">
+                <Button label="Cancelar" class="p-button-secondary p-button-text" @click="showBufferErrorDialog = false" />
+                <Button label="Proceder sin ellos" class="p-button-warning" icon="fa fa-arrow-right" @click="proceedWithoutErrors" />
+            </div>
+        </template>
+    </Dialog>
     </div>
 
 </template>
@@ -347,8 +373,9 @@
 import BarcodeScannerComponent from '../QRScannerComponent/BarcodeScannerComponent.vue';
 import CancelledModalComponent from './CancelledModalComponent.vue';
 import Button from 'primevue/button';
+import Dialog from 'primevue/dialog';
 import { useGeneralStore } from "../../store/index";
-import { localDb, enqueueScan, getPendingScans, clearSyncedScans } from "../../services/localDb";
+import { localDb, enqueueScan, getPendingScans, clearSyncedScans, getErrorScans } from "../../services/localDb";
 import { scanQueueWorker } from "../../services/scanQueueWorker";
 
 export default {
@@ -356,7 +383,8 @@ export default {
     components: {
         BarcodeScannerComponent,
         CancelledModalComponent,
-        Button
+        Button,
+        Dialog
     },
     data() {
         return {
@@ -372,6 +400,11 @@ export default {
             sessionRecovered: false,
             currentPage: 1,
             summaryCurrentPage: 1,
+
+            // Diálogo de errores no bloqueantes
+            showBufferErrorDialog: false,
+            bufferErrorsList: [],
+            onProceedErrorAction: null,
 
             // ── Carrier ──
             carrierList: [],
@@ -923,27 +956,45 @@ export default {
                 return;
             }
 
-            if (this.isConfirmationBlocked) {
+            if (this.isBufferBusy) {
                 if (this.$toast) {
-                    if (this.hasBufferErrors) {
-                        this.$toast.add({
-                            severity: 'error',
-                            summary: 'Guías con error en cola',
-                            detail: `Hay ${this.bufferErrorCount} escaneos con error en la cola local. Resuélvalos o límpielos antes de entregar a paquetería.`,
-                            life: 5000
-                        });
-                    } else if (this.isBufferBusy) {
-                        this.$toast.add({
-                            severity: 'warn',
-                            summary: 'Sincronizando guías',
-                            detail: `Espera a que finalicen las ${this.bufferPendingCount} guías en cola antes de entregar a paquetería.`,
-                            life: 4000
-                        });
-                    }
+                    this.$toast.add({
+                        severity: 'warn',
+                        summary: 'Sincronizando guías',
+                        detail: `Espera a que finalicen las ${this.bufferPendingCount} guías en cola antes de entregar a paquetería.`,
+                        life: 4000
+                    });
                 }
                 return;
             }
 
+            if (this.hasBufferErrors) {
+                this.bufferErrorsList = await getErrorScans();
+                this.onProceedErrorAction = () => {
+                    this.executeDispatchToCarrier();
+                };
+                this.showBufferErrorDialog = true;
+                return;
+            }
+
+            await this.executeDispatchToCarrier();
+        },
+
+        async proceedWithoutErrors() {
+            try {
+                await scanQueueWorker.triggerClearAllErrors();
+            } catch (e) {
+                console.error("Error clearing errors:", e);
+            }
+            this.showBufferErrorDialog = false;
+            if (this.onProceedErrorAction) {
+                const action = this.onProceedErrorAction;
+                this.onProceedErrorAction = null;
+                await action();
+            }
+        },
+
+        async executeDispatchToCarrier() {
             this.dispatching = true;
             try {
                 const cancelledOrders = this.so.filter(o => o.so_state === 'cancel');
