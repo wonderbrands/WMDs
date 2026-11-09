@@ -117,11 +117,22 @@ class WmdsMysqlConfig(models.Model):
                 cursor.execute(sql_default, (limit,))
                 rows = list(cursor.fetchall())
             
-            # 2. Insist on active sale orders missing SLA
-            missing_sla_orders = self.env['sale.order'].sudo().search([
+            # 2. Insist on active sale orders missing SLA (filtradas por canal y excluyendo Full según marketplace.schedule)
+            so_model = self.env['sale.order'].sudo()
+            exclude_full = True
+            if hasattr(so_model, '_should_exclude_full_for_channel'):
+                exclude_full = so_model._should_exclude_full_for_channel(self.marketplace)
+
+            missing_domain = [
                 ('state', '!=', 'cancel'),
                 ('sla_date', '=', False),
-            ], limit=5000)
+            ]
+            if self.marketplace and self.marketplace.strip():
+                missing_domain.append(('channel', 'ilike', self.marketplace.strip()))
+            if exclude_full and hasattr(so_model, '_get_non_full_domain'):
+                missing_domain += so_model._get_non_full_domain()
+
+            missing_sla_orders = so_model.search(missing_domain, order='date_order desc, id desc', limit=5000)
             
             missing_refs = set()
             for so in missing_sla_orders:
@@ -235,11 +246,17 @@ class WmdsMysqlConfig(models.Model):
             if 'order_progress' in so_model._fields:
                 domain += ['|', ('order_progress', '!=', 'sent'), ('order_progress', '=', False)]
 
+            if exclude_full and hasattr(so_model, '_get_non_full_domain'):
+                domain += so_model._get_non_full_domain()
+
             sale_orders = so_model.search(domain)
 
             updated_orders_count = 0
 
             for so in sale_orders:
+                if exclude_full and hasattr(so, '_is_full_order') and so._is_full_order():
+                    continue
+
                 target_dt = (
                     ref_sla_map.get(getattr(so, 'marketplace_ref', None)) or
                     ref_sla_map.get(getattr(so, 'channel_order_reference', None)) or
@@ -262,6 +279,17 @@ class WmdsMysqlConfig(models.Model):
                         vals['sla_original_date'] = dt_str
                     so.write(vals)
                     updated_orders_count += 1
+
+            # 3. Para órdenes Drop/No-Full del canal que sigan sin SLA tras sincronizar, calcular SLA según marketplace.schedule
+            still_missing_drop = missing_sla_orders.filtered(lambda o: not o.sla_date)
+            if still_missing_drop and hasattr(still_missing_drop, 'calculate_and_assign_sla'):
+                for drop_so in still_missing_drop:
+                    try:
+                        drop_so.calculate_and_assign_sla()
+                        if drop_so.sla_date:
+                            updated_orders_count += 1
+                    except Exception as ex:
+                        _logger.warning(f"Error calculando SLA post-sync para {drop_so.name}: {ex}")
 
             # Trigger priority recalculation for active sale orders if SLA module method exists
             active_orders = self.env['sale.order'].sudo().search([
@@ -287,7 +315,7 @@ class WmdsMysqlConfig(models.Model):
                 'message': success_msg,
                 'scanned_rows': len(rows),
                 'updated_orders': updated_orders_count,
-                'updated_pickings': updated_pickings_count
+                'updated_pickings': 0
             }
 
         except Exception as e:

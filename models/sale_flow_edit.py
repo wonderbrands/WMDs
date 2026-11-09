@@ -13,76 +13,10 @@ class SOWMDS(models.Model):
 
     @api.model
     def _cron_update_sla_priorities(self):
-        """ Actualiza masivamente los niveles de prioridad y etiquetas SLA según NOW() """
-        sql_so = """
-            UPDATE sale_order
-            SET sla_priority_level = CASE
-                    WHEN sla_date < (NOW() AT TIME ZONE 'UTC') THEN 'overdue'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '1 hour' THEN 'critical_1h'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '2 hours' THEN 'urgent_2h'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '6 hours' THEN 'warning_6h'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '24 hours' THEN 'notice_24h'
-                    ELSE 'normal'
-                END,
-                sla_priority_label = CASE
-                    WHEN sla_date < (NOW() AT TIME ZONE 'UTC') THEN 'SLA Vencido'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '1 hour' THEN 'Está a punto de llegar la recolecta (< 1h)'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '2 hours' THEN 'Quedan 2 horas para la recolecta'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '6 hours' THEN 'Quedan 6 horas para la recolecta'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '24 hours' THEN 'Quedan unas horas para la recolecta'
-                    ELSE 'En tiempo'
-                END
-            WHERE state != 'cancel'
-              AND sla_date IS NOT NULL
-              AND (
-                  sla_priority_level IS DISTINCT FROM CASE
-                      WHEN sla_date < (NOW() AT TIME ZONE 'UTC') THEN 'overdue'
-                      WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '1 hour' THEN 'critical_1h'
-                      WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '2 hours' THEN 'urgent_2h'
-                      WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '6 hours' THEN 'warning_6h'
-                      WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '24 hours' THEN 'notice_24h'
-                      ELSE 'normal'
-                  END
-              );
-        """
-        self.env.cr.execute(sql_so)
-        updated_so = self.env.cr.rowcount
-
-        sql_sp = """
-            UPDATE stock_picking
-            SET sla_priority_level = CASE
-                    WHEN sla_date < (NOW() AT TIME ZONE 'UTC') THEN 'overdue'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '1 hour' THEN 'critical_1h'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '2 hours' THEN 'urgent_2h'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '6 hours' THEN 'warning_6h'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '24 hours' THEN 'notice_24h'
-                    ELSE 'normal'
-                END,
-                sla_priority_label = CASE
-                    WHEN sla_date < (NOW() AT TIME ZONE 'UTC') THEN 'SLA Vencido'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '1 hour' THEN 'Está a punto de llegar la recolecta (< 1h)'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '2 hours' THEN 'Quedan 2 horas para la recolecta'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '6 hours' THEN 'Quedan 6 horas para la recolecta'
-                    WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '24 hours' THEN 'Quedan unas horas para la recolecta'
-                    ELSE 'En tiempo'
-                END
-            WHERE state NOT IN ('done', 'cancel')
-              AND sla_date IS NOT NULL
-              AND (
-                  sla_priority_level IS DISTINCT FROM CASE
-                      WHEN sla_date < (NOW() AT TIME ZONE 'UTC') THEN 'overdue'
-                      WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '1 hour' THEN 'critical_1h'
-                      WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '2 hours' THEN 'urgent_2h'
-                      WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '6 hours' THEN 'warning_6h'
-                      WHEN sla_date <= (NOW() AT TIME ZONE 'UTC') + interval '24 hours' THEN 'notice_24h'
-                      ELSE 'normal'
-                  END
-              );
-        """
-        self.env.cr.execute(sql_sp)
-        updated_sp = self.env.cr.rowcount
-        _logger.info(f"WMDS Cron SLA Priorities: Actualizadas {updated_so} órdenes de venta y {updated_sp} albaranes.")
-        return {'updated_so': updated_so, 'updated_sp': updated_sp}
+        """ Delega en SLA_module para limpiar órdenes Full excluidas, calcular SLA en órdenes Drop sin SLA y actualizar prioridades """
+        if hasattr(super(SOWMDS, self), '_cron_update_sla_priorities'):
+            return super(SOWMDS, self)._cron_update_sla_priorities()
+        return True
 
     def _update_wmds_status(self, status_val, log_msg=None):
         if not status_val:

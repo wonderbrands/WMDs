@@ -370,7 +370,11 @@ class OrderChannelController(http.Controller):
                 so_name = so.name or ''
                 channel = so.channel or ''
                 raw_ful = (getattr(so, 'fulfillment', '') or '') if so else ''
-                fulfillment = 'FULL' if raw_ful in ('fbc', 'fbf', 'full') else 'DROP'
+                is_so_full = bool(
+                    raw_ful in ('fbc', 'full')
+                    or (so and so.warehouse_id and so.warehouse_id.code in ('MLSR', 'MLTO', 'FBA', 'WLFL', 'CPFL', 'ELFL'))
+                )
+                fulfillment = 'FULL' if is_so_full else 'DROP'
                 yuju_due_date = getattr(so, 'yuju_due_date', False) or False
 
                 # TZ de esta SO según su canal (parametrizable por marketplace)
@@ -763,9 +767,9 @@ class OrderChannelController(http.Controller):
                     params.append(f"%{channel_filter}%")
 
             if fulfillment_filter in ('fbm', 'drop'):
-                where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'fbf'))")
-            elif fulfillment_filter in ('full', 'fbc', 'fbf'):
-                where.append("s.fulfillment IN ('fbc', 'fbf')")
+                where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'full'))")
+            elif fulfillment_filter in ('full', 'fbc'):
+                where.append("s.fulfillment IN ('fbc', 'full')")
 
             sql_metrics = f"""
                 SELECT 
@@ -853,9 +857,9 @@ class OrderChannelController(http.Controller):
                         params.append(f"%{channel_filter}%")
 
                 if fulfillment_filter in ('fbm', 'drop'):
-                    where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'fbf'))")
-                elif fulfillment_filter in ('full', 'fbc', 'fbf'):
-                    where.append("s.fulfillment IN ('fbc', 'fbf')")
+                    where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'full'))")
+                elif fulfillment_filter in ('full', 'fbc'):
+                    where.append("s.fulfillment IN ('fbc', 'full')")
 
                 if query:
                     where.append("(p.name ILIKE %s OR s.name ILIKE %s OR p.carrier_tracking_ref ILIKE %s OR rp.name ILIKE %s)")
@@ -915,7 +919,7 @@ class OrderChannelController(http.Controller):
                         'sale_id': r['sale_id'],
                         'so_name': r['so_name'] or 'Sin SO',
                         'channel': r['channel'],
-                        'fulfillment': 'FULL' if (r['fulfillment'] or '').lower() in ('fbc', 'fbf', 'full') else 'DROP',
+                        'fulfillment': 'FULL' if (r['fulfillment'] or '').lower() in ('fbc', 'full') else 'DROP',
                         'partner_name': r['partner_name'],
                         'batch_name': r['batch_name'],
                         'operator_name': r['operator_name'],
@@ -953,9 +957,9 @@ class OrderChannelController(http.Controller):
                         params.append(f"%{channel_filter}%")
 
                 if fulfillment_filter in ('fbm', 'drop'):
-                    where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'fbf'))")
-                elif fulfillment_filter in ('full', 'fbc', 'fbf'):
-                    where.append("s.fulfillment IN ('fbc', 'fbf')")
+                    where.append("(s.fulfillment IS NULL OR s.fulfillment NOT IN ('fbc', 'full'))")
+                elif fulfillment_filter in ('full', 'fbc'):
+                    where.append("s.fulfillment IN ('fbc', 'full')")
 
                 if query:
                     where.append("(s.name ILIKE %s OR s.channel_order_id ILIKE %s OR rp.name ILIKE %s)")
@@ -1057,7 +1061,7 @@ class OrderChannelController(http.Controller):
                         'sale_id': s_id,
                         'so_name': so['so_name'],
                         'channel': so['channel'],
-                        'fulfillment': 'FULL' if (so.get('fulfillment') or '').lower() in ('fbc', 'fbf', 'full') else 'DROP',
+                        'fulfillment': 'FULL' if (so.get('fulfillment') or '').lower() in ('fbc', 'full') else 'DROP',
                         'date_order': fields.Datetime.to_string(so['date_order']) if so['date_order'] else '',
                         'partner_name': so['partner_name'],
                         'carrier_name': so['carrier_name'] or out_data.get('carrier_name', ''),
@@ -1250,6 +1254,7 @@ class OrderChannelController(http.Controller):
                     'id': s.id,
                     'marketplace': s.marketplace,
                     'sla_source': s.sla_source,
+                    'exclude_full': getattr(s, 'exclude_full', True),
                     'monday_to_friday_': s.monday_to_friday_,
                     'saturday': s.saturday,
                     'sunday': s.sunday,
@@ -1302,6 +1307,10 @@ class OrderChannelController(http.Controller):
                 'sameDay_nextDay': int(data.get('sameDay_nextDay') or 0),
                 'auto_fill_dates': bool(data.get('auto_fill_dates')),
             }
+            if 'exclude_full' in data:
+                vals['exclude_full'] = bool(data.get('exclude_full'))
+            elif not m_id:
+                vals['exclude_full'] = True
 
             if m_id:
                 sch = env['marketplace.schedule'].sudo().browse(int(m_id))
