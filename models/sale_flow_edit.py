@@ -236,6 +236,11 @@ class IrAttachment(models.Model):
                 'user': self.env.user.id,
                 'date': fields.Datetime.now(),
             })
+            if hasattr(so, 'calculate_and_assign_sla') and (not so.sla_manual_override or so.sla_override_reason == 'prior_to_entry'):
+                try:
+                    so.calculate_and_assign_sla(force=(so.sla_override_reason == 'prior_to_entry'))
+                except Exception as e:
+                    _logger.error(f"Error recalculando SLA tras adjuntar guía en {so.name}: {e}")
 
 
 class SaleOrderLineWMDS(models.Model):

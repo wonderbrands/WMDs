@@ -329,7 +329,10 @@ class WmdsMysqlConfig(models.Model):
 
     @api.model
     def _cron_sync_mysql_sla(self):
-        """ Executed every 2 hours via cron job """
+        """ Desactivado en Odoo.sh: la sincronización MySQL SLA ahora corre desde el servidor externo (ClickHouse/Podman). """
+        if not self.env.context.get('force_mysql_sync'):
+            _logger.info("Cron WMDs MySQL SLA Sync omitido en Odoo (delegado al servicio externo en servidor ClickHouse).")
+            return False
         configs = self.search([('active', '=', True)])
         _logger.info(f"Cron WMDs MySQL SLA Sync: Iniciando para {len(configs)} configuraciones.")
         for config in configs:
