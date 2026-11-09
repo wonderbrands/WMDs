@@ -3,6 +3,7 @@ from odoo import models, fields, api, SUPERUSER_ID
 from odoo.exceptions import UserError
 import json
 import logging
+import re
 import traceback
 from collections import deque
 
@@ -83,6 +84,25 @@ class WmdsQueuedTasks(models.Model):
                 'date_processed': fields.Datetime.now()
             })
         return True
+
+    @api.model
+    def _normalize_barcode(self, raw):
+        """Normaliza códigos de barras escaneados corrigiendo anomalías conocidas:
+        - Invertidos por buffer de escáner (terminan en OS, ej: 1/68849301OS -> SO10394886/1)
+        - Falta de prefijo S inicial (ej: O10390927/1 -> SO10390927/1)
+        - Letra espuria al final por rebote de tecla (ej: SO10386370/1Q -> SO10386370/1)
+        """
+        if not raw or not isinstance(raw, str):
+            return raw
+        val = raw.strip()
+        if val.endswith('OS'):
+            val = val[::-1]
+        elif val.startswith('O10') and '/' in val:
+            val = 'S' + val
+        m = re.match(r'^(SO\d+/\d+)[A-Za-z]$', val)
+        if m:
+            val = m.group(1)
+        return val
 
     def _trigger_async_process(self):
         """Schedules the queue processor to run ASAP in the cron worker.
@@ -224,9 +244,13 @@ class WmdsQueuedTasks(models.Model):
         })
         self.env.cr.commit()
 
+        # Normalización preventiva de códigos escaneados
+        normalized_packs_ids = [self._normalize_barcode(p) for p in packs_ids]
+        lookup_keys = list(set(packs_ids + normalized_packs_ids))
+
         # 1. Búsqueda masiva inicial para eliminar latencia de base de datos
         ei_tags = self.env["sale.order.ei"].sudo().search([
-            ('display_name_custom', 'in', packs_ids)
+            ('display_name_custom', 'in', lookup_keys)
         ])
         tag_by_name = {t.display_name_custom: t for t in ei_tags}
 
@@ -264,20 +288,55 @@ class WmdsQueuedTasks(models.Model):
         so_pending_pickings = {} # H-2: recordset OUT pendiente por SO, evita re-búsqueda dentro del savepoint
         so_ei_total = {}         # H-4: ei_total por SO; sobrevive a invalidate_all() al ser un dict Python plano
         # H-7: ventana deslizante acotada para el detalle de ejecución.
-        # Antes log_lines era una lista sin límite y cada actualización de progreso
-        # re-unía TODAS las líneas acumuladas ("\n".join) escribiéndolas en la BD cada
-        # 10 paquetes: coste O(n²) en memoria y CPU que en lotes grandes contribuía al
-        # agotamiento de memoria del worker. Con deque(maxlen=...) sólo se conservan las
-        # últimas MAX_DETAIL_LINES; append/len/join siguen funcionando igual.
         MAX_DETAIL_LINES = 200
         log_lines = deque(maxlen=MAX_DETAIL_LINES)
         PROGRESS_INTERVAL = 10   # H-1: número de paquetes entre cada escritura de progreso a la BD
         
-        for idx, pack_id in enumerate(packs_ids):
+        for idx, pack_id_raw in enumerate(packs_ids):
             now_str = fields.Datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            pack_id = self._normalize_barcode(pack_id_raw)
 
-            # Obtener de forma instantánea en memoria sin hacer query
-            tag = tag_by_name.get(pack_id)
+            # Obtener de forma instantánea en memoria
+            tag = tag_by_name.get(pack_id) or tag_by_name.get(pack_id_raw)
+
+            # Si no existe la etiqueta en DB, pero corresponde a una orden de venta real (ej. se saltaron BIN):
+            if not tag and '/' in pack_id:
+                try:
+                    so_name_cand, seq_cand_str = pack_id.split('/', 1)
+                    if seq_cand_str.isdigit():
+                        seq_cand = int(seq_cand_str)
+                        cand_so = self.env['sale.order'].sudo().search([('name', '=', so_name_cand)], limit=1)
+                        if cand_so and cand_so.state not in ('draft', 'cancel'):
+                            tag = self.env['sale.order.ei'].sudo().search([
+                                ('so_id', '=', cand_so.id),
+                                ('sequence_number', '=', seq_cand)
+                            ], limit=1)
+                            if not tag:
+                                with self.env.cr.savepoint():
+                                    vals = {
+                                        'so_id': cand_so.id,
+                                        'sequence_number': seq_cand,
+                                        'dispatched': True,
+                                        'on_dock': False,
+                                        'dock_id': False,
+                                    }
+                                    if 'dispatch_status' in self.env['sale.order.ei']._fields:
+                                        vals['dispatch_status'] = 'success'
+                                    tag = self.env['sale.order.ei'].sudo().create(vals)
+                                self.env.cr.commit()
+                                _logger.info(f"Auto-creada etiqueta EI {pack_id} en despacho para SO {cand_so.name}")
+                            tag_by_name[pack_id] = tag
+                            tag_by_name[pack_id_raw] = tag
+                            if cand_so.id not in so_pick_picking:
+                                pick_p = self.env['stock.picking'].sudo().search([
+                                    ('sale_id', '=', cand_so.id),
+                                    ('state', 'in', ['assigned', 'done']),
+                                    ('picking_type_id.name', 'ilike', 'Pick')
+                                ], order='date_done desc', limit=1)
+                                if pick_p:
+                                    so_pick_picking[cand_so.id] = pick_p
+                except Exception as auto_ei_err:
+                    _logger.warning(f"No se pudo auto-crear EI para {pack_id}: {auto_ei_err}")
 
             if not tag:
                 err_msg = f"Paquete {pack_id}: No se encontró la etiqueta sale.order.ei en el sistema."
