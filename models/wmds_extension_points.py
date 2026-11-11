@@ -32,7 +32,7 @@ class SaleOrderEIExtensionPoints(models.Model):
             - ``consumed``: EI que el núcleo ya no debe procesar.
             - ``handled``: EI resueltas con éxito (el núcleo marca `dispatch_status`).
             - ``errors``: mensajes; en el despacho síncrono detienen el despacho,
-              en la cola se registran como advertencia.
+              en la cola cuentan como errores de la tarea.
             - ``log``: líneas para el detalle de la tarea en cola.
         """
         empty = self.browse()
