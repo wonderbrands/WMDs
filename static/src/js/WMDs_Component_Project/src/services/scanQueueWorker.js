@@ -396,6 +396,19 @@ class ScanQueueWorker {
         };
     }
 
+    async saveDispatchSessionLine(item, valRes) {
+        const payload = item.payload || {};
+        return this.store.callOdooSilent("save_dispatch_session_line", "", {
+            operator_login: payload.operator_login || this.store.role?.email,
+            ei_name: valRes.name || item.barcode,
+            so_name: valRes.so,
+            total: valRes.total,
+            current: valRes.current,
+            dispatched_count: valRes.dispatched_count || 0,
+            carrier_id: payload.carrier_id || null
+        });
+    }
+
     /**
      * Lógica de validación y persistencia para etiquetas EI en Despacho
      */
@@ -417,6 +430,18 @@ class ScanQueueWorker {
         }
 
         if (valRes.so_state === 'cancel') {
+            // Orden retenida por el complemento de cancelaciones: la guía se registra en la sesión
+            // porque la retención depende de las guías en sesión; el operador decide en el modal.
+            if (valRes.cancel_hold) {
+                const sessionRes = await this.saveDispatchSessionLine(item, valRes);
+                if (!sessionRes || sessionRes.carrier_mismatch || !sessionRes.ok) {
+                    return {
+                        ok: false,
+                        error: (sessionRes && (sessionRes.mismatch_message || sessionRes.error)) || 'Error guardando línea de sesión en Odoo',
+                        data: sessionRes
+                    };
+                }
+            }
             return {
                 ok: false,
                 error: `El pedido ${valRes.so} está cancelado.`,
@@ -432,16 +457,7 @@ class ScanQueueWorker {
             };
         }
 
-        const payload = item.payload || {};
-        const sessionRes = await this.store.callOdooSilent("save_dispatch_session_line", "", {
-            operator_login: payload.operator_login || this.store.role?.email,
-            ei_name: valRes.name || item.barcode,
-            so_name: valRes.so,
-            total: valRes.total,
-            current: valRes.current,
-            dispatched_count: valRes.dispatched_count || 0,
-            carrier_id: payload.carrier_id || null
-        });
+        const sessionRes = await this.saveDispatchSessionLine(item, valRes);
 
         if (sessionRes && sessionRes.carrier_mismatch) {
             return {

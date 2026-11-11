@@ -28,6 +28,8 @@ export const useGeneralStore = defineStore('general_store', {
           has_data: false,
           last_error: null
       },
+      // Complementos WMDs instalados en Odoo (/wmds/v2/features), p. ej. {cancel: true}
+      features: {},
       available_main_manager_screens: {
 
         home:{
@@ -346,7 +348,8 @@ export const useGeneralStore = defineStore('general_store', {
     hasBufferErrors: (state) => (state.buffer_stats?.error || 0) > 0,
     bufferPendingCount: (state) => (state.buffer_stats?.pending || 0) + (state.buffer_stats?.processing || 0),
     bufferErrorCount: (state) => state.buffer_stats?.error || 0,
-    isConfirmationBlocked: (state) => ((state.buffer_stats?.pending || 0) + (state.buffer_stats?.processing || 0)) > 0
+    isConfirmationBlocked: (state) => ((state.buffer_stats?.pending || 0) + (state.buffer_stats?.processing || 0)) > 0,
+    hasFeature: (state) => (name) => !!state.features[name],
   },
   actions: {
     formatDate(utcDate) {
@@ -372,6 +375,16 @@ export const useGeneralStore = defineStore('general_store', {
         if (!isSilent) this.loading = true;
         try {
             const result = await this.odoo_middleware.getFromOdoo(context, term, params);
+
+            if (result && result.error && result.error.code === 'feature_unavailable' && !isSilent) {
+                this.toast.add({
+                    severity: 'warn',
+                    summary: 'Función no disponible',
+                    detail: result.error.message,
+                    life: 5000
+                });
+                return result;
+            }
 
             if (result && result.error && !isSilent) {
                 const errorMessage = result.error.data?.message || result.error.message || 'Ocurrió un error inesperado.';
@@ -405,6 +418,13 @@ export const useGeneralStore = defineStore('general_store', {
     },
     async callOdooSilent(context, term, params) {
         return this.callOdoo(context, term, params, { silent: true });
+    },
+    async loadFeatures() {
+        const result = await this.callOdooSilent("features", "", {});
+        if (result && !result.error && result.features) {
+            this.features = result.features;
+            this.odoo_middleware.setFeatures(result.features);
+        }
     },
 
     setCurrentScreen(newScreen) {

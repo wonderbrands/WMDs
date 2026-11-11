@@ -7,6 +7,9 @@ class OdooManagerMiddlewareDefinition{
         this.role = role
     }
 
+    setFeatures(features){
+    }
+
     async getFromOdoo(context, term, params={}){
         return null
     }
@@ -72,6 +75,9 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                 regex = new RegExp(".*" + term + ".*", "i")
                 const filteredIngresos = ingresos.filter(ingreso => regex.test(ingreso.name)).slice(0, 5)
                 return filteredIngresos;
+
+            case "features":
+                return { features: { cancel: true } };
 
             case "operadores":
                 const operadores = [
@@ -425,10 +431,16 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
     }
 }
 
+const FEATURE_UNAVAILABLE_MESSAGE = 'Esta función no está disponible: su complemento de WMDs no está instalado en Odoo.'
+
 class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
     constructor() {
         super()
+        // Complementos activos ({cancel: true, ...}); null = aún no se consultó /wmds/v2/features.
+        this.features = null
+        // `feature`: la ruta la define un complemento; solo se llama si está instalado.
         this.endpointMap = {
+            features: {url: '/wmds/v2/features', method: 'POST'},
             operator_list: {url: '/wmds/v2/engine/get/operators', method: 'POST'},
             operator_roles: {url: '/wmds/v2/engine/get/operator_roles', method: 'POST'},
             save_operator: {url: '/wmds/v2/engine/post/save_operator', method: 'POST'},
@@ -501,6 +513,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             get_dispatch_session: {url: '/wmds/v2/engine/post/get_dispatch_session', method: 'POST'},
             save_dispatch_session_line: {url: '/wmds/v2/engine/post/save_dispatch_session_line', method: 'POST'},
             remove_dispatch_session_line: {url: '/wmds/v2/engine/post/remove_dispatch_session_line', method: 'POST'},
+            mark_cancelled_shipped: {url: '/wmds/v2/engine/post/mark_cancelled_shipped', method: 'POST', feature: 'cancel'},
             clear_dispatch_session: {url: '/wmds/v2/engine/post/clear_dispatch_session', method: 'POST'},
             complete_dispatch_session: {url: '/wmds/v2/engine/post/complete_dispatch_session', method: 'POST'},
             cancel_dispatch_session: {url: '/wmds/v2/engine/post/cancel_dispatch_session', method: 'POST'},
@@ -556,6 +569,14 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
         super.setRole(role)
     }
 
+    setFeatures(features){
+        this.features = features
+    }
+
+    _featureUnavailable(context) {
+        return { error: { code: 'feature_unavailable', message: FEATURE_UNAVAILABLE_MESSAGE, data: { debug: `Ruta: ${context}` } } };
+    }
+
     async _fetch(endpoint, params, method) {
         console.log("Call backend")
         console.log(params)
@@ -572,6 +593,10 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
                     params: params
                   })
             });
+            if (response.status === 404) {
+                // Ruta inexistente: normalmente un complemento no instalado.
+                return this._featureUnavailable(endpoint);
+            }
             const result = await response.json();
             console.log(result);
             return result;
@@ -591,6 +616,9 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
         const endpointConfig = this.endpointMap[context];
         if (!endpointConfig) {
             return { error: { message: `Endpoint no configurado para: ${context}` } };
+        }
+        if (endpointConfig.feature && this.features && !this.features[endpointConfig.feature]) {
+            return this._featureUnavailable(context);
         }
 
         let fetchParams;

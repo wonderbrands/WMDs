@@ -168,6 +168,7 @@
                                     <span>{{ order.name }}</span>
                                     <small class="text-info ml-1">({{ order.current }}/{{ order.total }})</small>
                                     <span v-if="order.so_state === 'cancel'" class="badge-cancelled">CANCELADO</span>
+                                    <span v-if="order.cancel_decision === 'shipped'" class="badge-shipped">EMBARCADA</span>
 
                                     <!-- Status Pills -->
                                     <span v-if="order.sync_status === 'pending'" class="badge-queue badge-pending">
@@ -336,8 +337,12 @@
         :show="cancelledModal.show"
         :pending="cancelledModal.pending"
         :confirmed="cancelledModal.confirmed"
+        :shipped="cancelledModal.shipped"
+        :productChoice="cancelledModal.productChoice"
         :lastError="cancelledModal.lastError"
         :onScanCancelled="confirmCancelledScan"
+        :onMarkShipped="markCancelledShipped"
+        :onCancelProductChoice="() => { cancelledModal.productChoice = null; }"
     />
 
     <!-- Diálogo para escaneos erróneos no bloqueantes -->
@@ -433,8 +438,10 @@ export default {
             // ── Modal cancelados ──
             cancelledModal: {
                 show: false,
-                pending: [],       // [{ name, so_name }]
-                confirmed: [],     // nombres EI ya escaneados
+                pending: [],       // [{ name, so_name, hold }]
+                confirmed: [],     // nombres EI ya resueltas (retiradas o embarcadas)
+                shipped: [],       // nombres EI marcadas como embarcadas
+                productChoice: null, // { item, products } cuando la orden tiene varios productos
                 inputValue: '',
                 lastError: '',
                 onFinish: null,    // callback opcional tras completar
@@ -621,10 +628,9 @@ export default {
                     if (resp && resp.so_state === 'cancel') {
                         item.so_state = 'cancel';
                         item.so_name = resp.so || item.so_name;
-                        this.openCancelledModal(
-                            [{ name: item.name, so_name: item.so_name }],
-                            null
-                        );
+                        item.cancel_hold = resp.cancel_hold || false;
+                        item.cancel_decision = resp.cancel_decision || false;
+                        this.openCancelledModal([this.cancelledModalItem(item)], null);
                     }
                 }
                 if (this.$toast) {
@@ -661,6 +667,8 @@ export default {
                         name: line.ei_name,
                         so_name: line.so_name,
                         so_state: line.so_state,
+                        cancel_hold: line.cancel_hold || false,
+                        cancel_decision: line.cancel_decision || false,
                         total: line.total_ei,
                         current: line.sequence_number,
                         dispatched_count: line.dispatched_count,
@@ -680,10 +688,10 @@ export default {
                     console.log(`Action: Sesión ${this.sessionId} recuperada con ${this.so.length} líneas`);
 
                     // Abrir modal si hay canceladas en la sesión recuperada
-                    const cancelledLines = this.so.filter(o => o.so_state === 'cancel');
+                    const cancelledLines = this.pendingCancelled();
                     if (cancelledLines.length > 0) {
                         this.openCancelledModal(
-                            cancelledLines.map(o => ({ name: o.name, so_name: o.so_name })),
+                            cancelledLines.map(this.cancelledModalItem),
                             null // sin callback especial al recuperar sesión
                         );
                     }
@@ -845,9 +853,9 @@ export default {
         },
 
         async removeCancelledOrders() {
-            const cancelled = this.so.filter(o => o.so_state === 'cancel');
+            const cancelled = this.pendingCancelled();
             for (const order of cancelled) {
-                await this.removeFromSession(order.name);
+                await this.removeFromSession(order.name, true);
                 await this.removeFromLocalQueue(order.name);
                 const idx = this.so.findIndex(o => o.name === order.name);
                 if (idx !== -1) {
@@ -998,11 +1006,16 @@ export default {
         async executeDispatchToCarrier() {
             this.dispatching = true;
             try {
-                const cancelledOrders = this.so.filter(o => o.so_state === 'cancel');
+                // Con el complemento de cancelaciones, una cancelación puede llegar después del último escaneo.
+                if (this.store.hasFeature('cancel')) {
+                    await this.refreshCancelStates();
+                }
+
+                const cancelledOrders = this.pendingCancelled();
                 if (cancelledOrders.length > 0) {
                     // Abrir modal obligatorio antes de poder despachar
                     this.openCancelledModal(
-                        cancelledOrders.map(o => ({ name: o.name, so_name: o.so_name })),
+                        cancelledOrders.map(this.cancelledModalItem),
                         () => this.dispatchToCarrier() // reintentar despacho tras confirmar
                     );
                     return;
@@ -1325,9 +1338,96 @@ export default {
         // MODAL CANCELADOS
         // ═══════════════════════════════════════════
 
+        // Guías de pedidos cancelados que siguen pendientes de retirar
+        // (las marcadas como embarcadas ya se resolvieron y se despachan normalmente).
+        pendingCancelled() {
+            return this.so.filter(o => o.so_state === 'cancel' && o.cancel_decision !== 'shipped');
+        },
+
+        cancelledModalItem(o) {
+            return { name: o.name, so_name: o.so_name, hold: !!o.cancel_hold };
+        },
+
+        // Actualiza el estado de las órdenes (canceladas / retenidas) desde la sesión en Odoo.
+        async refreshCancelStates() {
+            try {
+                const response = await this.store.callOdooSilent("get_dispatch_session", "", {
+                    operator_login: this.store.role.email
+                });
+                if (!response || !response.active || !response.lines) return;
+                const byName = {};
+                response.lines.forEach(l => { byName[l.ei_name] = l; });
+                this.so.forEach(o => {
+                    const l = byName[o.name];
+                    if (l) {
+                        o.so_state = l.so_state;
+                        o.cancel_hold = l.cancel_hold || false;
+                        o.cancel_decision = l.cancel_decision || false;
+                    }
+                });
+            } catch (e) {
+                console.error("Error actualizando estado de órdenes:", e);
+            }
+        },
+
+        checkCancelledModalDone() {
+            if (this.cancelledModal.confirmed.length !== this.cancelledModal.pending.length) {
+                return false;
+            }
+            setTimeout(async () => {
+                this.cancelledModal.show = false;
+                const cb = this.cancelledModal.onFinish;
+                this.cancelledModal.onFinish = null;
+                if (cb) await cb();
+            }, 800); // pequeña pausa para que el operador vea el feedback verde
+            return true;
+        },
+
+        // El paquete de un pedido cancelado ya está dentro del contenedor/carrier:
+        // se despacha (sale al cliente) en lugar de retirarse.
+        async markCancelledShipped(item, productId = null) {
+            this.cancelledModal.lastError = '';
+            try {
+                const response = await this.store.callOdoo("mark_cancelled_shipped", "", {
+                    operator_login: this.store.role.email,
+                    ei_name: item.name,
+                    product_id: productId,
+                });
+                if (response && response.need_product) {
+                    this.cancelledModal.productChoice = { item, products: response.products || [] };
+                    if (!response.ok) {
+                        this.cancelledModal.lastError = response.message || 'Selecciona un producto con piezas pendientes.';
+                    }
+                    return;
+                }
+                if (!response || !response.ok) {
+                    this.cancelledModal.lastError = (response && (response.message || response.error?.message)) || 'No se pudo marcar la guía como embarcada.';
+                    return;
+                }
+                this.cancelledModal.productChoice = null;
+                const line = this.so.find(o => o.name === item.name);
+                if (line) {
+                    line.cancel_decision = 'shipped';
+                    // Un escaneo rechazado por estar cancelado ya quedó resuelto: no es un error de la cola.
+                    if (line.sync_status === 'error') {
+                        line.sync_status = 'synced';
+                        line.sync_error = null;
+                        await this.removeFromLocalQueue(item.name);
+                    }
+                }
+                if (!this.cancelledModal.shipped.includes(item.name)) this.cancelledModal.shipped.push(item.name);
+                if (!this.cancelledModal.confirmed.includes(item.name)) this.cancelledModal.confirmed.push(item.name);
+                this.checkCancelledModalDone();
+            } catch (e) {
+                this.cancelledModal.lastError = 'Error al marcar la guía como embarcada.';
+            }
+        },
+
         openCancelledModal(cancelledItems, onFinishCallback) {
             this.cancelledModal.pending = cancelledItems;
             this.cancelledModal.confirmed = [];
+            this.cancelledModal.shipped = [];
+            this.cancelledModal.productChoice = null;
             this.cancelledModal.inputValue = '';
             this.cancelledModal.lastError = '';
             this.cancelledModal.onFinish = onFinishCallback || null;
@@ -1374,16 +1474,8 @@ export default {
                     this.cancelledModal.inputValue = '';
                     this.cancelledModal.lastError = '';
 
-                    // Si ya se removieron todas, cerrar el modal automáticamente
-                    if (this.cancelledModal.confirmed.length === this.cancelledModal.pending.length) {
-                        setTimeout(async () => {
-                            this.cancelledModal.show = false;
-                            const cb = this.cancelledModal.onFinish;
-                            this.cancelledModal.onFinish = null;
-                            if (cb) await cb();
-                        }, 800); // pequeña pausa para que el operador vea el feedback verde
-                        return;
-                    }
+                    // Si ya se resolvieron todas, cerrar el modal automáticamente
+                    if (this.checkCancelledModalDone()) return;
                 } else {
                     this.cancelledModal.lastError = `Guía inválida o no encontrada: "${scanned}".`;
                     this.cancelledModal.inputValue = '';
@@ -1935,6 +2027,16 @@ export default {
     background-color: #fadbd8 !important;
     border-left: 4px solid #e74c3c !important;
     color: #78281f !important;
+}
+
+.badge-shipped {
+    background: #3498db;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 6px;
 }
 
 .badge-cancelled {
