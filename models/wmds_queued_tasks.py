@@ -254,6 +254,23 @@ class WmdsQueuedTasks(models.Model):
         ])
         tag_by_name = {t.display_name_custom: t for t in ei_tags}
 
+        # Punto de extensión: EI que un complemento resuelve antes del bucle. Las que quedan
+        # 'dispatched' se omiten en el bucle como ya despachadas.
+        special_log = []
+        special_errors = []
+        try:
+            special = ei_tags._wmds_dispatch_handle(operator=operator)
+            if special['consumed']:
+                if special['handled'] and 'dispatch_status' in self.env['sale.order.ei']._fields:
+                    special['handled'].write({'dispatch_status': 'success'})
+                self.env.cr.commit()
+            special_log += special['log']
+            special_errors += special['errors']
+        except Exception as e:
+            self.env.cr.rollback()
+            _logger.error(f"Error en complementos antes del despacho: {e}\n{traceback.format_exc()}")
+            special_errors.append(f"Error en complementos antes del despacho: {e}")
+
         # SO IDs presentes en este lote; usados por H-3 y H-5
         all_so_ids = list({t.so_id.id for t in ei_tags if t.so_id})
 
@@ -282,7 +299,7 @@ class WmdsQueuedTasks(models.Model):
             )
             so_dispatched_count = {d['so_id'][0]: d['so_id_count'] for d in count_data}
 
-        errors = []
+        errors = list(special_errors)
         success_packs = []
         so_out_closed = {}       # Caché en memoria para almacenar si el OUT de una Sale Order ya está cerrado
         so_pending_pickings = {} # H-2: recordset OUT pendiente por SO, evita re-búsqueda dentro del savepoint
@@ -566,6 +583,9 @@ class WmdsQueuedTasks(models.Model):
 
             # Invalida el caché de Odoo en cada iteración para liberar memoria y evitar MemoryError
             self.env.invalidate_all()
+
+        # Lo resuelto por complementos va al final para que la ventana de MAX_DETAIL_LINES no lo descarte.
+        log_lines.extend(special_log + [f"ERROR: {e}" for e in special_errors])
 
         # Escribir el log final consolidado
         final_msg = (

@@ -73,6 +73,8 @@ class DispatchSessionController(http.Controller):
                 return {"active": False}
 
             lines = []
+            # Punto de extensión: datos extra de los complementos por línea.
+            extra_by_line = session.line_ids._wmds_extra_values()
             for line in session.line_ids:
                 # Find the current state of the SO linked to this line
                 so_state = 'draft'
@@ -95,6 +97,7 @@ class DispatchSessionController(http.Controller):
                     "total_ei": line.total_ei,
                     "sequence_number": line.sequence_number,
                     "dispatched_count": line.dispatched_count,
+                    **extra_by_line.get(line.id, {}),
                 })
 
             return {
@@ -265,6 +268,10 @@ class DispatchSessionController(http.Controller):
                         })
 
                 line.unlink()
+
+                # Punto de extensión: los complementos reaccionan a la línea quitada.
+                session._wmds_after_line_removed(
+                    ei_name, so_name, cancelled_removal=cancelled_removal, operator=operator)
                 return {"ok": True}
 
             return {"ok": False, "error": "Línea no encontrada"}
@@ -294,6 +301,8 @@ class DispatchSessionController(http.Controller):
             ], limit=1)
 
             if session and session.line_ids:
+                # Punto de extensión: las líneas se liberan sin despacharse.
+                session._wmds_on_session_released(session.line_ids)
                 session.line_ids.unlink()
 
             return {"ok": True}
@@ -398,10 +407,13 @@ class DispatchSessionController(http.Controller):
             ], limit=1)
 
             if session:
+                lines = session.line_ids
                 session.write({
                     'state': 'cancelled',
                     'date_end': fields.Datetime.now(),
                 })
+                # Punto de extensión: las líneas se liberan sin despacharse.
+                session._wmds_on_session_released(lines)
                 return {"ok": True}
 
             return {"ok": True, "message": "No había sesión activa"}

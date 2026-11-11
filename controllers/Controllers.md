@@ -78,7 +78,8 @@
 | `/wmds/v2/engine/post/validate_ei_carrier` | `POST` JSON | Valida que la EI pertenezca al carrier de la sesión actual. Compartido por BIN y DISPATCH. | `so_name` (str), `carrier_id` (int). |
 | `/wmds/v2/engine/post/get_dispatch_session` | `POST` JSON | Busca la sesión activa del operador y devuelve todos sus datos para restaurar estado. | `operator_login` (str). |
 | `/wmds/v2/engine/post/save_dispatch_session_line` | `POST` JSON | Agrega una línea de EI escaneada a la sesión. Crea la sesión si no existe. Obtiene producto y carrier automáticamente de la SO. Valida que no haya duplicados y que el carrier coincida. | `operator_login` (str), `carrier_id` (int), `ei_name` (str), `so_name` (str), `total` (int, default 0), `current` (int, default 0), `dispatched_count` (int, default 0). |
-| `/wmds/v2/engine/post/remove_dispatch_session_line` | `POST` JSON | Elimina una línea de la sesión activa. Si es por cancelación, registra en wmds.log de la SO. | `operator_login` (str), `ei_name` (str), `cancelled_removal` (bool, default False). |
+| `/wmds/v2/engine/post/remove_dispatch_session_line` | `POST` JSON | Elimina una línea de la sesión activa. Si es por cancelación, registra en wmds.log de la SO, marca la EI como *Retirada* y, si la SO tiene el OUT retenido y ya no le quedan EI en sesión, lo resuelve (lo no entregado va a Guardería). | `operator_login` (str), `ei_name` (str), `cancelled_removal` (bool, default False). |
+| `/wmds/v2/engine/post/mark_cancelled_shipped` | `POST` JSON | El despachador indica que la EI de una SO cancelada (OUT retenido) ya está dentro del contenedor/carrier. Si la SO tiene varios productos y no se envía `product_id`, responde `need_product` con la lista de productos con piezas pendientes. Errores en la clave `message`. **La define el complemento `wmds_cancel`.** | `operator_login` (str), `ei_name` (str), `product_id` (int, opcional). |
 | `/wmds/v2/engine/post/clear_dispatch_session` | `POST` JSON | Limpia todas las líneas de la sesión sin cancelarla. | `operator_login` (str). |
 | `/wmds/v2/engine/post/complete_dispatch_session` | `POST` JSON | Marca la sesión como completada, genera la hoja de salida (`wmds.dispatch.sheet`), y devuelve resumen de SOs y EIs. | `operator_login` (str). |
 | `/wmds/v2/engine/post/cancel_dispatch_session` | `POST` JSON | Cancela la sesión activa. | `operator_login` (str). |
@@ -109,7 +110,7 @@
 |---|---|---|---|
 | `/wmds/v2/engine/get/pending_full_dispatch` | `POST` JSON | Lista todos los movimientos de stock que están en DOCK y no han sido despachados. | Ninguno. |
 | `/wmds/v2/engine/post/dispatch_full_items` | `POST` JSON | Despacha parcial o totalmente ítems de fulfillment. Actualiza `qty_dispatched`, `dispatched`, `on_dock`. | `items` (list[dict] — `[{move_id, qty}]`), `operator_login` (str). |
-| `/wmds/v2/engine/post/dispatch_packet` | `POST` JSON | Despacha paquetes EI. Marca `dispatched=True`, limpia `on_dock`/`dock_id`. Si >10 paquetes, encola. Si todos los paquetes de una SO están despachados, valida automáticamente los pickings relacionados. | `picks_ids` (list[str]) — nombres de EI. `operator_login` (str). |
+| `/wmds/v2/engine/post/dispatch_packet` | `POST` JSON | Despacha paquetes EI. Marca `dispatched=True`, limpia `on_dock`/`dock_id`. Si >10 paquetes, encola. Si todos los paquetes de una SO están despachados, valida automáticamente los pickings relacionados. Las SO canceladas con OUT retenido se resuelven primero: OUT solo por las EI *Embarcadas* y el resto a Guardería; si alguna EI no tiene decisión, devuelve error. | `picks_ids` (list[str]) — nombres de EI. `operator_login` (str). |
 
 ---
 
@@ -280,3 +281,32 @@ Hereda los endpoints del controlador padre (`stock_barcode`). No añade rutas nu
 | `pickings.py` | `AvailableOperators` | Búsqueda legacy de recepciones |
 | `portal_wmds.py` | `WMDS_Portal` | Página principal de WMDS |
 | `user_access.py` | `UserAccess` | Autenticación y permisos |
+
+## Puntos de extensión para complementos
+
+Definidos en `models/wmds_extension_points.py`. El núcleo los llama con su valor neutro; los complementos
+(`wmds_<funcionalidad>`) los sobrescriben con `_inherit`, siempre combinando con `super()`. Sin complementos, WMDs
+se comporta igual que sin ellos.
+
+| Método | Modelo | Se llama desde | Devuelve (valor neutro) |
+|---|---|---|---|
+| `_wmds_dispatch_prefilter(operator)` | `sale.order.ei` | `dispatch_packet`, antes de validar | `(EI, False)`; un mensaje de error detiene el despacho |
+| `_wmds_dispatch_allows_cancelled()` | `sale.order` | `dispatch_packet`, validación de SO canceladas | `False`; `True` deja pasar una SO cancelada que resuelve un complemento |
+| `_wmds_dispatch_handle(operator)` | `sale.order.ei` | `dispatch_packet` y `_execute_dispatch_package` | `{'consumed', 'handled', 'errors', 'log'}` vacíos |
+| `_wmds_scan_extra_values()` | `sale.order.ei` | `validate_attachment_guide` | `{}` que se agrega a la respuesta |
+| `_wmds_extra_values()` | `wmds.dispatch.session.line` | `get_dispatch_session` | `{line.id: {}}` que se agrega a cada línea |
+| `_wmds_after_line_removed(ei_name, so_name, cancelled_removal, operator)` | `wmds.dispatch.session` | `remove_dispatch_session_line`, después de borrar la línea | `None` |
+| `_wmds_on_session_released(lines)` | `wmds.dispatch.session` | `clear_dispatch_session` (antes de borrar) y `cancel_dispatch_session` (después de cancelar) | `None` |
+| `_wmds_features()` | `wmds.features` (abstracto) | `/wmds/v2/features` | `{}`; cada complemento agrega su clave (`res['cancel'] = True`) |
+
+### `/wmds/v2/features`
+
+`POST` JSON, sin parámetros. Responde `{"features": {"cancel": true, ...}}` con los complementos instalados; una
+clave ausente = complemento no instalado. El front la llama al arrancar (`store.loadFeatures()`) para ocultar menús
+de complementos y no llamar rutas que no existen.
+
+## Complementos que usan estos puntos de extensión
+
+| Complemento | Qué agrega |
+|---|---|
+| `wmds_cancel` | Cancelación durante el despacho: OUT retenido, decisión por EI (*Embarcada*/*Retirada*), ruta `mark_cancelled_shipped` y campos `cancel_hold`/`cancel_decision` en las respuestas de sesión y escaneo. Se activa en WMDS → Configuración → Ajustes. Clave en `/wmds/v2/features`: `cancel`. |
