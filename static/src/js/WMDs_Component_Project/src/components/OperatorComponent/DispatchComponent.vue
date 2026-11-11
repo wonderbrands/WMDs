@@ -848,6 +848,7 @@ export default {
             const cancelled = this.so.filter(o => o.so_state === 'cancel');
             for (const order of cancelled) {
                 await this.removeFromSession(order.name);
+                await this.removeFromLocalQueue(order.name);
                 const idx = this.so.findIndex(o => o.name === order.name);
                 if (idx !== -1) {
                     this.so.splice(idx, 1);
@@ -1230,9 +1231,15 @@ export default {
                 const eiName = this.so[index].name;
                 this.so.splice(index, 1);
                 await this.removeFromSession(eiName);
-                const activeSessionKey = String(this.sessionId || (this.sessionCarrierId ? 'carrier_' + this.sessionCarrierId : 'default'));
-                await localDb.scanQueue.where({ sessionId: activeSessionKey, barcode: eiName }).delete();
+                await this.removeFromLocalQueue(eiName);
             }
+        },
+
+        // Quita la guía de la cola local (Dexie) para que no se reintente ni cuente como error.
+        async removeFromLocalQueue(eiName) {
+            const activeSessionKey = String(this.sessionId || (this.sessionCarrierId ? 'carrier_' + this.sessionCarrierId : 'default'));
+            await localDb.scanQueue.where({ sessionId: activeSessionKey, barcode: eiName }).delete();
+            await scanQueueWorker.refreshBufferStats();
         },
 
         async dispatchFullItem(item) {
@@ -1359,6 +1366,7 @@ export default {
 
                     // Remover inmediatamente de la sesión y de la lista local
                     await this.removeFromSession(resolvedName, true); // true = cancelled_removal
+                    await this.removeFromLocalQueue(resolvedName);
                     const idx = this.so.findIndex(o => o.name === resolvedName);
                     if (idx !== -1) this.so.splice(idx, 1);
 
