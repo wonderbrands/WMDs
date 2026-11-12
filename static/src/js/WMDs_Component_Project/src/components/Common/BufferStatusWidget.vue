@@ -85,14 +85,25 @@
               <i class="fa fa-exclamation-triangle"></i>
               <strong>Errores en Buffer ({{ stats.error }}):</strong>
             </div>
-            <button 
-              class="btn-mini-danger" 
-              @click="handleClearAllErrors"
-              :disabled="isDeleting"
-              title="Borrar todos los errores del buffer local"
-            >
-              <i class="fa fa-trash"></i> Borrar todos
-            </button>
+            <div style="display: flex; gap: 6px;">
+              <button 
+                class="btn-mini-retry" 
+                @click="handleManualRetry"
+                :disabled="isRetrying"
+                title="Reintentar escaneos con error"
+                style="background: #2563eb; color: #fff; border: none; border-radius: 4px; padding: 4px 8px; font-size: 0.75rem; cursor: pointer;"
+              >
+                <i class="fa fa-repeat" :class="{ 'fa-spin': isRetrying }"></i> Reintentar
+              </button>
+              <button 
+                class="btn-mini-danger" 
+                @click="handleClearAllErrors"
+                :disabled="isDeleting"
+                title="Descartar errores del buffer local"
+              >
+                <i class="fa fa-trash"></i> Descartar errores
+              </button>
+            </div>
           </div>
 
           <!-- Barra de selección masiva -->

@@ -89,7 +89,8 @@ export default {
         extra_data: Object,
         disableFocus: { type: Boolean, default: false },
         queueMode: { type: Boolean, default: false },
-        skipQueue: { type: Boolean, default: false }
+        skipQueue: { type: Boolean, default: false },
+        requireSO: { type: Boolean, default: false }
     },
     mounted() {
         console.log("mounted");
@@ -276,8 +277,56 @@ export default {
                 // AudioContext not supported or blocked
             }
         },
+        playErrorSound() {
+            try {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                const ctx = new AudioContext();
+                const oscillator = ctx.createOscillator();
+                const gainNode = ctx.createGain();
+                
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(220, ctx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.25);
+                
+                gainNode.gain.setValueAtTime(0.2, ctx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(ctx.destination);
+                
+                oscillator.start();
+                oscillator.stop(ctx.currentTime + 0.25);
+            } catch (error) {
+                // AudioContext not supported or blocked
+            }
+        },
         async triggerScan(code) {
-            console.log("triggerScan", code);
+            const cleanBarcode = String(code || '').trim();
+            if (!cleanBarcode) return;
+
+            // Validación síncrona inmediata: prefijo 'SO' obligatorio en flujos de SO/Despacho
+            const mustStartWithSO = this.requireSO || this.context === 'bin_scan_so' || (this.queueMode && this.context !== 'direct_scan');
+            if (mustStartWithSO && !cleanBarcode.startsWith('SO')) {
+                console.warn("[BarcodeScanner] Rechazo síncrono inmediato: No empieza con SO ->", cleanBarcode);
+                this.playErrorSound();
+                if (this.store && this.store.toast) {
+                    this.store.toast.add({
+                        severity: 'error',
+                        summary: 'Código Inválido',
+                        detail: `El código "${cleanBarcode}" no es válido. Debe comenzar con "SO".`,
+                        life: 4000
+                    });
+                }
+                if (this.reader === 'camera') {
+                    this.scan_lockout = true;
+                    setTimeout(() => {
+                        this.scan_lockout = false;
+                    }, 800);
+                }
+                return;
+            }
+
+            console.log("triggerScan", cleanBarcode);
             this.playBeep();
 
             if (this.reader === 'camera') {
@@ -297,10 +346,10 @@ export default {
             // Escaneo interactivo directo (ubicación, BIN, DOCK o skipQueue explícito)
             if (this.skipQueue || (!this.queueMode && this.onScan && (!this.context || this.context === 'direct_scan'))) {
                 if (this.onScan) {
-                    return await this.onScan(code);
+                    return await this.onScan(cleanBarcode);
                 }
                 if (this.context) {
-                    return await this.store.executeActionByContext(this.context, code, this.extra_data);
+                    return await this.store.executeActionByContext(this.context, cleanBarcode, this.extra_data);
                 }
                 return;
             }
@@ -311,7 +360,7 @@ export default {
             // 1. Guardar de inmediato en IndexedDB como 'pending' (Write-Ahead Buffer)
             const record = await enqueueScan({
                 sessionId,
-                barcode: code,
+                barcode: cleanBarcode,
                 type: scanType,
                 status: 'pending',
                 payload: {
@@ -324,18 +373,18 @@ export default {
             // 2. Si el consumidor maneja su propio onScan (ej. CycleCountOperator, DispatchComponent, Compaction, etc.):
             if (this.onScan) {
                 if (this.queueMode) {
-                    await this.onScan(code);
+                    await this.onScan(cleanBarcode);
                     scanQueueWorker.kickQueue();
                     return;
                 }
                 try {
-                    const res = await this.onScan(code);
+                    const res = await this.onScan(cleanBarcode);
                     if (record && record.id) {
                         if (res && (res.error || res.ok === false)) {
                             const errMsg = (typeof res.error === 'object' ? res.error.message : res.error) || 'Error en operación';
                             await updateScanStatus(record.id, 'error', { errorMsg: errMsg, serverResponse: res });
                             if (this.store && typeof this.store.notifyBufferError === 'function') {
-                                this.store.notifyBufferError(errMsg, code);
+                                this.store.notifyBufferError(errMsg, cleanBarcode);
                             }
                         } else {
                             await updateScanStatus(record.id, 'synced', { serverResponse: res || null });
@@ -347,7 +396,7 @@ export default {
                         await updateScanStatus(record.id, 'error', { errorMsg: errMsg });
                     }
                     if (this.store && typeof this.store.notifyBufferError === 'function') {
-                        this.store.notifyBufferError(errMsg, code);
+                        this.store.notifyBufferError(errMsg, cleanBarcode);
                     }
                 } finally {
                     scanQueueWorker.refreshBufferStats();
@@ -358,13 +407,13 @@ export default {
             // 3. Si tiene contexto interactivo directo (distinto de cola masiva 'bin_scan_so'):
             if (this.context && this.context !== 'bin_scan_so') {
                 try {
-                    const res = await this.store.executeActionByContext(this.context, code, this.extra_data);
+                    const res = await this.store.executeActionByContext(this.context, cleanBarcode, this.extra_data);
                     if (record && record.id) {
                         if (res && (res.error || res.ok === false)) {
                             const errMsg = (typeof res.error === 'object' ? res.error.message : res.error) || 'Error en validación';
                             await updateScanStatus(record.id, 'error', { errorMsg: errMsg, serverResponse: res });
                             if (this.store && typeof this.store.notifyBufferError === 'function') {
-                                this.store.notifyBufferError(errMsg, code);
+                                this.store.notifyBufferError(errMsg, cleanBarcode);
                             }
                         } else {
                             await updateScanStatus(record.id, 'synced', { serverResponse: res || null });
@@ -376,7 +425,7 @@ export default {
                         await updateScanStatus(record.id, 'error', { errorMsg: errMsg });
                     }
                     if (this.store && typeof this.store.notifyBufferError === 'function') {
-                        this.store.notifyBufferError(errMsg, code);
+                        this.store.notifyBufferError(errMsg, cleanBarcode);
                     }
                 } finally {
                     scanQueueWorker.refreshBufferStats();

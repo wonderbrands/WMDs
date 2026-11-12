@@ -165,6 +165,14 @@ class DispatchSessionController(http.Controller):
             if existing:
                 return {"ok": True, "session_id": session.id, "duplicate": True}
 
+            # Verificar si la EI ya fue despachada previamente
+            ei_rec = request.env["sale.order.ei"].sudo().search([('display_name_custom', '=', ei_name)], limit=1)
+            if ei_rec and ei_rec.dispatched:
+                return {
+                    "ok": False,
+                    "error": f"La etiqueta {ei_name} ya fue despachada anteriormente."
+                }
+
             # Obtener producto y carrier de la SO
             product_name = ""
             carrier_name = ""

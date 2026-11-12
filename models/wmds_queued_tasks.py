@@ -397,6 +397,30 @@ class WmdsQueuedTasks(models.Model):
                     )
                 continue
 
+            # Validación de DOCK obligatoria (Caso 3)
+            if not tag.dock_id or not tag.on_dock:
+                warn_msg = f"Paquete {pack_id}: No se puede despachar sin DOCK asignado (DOCK N/A)."
+                _logger.warning(warn_msg)
+                errors.append(warn_msg)
+                log_lines.append(f"[{now_str}] ERROR: {warn_msg}")
+                try:
+                    with self.env.cr.savepoint():
+                        if 'dispatch_status' in tag._fields:
+                            tag.write({'dispatch_status': 'failed'})
+                    self.env.cr.commit()
+                except Exception as write_err:
+                    _logger.error(f"Error saving failed status for no-dock tag {pack_id}: {write_err}")
+                if (idx + 1) % PROGRESS_INTERVAL == 0 or idx == total_packs - 1:
+                    self._update_progress(
+                        f"Procesando lote de despachos...\n"
+                        f"Progreso: {idx + 1} / {total_packs} paquetes.\n"
+                        f" - Exitosos/Omitidos: {len(success_packs)}\n"
+                        f" - Fallidos: {len(errors)}\n\n"
+                        f"=== DETALLE DE EJECUCIÓN ===\n" +
+                        "\n".join(log_lines)
+                    )
+                continue
+
             so = tag.so_id
             if so and so.state == 'cancel':
                 warn_msg = f"Paquete {pack_id}: No se puede despachar porque el pedido {so.name} está cancelado."
@@ -533,6 +557,8 @@ class WmdsQueuedTasks(models.Model):
                                             'pick_ids': [(4, picking_out.id)]
                                         })
                                         wizard.process()
+                                    if picking_out.state != 'done':
+                                        raise UserError(f"No se pudo completar el albarán {picking_out.name} en Odoo (estado final: {picking_out.state}).")
                                     _logger.info(f"Picking OUT {picking_out.name} validado con éxito en segundo plano.")
                                 # Si acabamos de validar con éxito todos los pickings OUT, actualizamos la caché
                                 so_out_closed[so.id] = True

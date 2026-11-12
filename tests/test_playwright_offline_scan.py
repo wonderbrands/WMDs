@@ -66,17 +66,43 @@ async def run_tests():
             print(f"✔ Sesión iniciada con: {carrier_text.strip()}")
 
             # -----------------------------------------------------------------
+            # TEST CASE 0: VALIDACIÓN SÍNCRONA INMEDIATA (PREFIJO 'SO' OBLIGATORIO)
+            # -----------------------------------------------------------------
+            print("\n-----------------------------------------------------------------")
+            print(" TEST CASE 0: Validación síncrona en cliente (Rechazo inmediato si no empieza con 'SO')")
+            print("-----------------------------------------------------------------")
+            invalid_codes = ["INVALID_100/1", "123456789", "GUIA_TEST_99", "TRACKING_001"]
+            for inv in invalid_codes:
+                await page.evaluate(f"window.__TEST__.simulateLaserScan('{inv}')")
+                await asyncio.sleep(0.05)
+            
+            # Verificar que NINGUNO de los códigos inválidos fue agregado a la UI ni a Dexie
+            so_count_inv = await page.evaluate("window.__TEST__.getDispatchVm().so.length")
+            print(f"✔ Escaneos inválidos aceptados en UI: {so_count_inv} (esperado 0)")
+            assert so_count_inv == 0, f"Se esperaba 0 escaneos en UI tras códigos inválidos, encontrados {so_count_inv}"
+
+            dexie_count_inv = await page.evaluate("""
+                async () => {
+                    const db = window.__TEST__.localDb;
+                    return await db.scanQueue.count();
+                }
+            """)
+            print(f"✔ Escaneos inválidos guardados en Dexie: {dexie_count_inv} (esperado 0)")
+            assert dexie_count_inv == 0, f"Se esperaba 0 en Dexie tras códigos sin 'SO', encontrados {dexie_count_inv}"
+            print("✔ Validación síncrona inmediata en cliente verificada: 100% de rechazos sin encolar.")
+
+            # -----------------------------------------------------------------
             # TEST CASE 1: ESCANEO RÁPIDO ULTRA-CONSECUTIVO (< 50ms)
             # -----------------------------------------------------------------
             print("\n-----------------------------------------------------------------")
-            print(" TEST CASE 1: Escaneo rápido ultra-consecutivo (5 EI en < 150ms)")
+            print(" TEST CASE 1: Escaneo rápido ultra-consecutivo (5 SO en < 150ms)")
             print("-----------------------------------------------------------------")
             barcodes = [
-                "EI_FAST_101/1",
-                "EI_FAST_102/1",
-                "EI_FAST_103/1",
-                "EI_FAST_104/1",
-                "EI_FAST_105/1"
+                "SO_FAST_101/1",
+                "SO_FAST_102/1",
+                "SO_FAST_103/1",
+                "SO_FAST_104/1",
+                "SO_FAST_105/1"
             ]
 
             t0 = time.time()
@@ -160,8 +186,8 @@ async def run_tests():
             await page.evaluate("window.__TEST__.testState.backendDelayMs = 2000;")
             
             # Encolar 2 nuevos escaneos
-            await page.evaluate("window.__TEST__.simulateLaserScan('EI_RELOAD_201/1')")
-            await page.evaluate("window.__TEST__.simulateLaserScan('EI_RELOAD_202/1')")
+            await page.evaluate("window.__TEST__.simulateLaserScan('SO_RELOAD_201/1')")
+            await page.evaluate("window.__TEST__.simulateLaserScan('SO_RELOAD_202/1')")
 
             # Verificar que están en Dexie
             pending_before = await page.evaluate("""
@@ -211,11 +237,11 @@ async def run_tests():
             print("-----------------------------------------------------------------")
 
             # Registrar barcode cancelado
-            await page.evaluate("window.__TEST__.testState.cancelledBarcodes.add('EI_CANCEL_301/1');")
+            await page.evaluate("window.__TEST__.testState.cancelledBarcodes.add('SO_CANCEL_301/1');")
             
             # Escanear pedido cancelado seguido inmediatamente de uno válido
-            await page.evaluate("window.__TEST__.simulateLaserScan('EI_CANCEL_301/1');")
-            await page.evaluate("window.__TEST__.simulateLaserScan('EI_VALID_302/1');")
+            await page.evaluate("window.__TEST__.simulateLaserScan('SO_CANCEL_301/1');")
+            await page.evaluate("window.__TEST__.simulateLaserScan('SO_VALID_302/1');")
 
             # Esperar a que el worker procese ambos
             await asyncio.sleep(1.0)
@@ -224,9 +250,9 @@ async def run_tests():
             cancel_status = await page.evaluate("""
                 async () => {
                     const db = window.__TEST__.localDb;
-                    const rec = await db.scanQueue.where('barcode').equals('EI_CANCEL_301/1').first();
+                    const rec = await db.scanQueue.where('barcode').equals('SO_CANCEL_301/1').first();
                     const vm = window.__TEST__.getDispatchVm();
-                    const uiItem = vm.so.find(o => o.name === 'EI_CANCEL_301/1');
+                    const uiItem = vm.so.find(o => o.name === 'SO_CANCEL_301/1');
                     return {
                         dbStatus: rec ? rec.status : null,
                         uiState: uiItem ? uiItem.so_state : null
@@ -241,7 +267,7 @@ async def run_tests():
             valid_status = await page.evaluate("""
                 async () => {
                     const db = window.__TEST__.localDb;
-                    const rec = await db.scanQueue.where('barcode').equals('EI_VALID_302/1').first();
+                    const rec = await db.scanQueue.where('barcode').equals('SO_VALID_302/1').first();
                     return rec ? rec.status : null;
                 }
             """)
@@ -250,7 +276,7 @@ async def run_tests():
 
             # Confirmar remoción física en el modal obligatorio
             print("Confirmando remoción física de paquete cancelado en modal...")
-            await page.evaluate("window.__TEST__.getDispatchVm().confirmCancelledScan('EI_CANCEL_301/1');")
+            await page.evaluate("window.__TEST__.getDispatchVm().confirmCancelledScan('SO_CANCEL_301/1');")
             await asyncio.sleep(1.2)
             await page.wait_for_selector(".cancelled-modal-overlay", state="detached", timeout=3000)
             print("✔ Modal de cancelados cerrado tras confirmar remoción física.")
@@ -266,12 +292,19 @@ async def run_tests():
             await page.evaluate("window.__TEST__.testState.backendDelayMs = 1500;")
             
             # Encolar un escaneo lento
-            await page.evaluate("window.__TEST__.simulateLaserScan('EI_SLOW_401/1');")
+            await page.evaluate("window.__TEST__.simulateLaserScan('SO_SLOW_401/1');")
 
-            # Intentar click en "Entregar a paquetería" inmediatamente
-            await page.click("button:has-text('Entregar a paquetería')")
+            # Verificar que el botón se deshabilitó y cambió su texto a 'Sincronizando'
+            busy_btn = await page.wait_for_selector("button:has-text('Sincronizando guías')", timeout=2000)
+            assert busy_btn is not None, "El botón debió cambiar a 'Sincronizando guías'"
+            is_disabled = await busy_btn.is_disabled()
+            assert is_disabled, "El botón debió estar deshabilitado mientras se sincroniza"
+            print("✔ Botón de despacho deshabilitado y mostrando estado de sincronización.")
 
-            # Verificar que DispatchComponent mostró Toast de advertencia y no despachó
+            # Intentar invocar dispatchToCarrier directamente por JS
+            await page.evaluate("window.__TEST__.getDispatchVm().dispatchToCarrier()")
+
+            # Verificar que DispatchComponent bloqueó el despacho y no llamó a dispatch_orders
             dispatch_called = await page.evaluate("""
                 () => {
                     const calls = window.__TEST__.testState.backendCalls;

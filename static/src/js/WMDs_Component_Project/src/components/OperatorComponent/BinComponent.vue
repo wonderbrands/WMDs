@@ -58,6 +58,7 @@
                         context="bin_scan_so"
                         :extra_data="this"
                         instructions="Escanea la etiqueta de orden SO"
+                        :requireSO="true"
                     />
                 </div>
                 <div v-else-if="ready && scan_bin && !showConfirmation" class="scanner-wrapper">
@@ -133,7 +134,7 @@
                 <div class="log-header">
                     <div class="log-header-info">
                         <span class="log-title">Resumen de Escaneo</span>
-                        <Button icon="fa fa-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0 && !showConfirmation"/>
+                        <Button icon="fa fa-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" :disabled="isBufferBusy" v-if="so.length > 0 && !showConfirmation"/>
                     </div>
                 </div>
 
@@ -605,6 +606,17 @@ export default {
             this.scan_bin = true;
         },
         clearAllOrders() {
+            if (this.isBufferBusy) {
+                if (this.store && this.store.toast) {
+                    this.store.toast.add({
+                        severity: 'warn',
+                        summary: 'Cola en progreso',
+                        detail: 'Espera a que finalice la sincronización en segundo plano antes de limpiar.',
+                        life: 4000
+                    });
+                }
+                return;
+            }
             console.log("Action: clearAllOrders triggered");
             this.so = [];
         },

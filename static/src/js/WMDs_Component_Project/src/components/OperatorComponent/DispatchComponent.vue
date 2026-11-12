@@ -93,6 +93,7 @@
                             :onScan="(data) => searchAndValidateSO(data)"
                             :disableFocus="cancelledModal.show"
                             :queueMode="true"
+                            :requireSO="true"
                         />
                     </div>
                 </div>
@@ -118,7 +119,7 @@
                     <div class="log-header">
                         <div class="log-header-info">
                             <span class="log-title">Resumen de Despacho</span>
-                            <Button icon="fa fa-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" v-if="so.length > 0"/>
+                            <Button icon="fa fa-trash" class="p-button-danger p-button-text p-button-sm" label="Limpiar Todo" @click="clearAllOrders" :disabled="isBufferBusy || dispatching" v-if="so.length > 0"/>
                         </div>
                     </div>
 
@@ -453,10 +454,12 @@ export default {
             return this.store.isConfirmationBlocked;
         },
         isBufferBusy() {
-            return this.store.isBufferBusy;
+            const hasLocalPending = this.so.some(o => o.sync_status === 'pending' || o.sync_status === 'processing');
+            return hasLocalPending || this.store.isBufferBusy;
         },
         bufferPendingCount() {
-            return this.store.bufferPendingCount;
+            const localPending = this.so.filter(o => o.sync_status === 'pending' || o.sync_status === 'processing').length;
+            return Math.max(localPending, this.store.bufferPendingCount);
         },
         hasBufferErrors() {
             return this.store.hasBufferErrors;
@@ -899,6 +902,19 @@ export default {
             const cleanBarcode = String(data || '').trim();
             if (!cleanBarcode) return;
 
+            // Validación síncrona inmediata en cliente
+            if (!cleanBarcode.startsWith('SO')) {
+                if (this.$toast) {
+                    this.$toast.add({
+                        severity: 'error',
+                        summary: 'Código Inválido',
+                        detail: `El código "${cleanBarcode}" no es válido. Debe comenzar con "SO".`,
+                        life: 4000
+                    });
+                }
+                return;
+            }
+
             // 1. Chequeo local de duplicado
             if (this.so.some(o => o.name === cleanBarcode)) {
                 if (this.$toast) {
@@ -991,6 +1007,10 @@ export default {
 
         async proceedWithoutErrors() {
             try {
+                const errorBarcodes = (this.bufferErrorsList || []).map(e => e.barcode);
+                if (errorBarcodes.length > 0) {
+                    this.so = this.so.filter(o => !errorBarcodes.includes(o.name));
+                }
                 await scanQueueWorker.triggerClearAllErrors();
             } catch (e) {
                 console.error("Error clearing errors:", e);
@@ -1004,6 +1024,7 @@ export default {
         },
 
         async executeDispatchToCarrier() {
+            if (this.dispatching) return;
             this.dispatching = true;
             try {
                 // Con el complemento de cancelaciones, una cancelación puede llegar después del último escaneo.
@@ -1228,12 +1249,28 @@ export default {
         },
 
         async clearAllOrders() {
+            if (this.isBufferBusy) {
+                if (this.$toast) {
+                    this.$toast.add({
+                        severity: 'warn',
+                        summary: 'Cola en progreso',
+                        detail: 'Espera a que finalice la sincronización en segundo plano antes de limpiar.',
+                        life: 4000
+                    });
+                }
+                return;
+            }
             if (!confirm("¿Estás seguro de limpiar todos los escaneos?\nEsto también cancelará la sesión actual.")) {
                 return;
             }
             const activeSessionKey = String(this.sessionId || (this.sessionCarrierId ? 'carrier_' + this.sessionCarrierId : 'default'));
             await clearSyncedScans(activeSessionKey);
-            await localDb.scanQueue.where('sessionId').equals(activeSessionKey).delete();
+            try {
+                // Solo eliminar scans de esta sesión que estén sincronizados o con error, preservando pending/processing
+                await localDb.scanQueue.where('sessionId').equals(activeSessionKey).and(r => r.status === 'synced' || r.status === 'error').delete();
+            } catch (err) {
+                console.warn("[clearAllOrders] Error limpiando scans:", err);
+            }
             await this.clearSession();
             this.so = [];
         },

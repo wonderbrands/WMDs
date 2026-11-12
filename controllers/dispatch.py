@@ -1,5 +1,6 @@
 from odoo import http, fields
 from odoo.http import request
+from odoo.exceptions import UserError
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -123,6 +124,30 @@ class Dispatch(http.Controller):
                 ('display_name_custom', 'in', packs_ids)
             ])
 
+            if not ei_tags:
+                return {
+                    "status": "error",
+                    "message": "No se encontraron paquetes registrados en Odoo para las guías enviadas."
+                }
+
+            # 1. Bloqueo de concurrencia e Idempotencia (Caso 2)
+            request.env.cr.execute("SELECT id FROM sale_order_ei WHERE id IN %s FOR UPDATE", [tuple(ei_tags.ids)])
+
+            already_dispatched = ei_tags.filtered(lambda t: t.dispatched)
+            if already_dispatched:
+                return {
+                    "status": "error",
+                    "message": f"Operación duplicada: Los paquetes {', '.join(already_dispatched.mapped('display_name_custom'))} ya han sido despachados previamente."
+                }
+
+            # 2. Validación de DOCK obligatoria (Caso 3)
+            no_dock_tags = ei_tags.filtered(lambda t: not t.dock_id or not t.on_dock)
+            if no_dock_tags:
+                return {
+                    "status": "error",
+                    "message": f"Despacho bloqueado: Los siguientes paquetes no tienen un DOCK asignado (DOCK N/A): {', '.join(no_dock_tags.mapped('display_name_custom'))}."
+                }
+
             # Punto de extensión: los complementos pueden descartar EI o detener el despacho.
             ei_tags, prefilter_error = ei_tags._wmds_dispatch_prefilter(operator=operator)
             if prefilter_error:
@@ -146,94 +171,112 @@ class Dispatch(http.Controller):
                 return {"status": "error", "message": " ".join(special['errors'])}
             ei_tags -= special['consumed']
 
-            vals = {
-                'dispatched': True,
-                'on_dock': False,
-                'dock_id': False,
-            }
-            if 'dispatch_status' in request.env['sale.order.ei']._fields:
-                vals['dispatch_status'] = 'success'
-            ei_tags.write(vals)
-            _logger.info("EI tags actualizados a dispatched y removidos de DOCK")
-            
-            for tag in ei_tags:
-                log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
-                
-                # Log en Picking
-                picking = request.env['stock.picking'].sudo().search([
-                    ('sale_id', '=', tag.so_id.id),
-                    ('state', 'in', ['assigned', 'done']),
-                    ('picking_type_id.name', 'ilike', 'Pick')
-                ], order='date_done desc', limit=1)
-                
-                if picking:
-                    request.env["wmds.log"].sudo().create({
-                        "pick": picking.id,
-                        "log": log_msg,
-                        "user": user_id,
-                    })
-                else:
-                    # If no picking found (unlikely), log to Sale Order at least
-                    request.env['wmds.log'].sudo().create({
-                        'sale': tag.so_id.id,
-                        'log': log_msg,
-                        'user': user_id,
-                        'date': fields.Datetime.now(),
-                    })
-                
-                _logger.info(f"Log creado para paquete {tag.display_name_custom}")
-
             sale_orders = ei_tags.mapped('so_id')
-            missing_packs_global = []
 
+            # 3. Validar si la entrega OUT ya fue cerrada en Odoo previamente (Caso 2)
+            already_closed_sos = []
             for so in sale_orders:
-                # Verificar si faltan etiquetas por despachar según ei_total
-                total_ei = so.ei_total
-                dispatched_ei_count = request.env['sale.order.ei'].sudo().search_count([
-                    ('so_id', '=', so.id),
-                    ('dispatched', '=', True)
+                out_pickings = request.env['stock.picking'].sudo().search([
+                    ('sale_id', '=', so.id),
+                    '|',
+                    ('picking_type_id.code', '=', 'outgoing'),
+                    ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
                 ])
+                if out_pickings and all(p.state in ('done', 'cancel') for p in out_pickings):
+                    already_closed_sos.append(so.name)
+            if already_closed_sos:
+                return {
+                    "status": "error",
+                    "message": f"Operación duplicada: La entrega de las siguientes órdenes ya fue cerrada previamente en Odoo: {', '.join(already_closed_sos)}."
+                }
+
+            # 4. Transaccionalidad Atómica y Validación de OUT (Caso 1)
+            missing_packs_global = []
+            with request.env.cr.savepoint():
+                vals = {
+                    'dispatched': True,
+                    'on_dock': False,
+                    'dock_id': False,
+                }
+                if 'dispatch_status' in request.env['sale.order.ei']._fields:
+                    vals['dispatch_status'] = 'success'
+                ei_tags.write(vals)
+                _logger.info("EI tags actualizados a dispatched y removidos de DOCK")
                 
-                if dispatched_ei_count < total_ei:
-                    # Encontrar cuáles faltan (secuencias)
-                    existing_seqs = request.env['sale.order.ei'].sudo().search([
+                for tag in ei_tags:
+                    log_msg = f"Paquete {tag.display_name_custom} entregado a paquetería por {operator_login}."
+                    
+                    # Log en Picking
+                    picking = request.env['stock.picking'].sudo().search([
+                        ('sale_id', '=', tag.so_id.id),
+                        ('state', 'in', ['assigned', 'done']),
+                        ('picking_type_id.name', 'ilike', 'Pick')
+                    ], order='date_done desc', limit=1)
+                    
+                    if picking:
+                        request.env["wmds.log"].sudo().create({
+                            "pick": picking.id,
+                            "log": log_msg,
+                            "user": user_id,
+                        })
+                    else:
+                        request.env['wmds.log'].sudo().create({
+                            'sale': tag.so_id.id,
+                            'log': log_msg,
+                            'user': user_id,
+                            'date': fields.Datetime.now(),
+                        })
+                    
+                    _logger.info(f"Log creado para paquete {tag.display_name_custom}")
+
+                for so in sale_orders:
+                    # Verificar si faltan etiquetas por despachar según ei_total
+                    total_ei = so.ei_total
+                    dispatched_ei_count = request.env['sale.order.ei'].sudo().search_count([
                         ('so_id', '=', so.id),
                         ('dispatched', '=', True)
-                    ]).mapped('sequence_number')
-                    
-                    missing_seqs = [str(i) for i in range(1, total_ei + 1) if i not in existing_seqs]
-                    missing_packs_global.append(f"{so.name} (Faltan: {', '.join(missing_seqs)})")
-                    _logger.info(f"Faltan paquetes para SO {so.id}")
-                else:
-                    # Si ya están todos, procesar pickings
-                    pickings = request.env['stock.picking'].sudo().search([
-                        ('sale_id', '=', so.id),
-                        '|',
-                        ('picking_type_id.code', '=', 'outgoing'),
-                        ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
-                        ('state', 'not in', ['done', 'cancel'])
                     ])
-                    for picking in pickings:
-                        try:
-                            picking.action_assign()
+                    
+                    if dispatched_ei_count < total_ei:
+                        existing_seqs = request.env['sale.order.ei'].sudo().search([
+                            ('so_id', '=', so.id),
+                            ('dispatched', '=', True)
+                        ]).mapped('sequence_number')
+                        
+                        missing_seqs = [str(i) for i in range(1, total_ei + 1) if i not in existing_seqs]
+                        missing_packs_global.append(f"{so.name} (Faltan: {', '.join(missing_seqs)})")
+                        _logger.info(f"Faltan paquetes para SO {so.id}")
+                    else:
+                        # Si ya están todos los paquetes despachados, procesar y validar pickings OUT
+                        pickings = request.env['stock.picking'].sudo().search([
+                            ('sale_id', '=', so.id),
+                            '|',
+                            ('picking_type_id.code', '=', 'outgoing'),
+                            ('picking_type_id.name', 'in', ['Órdenes de entrega', 'Delivery Orders']),
+                            ('state', 'not in', ['done', 'cancel'])
+                        ])
+                        for picking in pickings:
+                            picking.with_context(wmds_dispatch_in_progress=True).action_assign()
                             
                             # Pre-llenar cantidades realizadas para evitar wizard de cantidades vacías
                             for move in picking.move_ids:
                                 if move.state not in ('done', 'cancel'):
-                                    move.write({
+                                    move.with_context(wmds_dispatch_in_progress=True).write({
                                         'quantity': move.product_uom_qty,
                                         'picked': True
                                     })
                             
-                            res = picking.button_validate()
+                            res = picking.with_context(wmds_dispatch_in_progress=True).button_validate()
                             if isinstance(res, dict) and res.get('res_model') == 'stock.backorder.confirmation':
                                 wizard = request.env['stock.backorder.confirmation'].with_context(res['context']).sudo().create({
                                     'pick_ids': [(4, picking.id)]
                                 })
                                 wizard.process()
-                            _logger.info(f"Picking {picking.name} validado")
-                        except Exception as e:
-                            _logger.error(f"Error validando picking {picking.name}: {e}")
+                            
+                            # Verificación estricta de estado: evitar dejar pickings en assigned
+                            if picking.state != 'done':
+                                raise UserError(f"No se pudo completar la entrega del albarán {picking.name} en Odoo (estado final: {picking.state}).")
+                            _logger.info(f"Picking {picking.name} validado exitosamente")
 
             res = {"status": "success"}
             if missing_packs_global:
