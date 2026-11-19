@@ -112,6 +112,13 @@ export default {
     methods: {
         handleGlobalKeydown(e) {
             if (this.disableFocus) return;
+            const active = document.activeElement;
+            if (active && active !== this.$refs.laserInput && active !== document.body) {
+                const tag = active.tagName ? active.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || active.isContentEditable) {
+                    return;
+                }
+            }
             if (this.reader === 'laser') {
                 if ((e.key === 'Enter' || e.keyCode === 13) && this.laser_input && this.laser_input.trim()) {
                     e.preventDefault();
@@ -210,7 +217,13 @@ export default {
         },
         focusLaserInput() {
             if (this.disableFocus) return;
-            console.log("focusLaserInput");
+            const active = document.activeElement;
+            if (active && active !== this.$refs.laserInput && active !== document.body) {
+                const tag = active.tagName ? active.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || active.isContentEditable) {
+                    return;
+                }
+            }
             if (this.reader === 'laser' && this.$refs.laserInput) {
                 const el = this.$refs.laserInput;
                 el.focus();
@@ -222,11 +235,18 @@ export default {
         },
         keepFocus() {
             if (this.disableFocus) return;
-            console.log("keepFocus");
             if (this.reader === 'laser') {
                 setTimeout(() => {
+                    if (this.disableFocus) return;
+                    const active = document.activeElement;
+                    if (active && active !== this.$refs.laserInput && active !== document.body) {
+                        const tag = active.tagName ? active.tagName.toLowerCase() : '';
+                        if (tag === 'input' || tag === 'textarea' || active.isContentEditable) {
+                            return;
+                        }
+                    }
                     this.focusLaserInput();
-                }, 10);
+                }, 30);
             }
         },
         handleInput() {

@@ -79,6 +79,90 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
             case "features":
                 return { features: { cancel: true } };
 
+            case "location_preview":
+                return {
+                    status: "ok",
+                    location: {
+                        id: 101,
+                        name: "A-01-01",
+                        complete_name: "WH/Stock/A-01-01",
+                        barcode: params.barcode || "LOC-A0101"
+                    },
+                    stock_summary: {
+                        products_count: 2,
+                        total_units: 15,
+                        total_reserved: 3,
+                        total_available: 12,
+                        items: [
+                            {
+                                quant_id: 1,
+                                product_id: 10,
+                                product_name: "Caja Organizadora 50L",
+                                default_code: "ORG-50L",
+                                barcode: "7501234567890",
+                                image_url: "https://via.placeholder.com/128",
+                                lot_name: "LOTE-2026-A",
+                                quantity: 10,
+                                reserved_quantity: 3,
+                                available_quantity: 7,
+                                uom: "Unidades"
+                            },
+                            {
+                                quant_id: 2,
+                                product_id: 11,
+                                product_name: "Contenedor Hermético 2L",
+                                default_code: "CONT-2L",
+                                barcode: "7501234567891",
+                                image_url: "https://via.placeholder.com/128",
+                                lot_name: "Sin lote",
+                                quantity: 5,
+                                reserved_quantity: 0,
+                                available_quantity: 5,
+                                uom: "Unidades"
+                            }
+                        ]
+                    },
+                    blocking: {
+                        is_blocked: false,
+                        block_reason_type: false,
+                        block_reason: "",
+                        block_user: false,
+                        block_ticket: "",
+                        block_date: false,
+                        block_date_relative: false,
+                        block_expiration_date: false,
+                        is_block_expired: false
+                    },
+                    cycle_count: {
+                        in_cycle_count: false,
+                        cycle_counts: []
+                    },
+                    reservations: {
+                        has_pending_reservations: true,
+                        reservations_count: 1,
+                        reservations: [
+                            {
+                                line_id: 501,
+                                picking_id: 99,
+                                picking_name: "WH/OUT/00123",
+                                origin: "SO-45892",
+                                picking_type: "Delivery Orders",
+                                product_name: "Caja Organizadora 50L",
+                                quantity: 3,
+                                uom: "Unidades",
+                                scheduled_date: "2026-11-14 10:00:00"
+                            }
+                        ]
+                    },
+                    empty_status: {
+                        is_empty: false,
+                        empty_since: false,
+                        empty_duration: false,
+                        empty_reason: false,
+                        last_product: false
+                    }
+                };
+
             case "operadores":
                 const operadores = [
                     { name: 'Juan Perez', code: 'JP' },
@@ -559,6 +643,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             sync_mysql_sla: {url: '/wmds/v2/engine/sync/mysql_sla', method: 'POST'},
             export_order_channel_excel: {url: '/wmds/v2/engine/export_order_channel_excel', method: 'POST'},
             reassign_sla: {url: '/wmds/v2/engine/reassign_sla', method: 'POST'},
+            location_preview: {url: '/wmds/v2/engine/get/location_preview', method: 'POST'},
         };
 
 

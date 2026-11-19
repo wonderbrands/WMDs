@@ -42,6 +42,7 @@ import BarcodeOperationComponent from "./components/OperatorComponent/BarcodeOpe
 import CycleCountOperator from "./components/OperatorComponent/CycleCountOperator.vue"
 import CompactionComponent from "./components/OperatorComponent/CompactionComponent.vue"
 import BlockBinComponent from "./components/OperatorComponent/BlockBinComponent.vue"
+import LocationPreviewComponent from "./components/OperatorComponent/LocationPreviewComponent.vue"
 import BufferStatusWidget from "./components/Common/BufferStatusWidget.vue"
 
 import { useGeneralStore } from "./store/index"
@@ -67,7 +68,8 @@ export default {
     BarcodeOperationComponent,
     CycleCountOperator,
     CompactionComponent,
-    BlockBinComponent
+    BlockBinComponent,
+    LocationPreviewComponent
   },
 
 

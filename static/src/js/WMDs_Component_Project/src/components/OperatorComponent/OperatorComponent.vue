@@ -127,6 +127,7 @@ export default {
                 { id: "merma", title: "Merma", description: "Traslado a Merma", fetch: true, label: "Abiertos", permission: "WMDs Operator - Merma", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true, check_empty_dest_location: false },
                 { id: "cancelacion", title: "Cancelación", description: "Traslado de Cancelaciones", fetch: true, label: "Abiertos", permission: "WMDs Operator - Cancelación", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true, check_empty_dest_location: false },
                 { id: "compactacion", title: "Compactación", description: "Pasar productos de ubicación A, B, C a D", fetch: false, label: "Iniciar", view: "CompactionComponent", permission: "WMDs Operator - Compactación" },
+                { id: "location_preview", title: "Información de la ubicación", description: "Stock, bloqueos, conteos y reservas por ubicación", fetch: false, label: "Consultar", view: "LocationPreviewComponent", permission: "WMDs Operator - Location quant preview" },
             ],
 
             tasks: [],

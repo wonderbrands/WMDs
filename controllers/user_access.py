@@ -104,8 +104,8 @@ class UserAccess(http.Controller):
         
         groups = [group.name 
                     for group in user.groups_id 
-                    if group.name.startswith("WMDs") and 
-                    group.name not in ["WMDs Operator", "WMDs Manager"]]
+                    if (group.name.startswith("WMDs") or group.name.startswith("WMDS")) and 
+                    group.name not in ["WMDs Operator", "WMDs Manager", "WMDS Operator", "WMDS Manager"]]
 
         is_developer = user.has_group('wmds.group_wmds_developer') or user.has_group('base.group_system') or user.id in (1, 2)
 
