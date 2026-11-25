@@ -23,3 +23,4 @@ from . import order_channel
 from . import mysql_driver_controller
 from . import features
 from . import location_preview
+from . import universal_lookup

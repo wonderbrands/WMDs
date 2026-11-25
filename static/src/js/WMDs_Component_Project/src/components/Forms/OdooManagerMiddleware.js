@@ -163,6 +163,40 @@ class OdooManagerMiddlewareDev extends OdooManagerMiddlewareDefinition{
                     }
                 };
 
+            case "universal_lookup":
+                return {
+                    status: "success",
+                    type: "product",
+                    data: {
+                        product: {
+                            id: 10,
+                            name: "Caja Organizadora 50L Transparente",
+                            default_code: "ORG-50L",
+                            barcode: params.barcode || "7501234567890",
+                            image_url: "/web/image/product.product/10/image_256",
+                            uom: "Unidades",
+                            dimensions: {
+                                length: 50.0,
+                                width: 35.0,
+                                height: 30.0,
+                                weight: 1.85,
+                                volume: 0.0525
+                            }
+                        },
+                        stock_summary: {
+                            total_quantity: 45,
+                            total_reserved: 5,
+                            total_available: 40,
+                            locations_count: 3,
+                            locations: [
+                                { location_id: 1, location_name: "WH/Stock/A-01-01", barcode: "LOC-A0101", quantity: 20, reserved_quantity: 0, available_quantity: 20 },
+                                { location_id: 2, location_name: "WH/Stock/A-01-02", barcode: "LOC-A0102", quantity: 15, reserved_quantity: 5, available_quantity: 10 },
+                                { location_id: 3, location_name: "WH/Stock/B-02-01", barcode: "LOC-B0201", quantity: 10, reserved_quantity: 0, available_quantity: 10 }
+                            ]
+                        }
+                    }
+                };
+
             case "operadores":
                 const operadores = [
                     { name: 'Juan Perez', code: 'JP' },
@@ -644,6 +678,7 @@ class OdooManagerMiddlewareProd extends OdooManagerMiddlewareDefinition {
             export_order_channel_excel: {url: '/wmds/v2/engine/export_order_channel_excel', method: 'POST'},
             reassign_sla: {url: '/wmds/v2/engine/reassign_sla', method: 'POST'},
             location_preview: {url: '/wmds/v2/engine/get/location_preview', method: 'POST'},
+            universal_lookup: {url: '/wmds/v2/engine/scan/universal_lookup', method: 'POST'},
         };
 
 

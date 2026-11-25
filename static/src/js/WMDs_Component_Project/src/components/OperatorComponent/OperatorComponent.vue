@@ -52,6 +52,9 @@
                                     placeholder="Buscar por PO o ubicación..." 
                                     class="p-inputtext-sm w-full"
                                     @click.stop
+                                    @focus="activateLocalInputMode"
+                                    @input="resetLocalInputTimer"
+                                    @keydown="resetLocalInputTimer"
                                 />
                             </span>
                         </div>
@@ -87,6 +90,28 @@
             </Card>
         </div>
 
+        <!-- Universal Invisible Laser Scanner Input -->
+        <input 
+            ref="invisibleLaserInput"
+            type="text" 
+            v-model="laserInput" 
+            @keydown.enter.prevent="handleLaserEnter"
+            @paste="handleInputPaste"
+            @input="handleInputChange"
+            @blur="keepFocus"
+            class="hidden-universal-laser"
+            tabindex="-1"
+            autocomplete="off"
+        />
+
+        <!-- Universal Lookup Modal -->
+        <UniversalLookupModal
+            v-model:visible="lookupModalVisible"
+            :result="lookupResult"
+            :loading="isSearchingLookup"
+            @closed="onLookupModalClosed"
+        />
+
         <div class="logout-wrapper">
             <LogoutComponent class="logout-btn-60" />
         </div>
@@ -100,11 +125,12 @@ import InputText from "primevue/inputtext";
 import PackerView from "./PackerView.vue";
 import CycleCountOperator from "./CycleCountOperator.vue";
 import LogoutComponent from "../RolePicker/LogoutComponent.vue";
+import UniversalLookupModal from "./UniversalLookupModal.vue";
 import { useGeneralStore } from "../../store/index";
 
 export default {
     name: "OperatorComponent",
-    components: { Card, Tree, InputText, LogoutComponent, PackerView, CycleCountOperator },
+    components: { Card, Tree, InputText, LogoutComponent, PackerView, CycleCountOperator, UniversalLookupModal },
 
     data() {
         return {
@@ -112,6 +138,14 @@ export default {
             current_task: {},
             expandedKeys: {},
             searchQueries: {},
+            laserInput: '',
+            barcodeBuffer: '',
+            lastBarcodeKeyTime: 0,
+            lookupModalVisible: false,
+            lookupResult: null,
+            isSearchingLookup: false,
+            isLocalInputActive: false,
+            localInputTimer: null,
             taskDefinitions: [
                 { id: "ingresos", title: "Recepciones", description: "Validación de ingresos.", fetch: true, label: "Abiertas", permission: "WMDs Operator - Reception", buttons_to_add: false, buttons_to_subtract: true, stock_input_add: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: false, any_source: true, any_dest: true, check_empty_dest_location: false },
                 { id: "acomodo", title: "Rackeo", description: "Acomodo de productos.", fetch: true, label: "Abiertos", permission: "WMDs Operator - Forklift operator", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: true, any_source: true, any_dest: true, check_empty_dest_location: true },
@@ -126,8 +160,7 @@ export default {
                 { id: "devoluciones", title: "Devoluciones", description: "Manejo de retornos", fetch: true, label: "Asignados", permission: "WMDs Operator - Replenishment", buttons_to_add: true, buttons_to_subtract: true, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: false, scan_dest: true, any_source: true, any_dest: true, check_empty_dest_location: false },
                 { id: "merma", title: "Merma", description: "Traslado a Merma", fetch: true, label: "Abiertos", permission: "WMDs Operator - Merma", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true, check_empty_dest_location: false },
                 { id: "cancelacion", title: "Cancelación", description: "Traslado de Cancelaciones", fetch: true, label: "Abiertos", permission: "WMDs Operator - Cancelación", buttons_to_add: true, buttons_to_subtract: true, stock_input_add: false, backorder: true, extra_products: false, res_model: 'stock.picking', scan_source: true, scan_dest: true, any_source: true, any_dest: true, check_empty_dest_location: false },
-                { id: "compactacion", title: "Compactación", description: "Pasar productos de ubicación A, B, C a D", fetch: false, label: "Iniciar", view: "CompactionComponent", permission: "WMDs Operator - Compactación" },
-                { id: "location_preview", title: "Información de la ubicación", description: "Stock, bloqueos, conteos y reservas por ubicación", fetch: false, label: "Consultar", view: "LocationPreviewComponent", permission: "WMDs Operator - Location quant preview" },
+                { id: "compactacion", title: "Compactación", description: "Pasar productos de ubicación A, B, C a D", fetch: false, label: "Iniciar", view: "CompactionComponent", permission: "WMDs Operator - Compactación" }
             ],
 
             tasks: [],
@@ -149,10 +182,246 @@ export default {
     },
 
     async mounted() {
+        window.addEventListener('keydown', this.handleGlobalKeydown);
+        window.addEventListener('paste', this.handleGlobalPaste);
+        window.addEventListener('focusin', this.handleGlobalFocusIn);
+        this.$nextTick(() => {
+            this.focusLaserInput();
+        });
         await this.loadTasks();
     },
 
+    beforeUnmount() {
+        window.removeEventListener('keydown', this.handleGlobalKeydown);
+        window.removeEventListener('paste', this.handleGlobalPaste);
+        window.removeEventListener('focusin', this.handleGlobalFocusIn);
+        if (this.localInputTimer) {
+            clearTimeout(this.localInputTimer);
+            this.localInputTimer = null;
+        }
+    },
+
     methods: {
+        activateLocalInputMode() {
+            this.isLocalInputActive = true;
+            this.resetLocalInputTimer();
+        },
+        resetLocalInputTimer() {
+            if (this.localInputTimer) {
+                clearTimeout(this.localInputTimer);
+            }
+            // 45 segundos de focus ininterrumpido en input local
+            this.localInputTimer = setTimeout(() => {
+                this.deactivateLocalInputMode();
+            }, 45000);
+        },
+        deactivateLocalInputMode() {
+            if (this.localInputTimer) {
+                clearTimeout(this.localInputTimer);
+                this.localInputTimer = null;
+            }
+            this.isLocalInputActive = false;
+            const active = document.activeElement;
+            if (active && active !== document.body && active !== this.$refs.invisibleLaserInput) {
+                const tag = active.tagName ? active.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || active.isContentEditable) {
+                    active.blur();
+                }
+            }
+            this.$nextTick(() => {
+                this.focusLaserInput();
+            });
+        },
+        handleGlobalFocusIn(e) {
+            const target = e.target;
+            if (target && target !== this.$refs.invisibleLaserInput) {
+                const tag = target.tagName ? target.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || target.isContentEditable) {
+                    this.activateLocalInputMode();
+                }
+            }
+        },
+        handleGlobalPaste(e) {
+            if (this.lookupModalVisible) return;
+            if (this.isLocalInputActive) {
+                this.resetLocalInputTimer();
+                return;
+            }
+            const active = document.activeElement;
+            if (active && active !== this.$refs.invisibleLaserInput && active !== document.body) {
+                const tag = active.tagName ? active.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || active.isContentEditable) {
+                    this.activateLocalInputMode();
+                    return;
+                }
+            }
+            const pastedText = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+            const code = pastedText.trim();
+            if (code) {
+                e.preventDefault();
+                this.barcodeBuffer = '';
+                this.laserInput = '';
+                this.processUniversalScan(code);
+            }
+        },
+        handleInputPaste(e) {
+            const pastedText = (e.clipboardData || window.clipboardData)?.getData('text') || '';
+            const code = pastedText.trim();
+            if (code) {
+                e.preventDefault();
+                this.barcodeBuffer = '';
+                this.laserInput = '';
+                this.processUniversalScan(code);
+            }
+        },
+        handleInputChange() {
+            this.$nextTick(() => {
+                if (this.laserInput && this.laserInput.trim().length > 2) {
+                    if (this.inputDebounceTimer) clearTimeout(this.inputDebounceTimer);
+                    this.inputDebounceTimer = setTimeout(() => {
+                        if (this.laserInput && !this.lookupModalVisible) {
+                            const code = this.laserInput.trim();
+                            this.laserInput = '';
+                            this.barcodeBuffer = '';
+                            this.processUniversalScan(code);
+                        }
+                    }, 100);
+                }
+            });
+        },
+        focusLaserInput() {
+            if (this.lookupModalVisible || this.isLocalInputActive) return;
+            const active = document.activeElement;
+            if (active && active !== this.$refs.invisibleLaserInput && active !== document.body) {
+                const tag = active.tagName ? active.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || active.isContentEditable) {
+                    return;
+                }
+            }
+            if (this.$refs.invisibleLaserInput) {
+                this.$refs.invisibleLaserInput.focus();
+            }
+        },
+        keepFocus() {
+            if (this.isLocalInputActive || this.lookupModalVisible) return;
+            setTimeout(() => {
+                if (this.isLocalInputActive || this.lookupModalVisible) return;
+                const active = document.activeElement;
+                if (active && active !== this.$refs.invisibleLaserInput && active !== document.body) {
+                    const tag = active.tagName ? active.tagName.toLowerCase() : '';
+                    if (tag === 'input' || tag === 'textarea' || active.isContentEditable) {
+                        return;
+                    }
+                }
+                this.focusLaserInput();
+            }, 60);
+        },
+        handleGlobalKeydown(e) {
+            if (this.lookupModalVisible) return;
+
+            if (this.isLocalInputActive) {
+                this.resetLocalInputTimer();
+                return;
+            }
+
+            const active = document.activeElement;
+            if (active && active !== this.$refs.invisibleLaserInput && active !== document.body) {
+                const tag = active.tagName ? active.tagName.toLowerCase() : '';
+                if (tag === 'input' || tag === 'textarea' || active.isContentEditable) {
+                    this.activateLocalInputMode();
+                    return;
+                }
+            }
+
+            const now = Date.now();
+
+            if (e.key === 'Enter' || e.keyCode === 13) {
+                const code = (this.barcodeBuffer || this.laserInput || '').trim();
+                this.barcodeBuffer = '';
+                this.laserInput = '';
+                if (code) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.processUniversalScan(code);
+                }
+                return;
+            }
+
+            // Rapid laser keystrokes accumulation into buffer
+            if (e.key && e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                if (now - this.lastBarcodeKeyTime > 300) {
+                    this.barcodeBuffer = '';
+                }
+                this.barcodeBuffer += e.key;
+                this.lastBarcodeKeyTime = now;
+            }
+
+            if (document.activeElement !== this.$refs.invisibleLaserInput) {
+                this.focusLaserInput();
+            }
+        },
+        handleLaserEnter() {
+            const code = (this.laserInput || this.barcodeBuffer || '').trim();
+            this.laserInput = '';
+            this.barcodeBuffer = '';
+            if (code) {
+                this.processUniversalScan(code);
+            }
+        },
+        async processUniversalScan(barcode) {
+            if (!barcode || this.isSearchingLookup) return;
+            this.isSearchingLookup = true;
+            try {
+                let cleanBarcode = barcode;
+                // Si el QR viene en JSON como {"name": "10"}
+                if (typeof barcode === 'string' && barcode.trim().startsWith('{')) {
+                    try {
+                        const parsed = JSON.parse(barcode.trim());
+                        if (parsed && (parsed.name || parsed.bin || parsed.dock || parsed.barcode || parsed.location)) {
+                            cleanBarcode = String(parsed.name || parsed.bin || parsed.dock || parsed.barcode || parsed.location);
+                        }
+                    } catch (e) {
+                        // ignore
+                    }
+                }
+                const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                const res = await this.store.callOdoo("universal_lookup", "", {
+                    barcode: cleanBarcode,
+                    raw_barcode: barcode,
+                    tz: clientTimeZone
+                });
+
+                if (res && res.status === 'success') {
+                    this.lookupResult = res;
+                    this.lookupModalVisible = true;
+                } else {
+                    this.store.toast?.add({
+                        severity: "warn",
+                        summary: "Código no reconocido",
+                        detail: res?.message || `No se encontró coincidencia para: ${barcode}`,
+                        life: 3500
+                    });
+                }
+            } catch (err) {
+                console.error("Error en universal_lookup:", err);
+                this.store.toast?.add({
+                    severity: "error",
+                    summary: "Error de consulta",
+                    detail: err.message || "Ocurrió un error al procesar el código.",
+                    life: 3000
+                });
+            } finally {
+                this.isSearchingLookup = false;
+            }
+        },
+        onLookupModalClosed() {
+            this.lookupResult = null;
+            this.barcodeBuffer = '';
+            this.laserInput = '';
+            this.$nextTick(() => {
+                this.focusLaserInput();
+            });
+        },
         async loadTasks() {
             const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -501,5 +770,19 @@ export default {
 
 .p-input-icon-left .p-inputtext {
     padding-left: 2.5rem;
+}
+
+.hidden-universal-laser {
+    position: fixed;
+    top: 0;
+    left: 0;
+    opacity: 0;
+    width: 1px;
+    height: 1px;
+    border: none;
+    outline: none;
+    padding: 0;
+    margin: 0;
+    z-index: 100;
 }
 </style>
