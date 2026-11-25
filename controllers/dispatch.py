@@ -124,6 +124,34 @@ class Dispatch(http.Controller):
                 ('display_name_custom', 'in', packs_ids)
             ])
 
+            # Auto-crear cualquier EI faltante que venga en packs_ids antes de validar
+            found_names = set(ei_tags.mapped('display_name_custom'))
+            missing_names = [p for p in packs_ids if p not in found_names]
+            if missing_names:
+                for pack_id in missing_names:
+                    if '/' in pack_id:
+                        try:
+                            so_cand_name, seq_cand_str = pack_id.split('/', 1)
+                            if seq_cand_str.isdigit():
+                                seq_cand = int(seq_cand_str)
+                                cand_so = request.env['sale.order'].sudo().search([('name', '=', so_cand_name)], limit=1)
+                                if cand_so and cand_so.state not in ('draft', 'cancel') and 0 < seq_cand <= cand_so.ei_total:
+                                    sister_ei = request.env['sale.order.ei'].sudo().search([
+                                        ('so_id', '=', cand_so.id)
+                                    ], order='id desc', limit=1)
+                                    vals = {
+                                        'so_id': cand_so.id,
+                                        'sequence_number': seq_cand,
+                                        'dispatched': False,
+                                        'on_dock': sister_ei.on_dock if sister_ei else True,
+                                        'dock_id': sister_ei.dock_id.id if (sister_ei and sister_ei.dock_id) else False,
+                                    }
+                                    new_tag = request.env['sale.order.ei'].sudo().create(vals)
+                                    ei_tags |= new_tag
+                                    _logger.info(f"Auto-creada EI {pack_id} en dispatch_packet para SO {cand_so.name}")
+                        except Exception as e_ei:
+                            _logger.warning(f"Error auto-creando EI {pack_id} en dispatch_packet: {e_ei}")
+
             if not ei_tags:
                 return {
                     "status": "error",
@@ -141,6 +169,16 @@ class Dispatch(http.Controller):
                 }
 
             # 2. Validación de DOCK obligatoria (Caso 3)
+            # Heredar DOCK de hermanas si alguna etiqueta no lo tiene
+            for tag in ei_tags:
+                if not tag.dock_id or not tag.on_dock:
+                    sister_with_dock = ei_tags.filtered(lambda t: t.so_id == tag.so_id and t.dock_id and t.on_dock)
+                    if sister_with_dock:
+                        tag.write({
+                            'dock_id': sister_with_dock[0].dock_id.id,
+                            'on_dock': True
+                        })
+
             no_dock_tags = ei_tags.filtered(lambda t: not t.dock_id or not t.on_dock)
             if no_dock_tags:
                 return {

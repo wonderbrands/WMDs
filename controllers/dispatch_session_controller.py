@@ -173,11 +173,30 @@ class DispatchSessionController(http.Controller):
                     "error": f"La etiqueta {ei_name} ya fue despachada anteriormente."
                 }
 
+            so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
+
+            # Si no existe en BD pero la SO es válida, asegurar creación inmediata en BD
+            if not ei_rec and so:
+                try:
+                    seq_cand = int(current) if current else (int(ei_name.split('/')[1]) if '/' in ei_name else 1)
+                    if 0 < seq_cand <= so.ei_total:
+                        sister_ei = request.env["sale.order.ei"].sudo().search([
+                            ('so_id', '=', so.id)
+                        ], order='id desc', limit=1)
+                        ei_rec = request.env["sale.order.ei"].sudo().create({
+                            'so_id': so.id,
+                            'sequence_number': seq_cand,
+                            'on_dock': sister_ei.on_dock if sister_ei else True,
+                            'dock_id': sister_ei.dock_id.id if (sister_ei and sister_ei.dock_id) else False,
+                            'dispatched': False,
+                        })
+                        _logger.info(f"Auto-creada EI {ei_name} en save_dispatch_session_line para SO {so.name}")
+                except Exception as e_create:
+                    _logger.warning(f"Error auto-creando EI {ei_name} en save_dispatch_session_line: {e_create}")
+
             # Obtener producto y carrier de la SO
             product_name = ""
             carrier_name = ""
-
-            so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
 
             # Validar carrier — IMPORTANTE: NO usar key "error" para evitar toast genérico de callOdoo
             if so and session.carrier_id:

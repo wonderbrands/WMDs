@@ -22,6 +22,31 @@ class DockNBin(http.Controller):
                     ('display_name_custom', '=', attachment_id)
                 ], limit=1)
 
+            # Si no existe, validar si es un formato SOXXXX/N válido según ei_total y auto-crearla en BD
+            if not ei_tag and '/' in attachment_id:
+                parts = attachment_id.split('/')
+                if len(parts) == 2:
+                    so_name, seq_str = parts
+                    try:
+                        seq = int(seq_str)
+                        so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
+                        if so and 0 < seq <= so.ei_total:
+                            sister_ei = request.env["sale.order.ei"].sudo().search([
+                                ('so_id', '=', so.id)
+                            ], order='id desc', limit=1)
+                            ei_tag = request.env["sale.order.ei"].sudo().create({
+                                'so_id': so.id,
+                                'sequence_number': seq,
+                                'on_bin': sister_ei.on_bin if sister_ei else False,
+                                'bin_id': sister_ei.bin_id.id if (sister_ei and sister_ei.bin_id) else False,
+                                'on_dock': sister_ei.on_dock if sister_ei else False,
+                                'dock_id': sister_ei.dock_id.id if (sister_ei and sister_ei.dock_id) else False,
+                                'dispatched': False,
+                            })
+                            _logger.info(f"Auto-creada EI {attachment_id} en validate_attachment_guide para SO {so.name}")
+                    except ValueError:
+                        pass
+
             if ei_tag:
                 # Contar cuántos paquetes del mismo SO ya están en proceso (en bin, dock o despachados)
                 already_processed_count = request.env["sale.order.ei"].sudo().search_count([
@@ -55,45 +80,6 @@ class DockNBin(http.Controller):
                 # Punto de extensión: datos extra de los complementos.
                 res.update(ei_tag._wmds_scan_extra_values())
                 return res
-
-            # Si no existe, validar si es un formato SOXXXX/N válido según ei_total
-            if '/' in attachment_id:
-                parts = attachment_id.split('/')
-                if len(parts) == 2:
-                    so_name, seq_str = parts
-                    try:
-                        seq = int(seq_str)
-                        so = request.env['sale.order'].sudo().search([('name', '=', so_name)], limit=1)
-                        if so and 0 < seq <= so.ei_total:
-                            # Contar cuántos paquetes del mismo SO ya están en proceso
-                            already_processed_count = request.env["sale.order.ei"].sudo().search_count([
-                                ('so_id', '=', so.id),
-                                '|', '|', ('on_bin', '=', True), ('on_dock', '=', True), ('dispatched', '=', True)
-                            ])
-                            
-                            # Contar específicamente los ya despachados
-                            dispatched_count = request.env["sale.order.ei"].sudo().search_count([
-                                ('so_id', '=', so.id),
-                                ('dispatched', '=', True)
-                            ])
-
-                            return {
-                                "valid": True,
-                                "so": so.name,
-                                "so_state": so.state,
-                                "name": attachment_id,
-                                "total": so.ei_total,
-                                "current": seq,
-                                "processed_count": already_processed_count,
-                                "dispatched_count": dispatched_count,
-                                "state": {
-                                    "on_bin": False,
-                                    "on_dock": False,
-                                    "dispatched": False
-                                }
-                            }
-                    except ValueError:
-                        pass
 
             return {"valid": False}
 
